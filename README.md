@@ -101,6 +101,14 @@ top/bottom, `}`/`{` next/previous change, `]`/`[` or `J`/`K` next/previous file 
 comment on the cursor line, `C` comment on the file, `s` inline/side by side, `w` wrap, `Esc` cancel a comment (or close an expanded
 review).
 
+**My PRs** (top of the sidebar, above Spaces). Every open pull request you authored on GitHub (`gh`), each
+with where it stands: **CI** (✓ passing, ✕ failing with how many, ◌ running), **review** (approved, changes
+requested, waiting) and **merge** (ready, needs approval, blocked, behind, conflicts); drafts are marked.
+Ones that need you (failing CI, changes requested, conflicts) come first, then running ones, then ready ones.
+Click a row to open it on GitHub. Click the header to fold the section to one line (with "N need you" /
+"N running"); × hides it, `cmd-shift-m` shows or hides it. A toast when a PR's CI turns red or green, it's
+approved, changes are requested, or it's merged or closed. Refreshes every minute (↻ now).
+
 **PRs panel** (`cmd-shift-u`, or **PRs** next to Files and Changes). The open pull requests of this
 session's worktrees: the ones the Changes panel shows, so while it follows an agent, every worktree the agent
 touched. Each PR shows its title and number, branch → base, draft / review state, CI checks (pass, running,
@@ -169,6 +177,7 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | Interface font JetBrains Mono | `layouts/ks.json` (`ui_font`) |
 | PRs panel: open PRs of the session's worktrees, review each against its base | `mods/ks-prs/` (new), layout `prs` block, `mods/ks-tabs/main.js` |
 | Send dialog: choose, edit, delete, add a note, pick the agent, preview, then send | `mods/ks-send/` (new) |
+| My PRs in the sidebar: your open PRs with CI, review and merge state, foldable, hideable | `mods/ks-myprs/` (new), layout `my-prs` block |
 | Corner resizing of floating review windows (a full-app surface follows the drag, then the window reopens at the new size) | `mods/ks-resize/` (new), `mods/ks-review/main.js` |
 
 ## Keys (only while this layout shows)
@@ -179,6 +188,7 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | cmd-shift-e | Toggle Files panel |
 | cmd-shift-g | Toggle Changes panel |
 | cmd-shift-u | Toggle PRs panel |
+| cmd-shift-m | Show / hide My PRs in the sidebar |
 | cmd-w / cmd-shift-w | Close tab / pane (upstream) |
 
 ## Upstream updates

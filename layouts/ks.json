@@ -50,6 +50,17 @@
           "type": "column",
           "children": [
             {
+              "id": "my-prs",
+              "type": "block",
+              "size": {
+                "px": 250
+              },
+              "min": 30,
+              "content": {
+                "mod": "ks-myprs"
+              }
+            },
+            {
               "id": "spaces",
               "type": "block",
               "size": {
