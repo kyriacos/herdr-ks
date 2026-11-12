@@ -70,6 +70,8 @@ export default class PrCard extends View {
     this.openProps = Object.fromEntries(Object.entries(p).filter(([k]) => k !== "overlay"));
     this.pr = null; this.error = null; this.places = null; this.target = null; this.sending = false;
     this.msg = TextareaState.new({ placeholder: "Message to the agent about this PR (sent right away, with the PR as context)", rows: 3 });
+    // Redraw when the box goes from empty to not (the buttons depend on it).
+    this.msg.on("change", (_e, cx) => { const has = Boolean(this.msg.value().trim()); if (has !== this.hasText) { this.hasText = has; cx.notify(); } });
     this.handle = cx.focus_handle(); this.handle.focus();
     if (!this.url) { this.error = "No pull request"; return; }
     this.load(cx);
@@ -86,12 +88,35 @@ export default class PrCard extends View {
       const places = [];
       for (const w of wts) places.push({ ...w, spaces: spacesWith(w.root), agents: await agentsIn(w.root).catch(() => []) });
       this.places = places;
-      this.target = places.flatMap((p) => p.agents)[0]?.address ?? null;
+      this.target = places.flatMap((p) => p.agents)[0]?.address ?? null; // only ever an agent on this PR by default
       cx.notify();
     });
   }
 
   close() { if (this.overlay) closeOverlay(this.overlay); }
+
+  // One agent to pick: selected shows as such; `onPr` says whether it works on this PR.
+  agentRow(a, onPr, note, t) {
+    const on = this.target === a.address;
+    return h_flex().id(`to-${a.address}`).flex_none().mt(4).px(8).py(5).gap(8).items_center().rounded(8).cursor_pointer()
+      .border_1().border_color(on ? (onPr ? t.accent : t.blocked) : t.border).bg(on ? t.selected : t.background).hover((s) => s.bg(t.hover))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.target = a.address; cx.notify(); })
+      .child(div().w(14).flex_none().text_size(12).text_color(on ? (onPr ? t.accent : t.blocked) : t.dim).child(on ? "◉" : "○"))
+      .child(v_flex().flex_1().min_w(0)
+        .child(div().text_size(12).truncate().child(a.title))
+        .child(div().text_size(10.5).text_color(onPr ? t.ansi2 : t.dim).child(note)));
+  }
+
+  // No agent on this PR: Claude Code in its worktree's space, with the message (and the PR) as its first task.
+  startAgent(cx) {
+    const w = (this.places ?? [])[0], text = this.msg.value().trim();
+    if (!w || !text) return;
+    const pr = this.pr;
+    run("tab.new", { name: `PR #${pr.number}`, space: w.spaces[0]?.id, folder: w.root, argv: ["claude"],
+      task: `About ${this.repo}#${pr.number} "${pr.title}" (branch ${pr.headRefName} → ${pr.baseRefName}, ${this.url}):\n\n${text}` });
+    this.msg.set_value(""); notify({ title: "Started an agent on the PR", body: `${this.repo}#${pr.number} in ${w.root.split("/").pop()}`, level: "success", timeout: 3000 });
+    cx.notify();
+  }
   async openUrl() { await exec("open", [this.url]).catch(() => null); }
   review(w) {
     run("tab.new", { name: `PR #${this.pr.number}`, mod: "ks-review",
@@ -150,9 +175,12 @@ export default class PrCard extends View {
     const asked = (pr.reviewRequests ?? []).map((r) => r.login || r.name || r.slug).filter(Boolean);
     const decision = { APPROVED: ["approved", t.ansi2], CHANGES_REQUESTED: ["changes requested", t.ansi1], REVIEW_REQUIRED: ["review required", t.muted] }[pr.reviewDecision];
     const merge = { CLEAN: ["ready to merge", t.ansi2], BLOCKED: ["blocked", t.muted], BEHIND: ["behind base", t.blocked], DIRTY: ["conflicts", t.ansi1], UNSTABLE: ["unstable", t.blocked], DRAFT: ["draft", t.dim] }[pr.mergeStateStatus];
-    const allAgents = agents().map((a) => ({ address: a.address, title: `${a.space_name} / ${a.title || a.address}` }));
-    const here = new Set((this.places ?? []).flatMap((p) => p.agents.map((a) => a.address)));
-    const chips = [...allAgents].sort((a, b) => here.has(b.address) - here.has(a.address));
+    // Who works on this PR (an agent in one of its worktrees) and everyone else, kept apart so it's clear.
+    const onPr = (this.places ?? []).flatMap((w) => w.agents.map((a) => ({ address: a.address, title: `${a.space_name} / ${a.title}`, where: w.root.split("/").pop() })));
+    const here = new Set(onPr.map((a) => a.address));
+    const others = agents().filter((a) => !here.has(a.address)).map((a) => ({ address: a.address, title: `${a.space_name} / ${a.title || a.address}` }));
+    const target = onPr.find((a) => a.address === this.target) ?? others.find((a) => a.address === this.target) ?? null;
+    const targetOnPr = Boolean(target && here.has(target.address));
 
     const body = v_flex().id("prcard-body").absolute().inset_0().overflow_y_scroll().px(14).pb(14)
       .child(h_flex().pt(10).gap(5).flex_wrap().items_center()
@@ -185,17 +213,25 @@ export default class PrCard extends View {
       .children(reviews.map((r) => div().text_size(11.5).child(`${r.who}: ${r.state.toLowerCase().replace(/_/g, " ")}`)))
       .when(asked.length > 0, (e) => e.child(div().text_size(11.5).text_color(t.dim).child(`asked: ${asked.join(", ")}`)))
       .child(section("Message the agent"))
-      .child(h_flex().gap(5).flex_wrap().items_center()
-        .when(!chips.length, (e) => e.child(div().text_size(11).text_color(t.ansi1).child("no agent running")))
-        .children(chips.map((a) => div().id(`to-${a.address}`).flex_none().h(22).px(8).flex().items_center().rounded(11).cursor_pointer().text_size(10.5)
-          .bg(this.target === a.address ? t.selected : t.background).border_1().border_color(this.target === a.address ? t.accent : t.border)
-          .text_color(this.target === a.address ? t.foreground : t.muted).hover((s) => s.bg(t.hover))
-          .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.target = a.address; cx.notify(); })
-          .child(`${here.has(a.address) ? "● " : ""}${a.title}`))))
+      .when(this.places === null, (e) => e.child(div().text_size(11.5).text_color(t.dim).child("Finding the agent working on this PR…")))
+      // The agent(s) on this PR: its worktree is theirs.
+      .when(this.places !== null && onPr.length > 0, (e) => e.children(onPr.map((a) => this.agentRow(a, true, `on this PR · in ${a.where}`, t))))
+      .when(this.places !== null && !onPr.length, (e) => e.child(v_flex().gap(4).p(8).rounded(8).border_1().border_color(t.border).bg(t.chrome)
+        .child(div().text_size(11.5).text_color(t.muted).child(`No agent is working on this PR${(this.places ?? []).length ? "" : " (no local checkout of its branch)"}.`))
+        .when((this.places ?? []).length > 0, (e) => e.child(h_flex().gap(6).items_center()
+          .child(div().flex_1().text_size(11).text_color(t.dim).child(`Start Claude Code in ${this.places[0].root.split("/").pop()}, with the message below as its first task.`))
+          .child(button("start-agent", "Start an agent here", (cx) => this.startAgent(cx), false, Boolean(this.msg.value().trim())))))))
+      // Everyone else, apart and folded, so a message can't go there by accident.
+      .when(others.length > 0, (e) => e.child(div().id("others-toggle").pt(6).text_size(11).text_color(t.dim).cursor_pointer()
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.showOthers = !this.showOthers; cx.notify(); })
+        .child(`${this.showOthers ? "▾" : "▸"} Other agents, not working on this PR · ${others.length}`)))
+      .when(Boolean(this.showOthers), (e) => e.children(others.map((a) => this.agentRow(a, false, "not on this PR", t))))
       .child(div().mt(6).p(6).rounded(8).border_1().border_color(t.border).bg(t.chrome).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .child(Textarea.new(this.msg).w_full().text_size(12.5).text_color(t.foreground)))
-      .child(h_flex().pt(6).justify_end()
-        .child(button("send", this.sending ? "Sending…" : "Send to agent", (cx) => this.send(cx), true, Boolean(this.target) && !this.sending)));
+      .child(h_flex().pt(6).gap(8).items_center()
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(!target ? t.dim : targetOnPr ? t.muted : t.blocked)
+          .child(!target ? "Pick the agent to send to" : targetOnPr ? `To ${target.title}, the agent on this PR` : `To ${target.title}, which is not working on this PR`))
+        .child(button("send", this.sending ? "Sending…" : !target ? "Send" : targetOnPr ? "Send to the PR's agent" : "Send anyway", (cx) => this.send(cx), true, Boolean(target) && !this.sending)));
 
     return root
       .child(h_flex().h(44).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).bg(t.chrome)

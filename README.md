@@ -115,8 +115,11 @@ approved, changes are requested, or it's merged or closed. Refreshes every minut
 from its corners: state, review decision, merge state, size, branch → base; every **check** by name (failing
 first); **reviews** and who's been asked; **where it lives here**: the local worktrees on its branch, with
 **Go to space** for the spaces showing them, **Focus agent** for the agents working in them, and **Review**
-(its diff against its base); **Open on GitHub**; and **Message the agent**: pick an agent (the ones in its
-worktree first, marked ●) and send a note right away, with the PR (repo, number, title, branch, link) as context.
+(its diff against its base); **Open on GitHub**; and **Message the agent**, sent right away with the PR (repo, number, title, branch,
+link) as context. The agent working on the PR (in one of its worktrees) is named as such and preselected;
+other agents are kept apart, folded under "Other agents, not working on this PR", and picking one turns the
+button into **Send anyway** with a warning. With no agent on the PR, **Start an agent here** opens Claude Code
+in its worktree with the message as its first task.
 
 **PRs panel** (`cmd-shift-u`, or **PRs** next to Files and Changes). The open pull requests of this
 session's worktrees: the ones the Changes panel shows, so while it follows an agent, every worktree the agent
