@@ -8,8 +8,11 @@
 // terminal folder shown per space, with its machine: for a tab of mod panes only (a preview
 // tab), which has no folder. space.folder is only where the space's first shell started, so
 // without it a click on a file would send the tree to another folder. Written here.
-export function location({ spaces, panes, focused, shared }, lastRoot) {
+export function location({ spaces, panes, focused, shared, pinned }, lastRoot) {
   const space = spaces().find((s) => s.active), f = focused();
+  // ks: a worktree picked in the panel's worktree bar (pinned(space id) -> root) wins.
+  const pick = space && pinned ? pinned(space.id) : null;
+  if (pick) return { cwd: pick, on: null };
   // ks: the Changes panel, pinned to a checkout or following an agent, hands that checkout over
   // (shared "ks.focus": space id -> { root, on }); the tree shows the same place then.
   const handed = space && shared ? shared("ks.focus")?.[space.id] : null;

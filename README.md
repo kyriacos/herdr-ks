@@ -110,7 +110,9 @@ The review compares the local worktree, so it also shows work not pushed yet.
 
 **Files panel** (`cmd-shift-e`). The folder tree of the space with git status, search, and previews of
 Markdown, PDF, images, CSV and JSON (upstream Roundup). It shows the same checkout as the Changes panel when
-that one is pinned or follows an agent. Right-click a file for **Review & comment**.
+that one is pinned or follows an agent. When the session has several worktrees (the ones the Changes panel
+shows), a **worktree bar** under the header has a chip for each (repo, folder, branch): click one to browse
+it, **Auto** to follow the Changes panel / the focused terminal again. Remembered per space. Right-click a file for **Review & comment**.
 
 **Font.** The interface uses JetBrains Mono, the same monospace as the diffs (`ui_font` on the layout).
 

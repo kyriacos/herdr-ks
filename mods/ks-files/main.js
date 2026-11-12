@@ -12,7 +12,14 @@
 // keys, the context menu as a popup of this mod. See THIRD_PARTY_NOTICES.md.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, InputState, Input, Scrollbar, Popup, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
-import { spaces, panes, focused, readTextFile, watchFolder, theme, settings, window, props, notify, openOverlay, closeOverlay, shared, setShared, nextCommand, run } from "herdr";
+import { spaces, panes, focused, readTextFile, watchFolder, theme, settings, window, props, notify, openOverlay, closeOverlay, shared, setShared, nextCommand, run, exec } from "herdr";
+
+// ks: the worktree bar. Pins (space id -> root) live in this mod's localStorage; the session's worktrees come
+// from the Changes panel (shared "ks.session": space id -> [{ root, on }]).
+const WT_PINS = "worktree-pins";
+const loadPins = () => { try { return JSON.parse(localStorage.getItem(WT_PINS) ?? "{}") ?? {}; } catch { return {}; } };
+const savePins = (p) => { try { localStorage.setItem(WT_PINS, JSON.stringify(p)); } catch {} };
+const activeSpace = () => spaces().find((s) => s.active)?.id ?? null;
 import { iconFor, rootIcon } from "./icon.js";
 import { listDir, buildIndex, diskSearch, kinds, prunedName, realPath, homeOf } from "./disk.js";
 import { INDEX_PATHS } from "./disk-rules.js";
@@ -169,7 +176,8 @@ export default class Files extends View {
   current(ctx) { return this.ctx === ctx; }
 
   sync(cx) {
-    const { cwd, on } = location({ spaces, panes, focused, shared }, lastRoot);
+    this.wtPins ??= loadPins(); this.wtInfo ??= {};
+    const { cwd, on } = location({ spaces, panes, focused, shared, pinned: (id) => this.wtPins[id] ?? null }, lastRoot);
     if (cwd === this.root && on === this.on) return;
     const file = this.reset(cwd, on);
     this.refresh(cx);
@@ -789,6 +797,43 @@ export default class Files extends View {
         : none);
   }
 
+  // ks: the session's worktrees as chips (Auto = follow the Changes panel / the focused terminal); each chip's
+  // repo and branch are read once in the background.
+  sessionWorktrees() {
+    const space = activeSpace();
+    return ((space && shared("ks.session")?.[space]) || []).filter((w) => !w.on).map((w) => w.root);
+  }
+  pickWorktree(root, cx) {
+    const space = activeSpace();
+    if (!space) return;
+    if (root) this.wtPins[space] = root; else delete this.wtPins[space];
+    savePins(this.wtPins); this.sync(cx); cx.notify();
+  }
+  worktreeBar(t, cx) {
+    const roots = this.sessionWorktrees(), space = activeSpace(), pinned = space ? this.wtPins[space] ?? null : null;
+    if (roots.length < 2 && !pinned) return null;
+    for (const root of roots) if (!this.wtInfo[root]) {
+      this.wtInfo[root] = { loading: true };
+      cx.spawn(async (cx) => {
+        const br = await exec("git", ["branch", "--show-current"], { cwd: root }).catch(() => null);
+        const c = await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: root }).catch(() => null);
+        const repo = (c?.stdout ?? "").trim().replace(/\/\.git$/, "").split("/").pop() || "";
+        this.wtInfo[root] = { branch: br?.code === 0 ? br.stdout.trim() : "", repo };
+        cx.notify();
+      });
+    }
+    const name = (root) => { const wt = root.replace(/\/+$/, "").split("/").pop(), repo = this.wtInfo[root]?.repo; return repo && repo.toLowerCase() !== wt.toLowerCase() ? `${repo} · ${wt}` : wt; };
+    const chip = (id, label, sub, on, act) => v_flex().id(id).flex_none().px(8).py(3).rounded(7).cursor_pointer().border_1()
+      .border_color(on ? t.accent : t.border).bg(on ? t.selected : t.background).hover((s) => s.bg(t.hover))
+      .on_click((_e, cx) => act(cx))
+      .child(div().text_size(11.5).text_color(on ? t.foreground : t.muted).whitespace_nowrap().child(label))
+      .when(Boolean(sub), (e) => e.child(div().text_size(10).text_color(t.dim).whitespace_nowrap().child(sub)));
+    const list = pinned && !roots.includes(pinned) ? [...roots, pinned] : roots;
+    return h_flex().id("rf-worktrees").flex_none().px(10).py(6).gap(6).items_center().border_b(1).border_color(t.border).overflow_x_scroll()
+      .child(chip("rf-wt-auto", "Auto", "follows Changes", !pinned, (cx) => this.pickWorktree(null, cx)))
+      .children(list.map((root) => chip(`rf-wt-${root}`, name(root), this.wtInfo[root]?.branch ?? "", pinned === root, (cx) => this.pickWorktree(root, cx))));
+  }
+
   header(t) {
     const bar = h_flex().h(42).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border);
     if (this.file) return bar
@@ -836,10 +881,12 @@ export default class Files extends View {
     const t = theme();
     // The panel's width in the mod's pixels, for the rows' +N −N and the branch row's bar.
     if (this.measuredWidth) this.width = this.measuredWidth / this.zoom();
-    const root = v_flex().id(NAME).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+    let root = v_flex().id(NAME).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       .on_size_change((size, cx) => { if (Math.abs(size.width - (this.measuredWidth ?? 0)) > 4) { this.measuredWidth = size.width; cx.notify(); } })
       .child(this.header(t));
+    const wt = this.file ? null : this.worktreeBar(t, cx);
+    if (wt) root = root.child(wt);
     if (this.file) {
       return root.child(this.code ? Editor.new(this.code).flex_1().min_h(0) : div().p(12).text_color(t.dim).child(this.fileError || "Loading file…"));
     }
