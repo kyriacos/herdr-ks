@@ -1,0 +1,10 @@
+{
+  "layout:ks": {
+    "cmd-w": "ks-tabs.close",
+    "cmd-shift-w": "ks-tabs.close-pane",
+    "cmd-shift-e": "ks-tabs.panel:files",
+    "cmd-shift-g": "ks-tabs.panel:changes",
+    "cmd-shift-n": "mod.open:ks-worktree",
+    "cmd-shift-u": "ks-tabs.panel:prs"
+  }
+}
