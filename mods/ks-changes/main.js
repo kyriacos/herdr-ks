@@ -276,6 +276,11 @@ export default class Changes extends View {
   // Shows read sections (still the same place), watches them and keeps or picks the open diff.
   async show(sections, context, cx) {
     if (key() !== context) return;
+    // A main checkout nobody is working in (on main/master, nothing uncommitted) isn't shown, unless it's all
+    // there is, or it's the folder you're in yourself (following focus). Files and PRs read this list too.
+    const loc = location(), idle = (x) => ["main", "master"].includes(x.branch) && !x.files.length;
+    const kept = sections.filter((x, i) => !idle(x) || (i === 0 && loc.mode !== "agent"));
+    if (kept.length) sections = kept;
     if (this.scope !== "working") for (const s of sections) {
       s.branchInfo = await readBranch(s.root, s.on).catch(() => null);
       if (this.scope === "commits") s.commitList = s.branchInfo ? await readCommits(s.branchInfo).catch(() => []) : [];

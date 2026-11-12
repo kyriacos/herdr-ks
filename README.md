@@ -28,6 +28,8 @@ title says which branch and folder you're looking at; click it to choose:
 
 - *Follow focused terminal* (default): the folder of the terminal you're in. If that terminal left the
   repo (`cd ~`), the space's own folder is shown instead.
+- A main checkout nobody is working in (on `main`/`master` with nothing uncommitted) is left out, here and in
+  the Files and PRs panels, unless it's the folder you're in yourself.
 - *Follow agent*: every checkout a Claude Code agent in this tab worked in this session, one section each,
   most recent first (several worktrees of one repo each count). Click a section's header to fold it. Read from its session log: the files
   it last edited and the folders its commands `cd` or `git -C` into, not the folder it was started in
@@ -105,9 +107,16 @@ review).
 with where it stands: **CI** (✓ passing, ✕ failing with how many, ◌ running), **review** (approved, changes
 requested, waiting) and **merge** (ready, needs approval, blocked, behind, conflicts); drafts are marked.
 Ones that need you (failing CI, changes requested, conflicts) come first, then running ones, then ready ones.
-Click a row to open it on GitHub. Click the header to fold the section to one line (with "N need you" /
+Click a row for its **PR window** (below). Click the header to fold the section to one line (with "N need you" /
 "N running"); × hides it, `cmd-shift-m` shows or hides it. A toast when a PR's CI turns red or green, it's
 approved, changes are requested, or it's merged or closed. Refreshes every minute (↻ now).
+
+**PR window** (click a PR in My PRs). The PR floating over the window, movable by its header and resizable
+from its corners: state, review decision, merge state, size, branch → base; every **check** by name (failing
+first); **reviews** and who's been asked; **where it lives here**: the local worktrees on its branch, with
+**Go to space** for the spaces showing them, **Focus agent** for the agents working in them, and **Review**
+(its diff against its base); **Open on GitHub**; and **Message the agent**: pick an agent (the ones in its
+worktree first, marked ●) and send a note right away, with the PR (repo, number, title, branch, link) as context.
 
 **PRs panel** (`cmd-shift-u`, or **PRs** next to Files and Changes). The open pull requests of this
 session's worktrees: the ones the Changes panel shows, so while it follows an agent, every worktree the agent
@@ -178,6 +187,7 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | PRs panel: open PRs of the session's worktrees, review each against its base | `mods/ks-prs/` (new), layout `prs` block, `mods/ks-tabs/main.js` |
 | Send dialog: choose, edit, delete, add a note, pick the agent, preview, then send | `mods/ks-send/` (new) |
 | My PRs in the sidebar: your open PRs with CI, review and merge state, foldable, hideable | `mods/ks-myprs/` (new), layout `my-prs` block |
+| PR window: details, checks, reviews, its worktree / space / agent, message the agent | `mods/ks-prcard/` (new) |
 | Corner resizing of floating review windows (a full-app surface follows the drag, then the window reopens at the new size) | `mods/ks-resize/` (new), `mods/ks-review/main.js` |
 
 ## Keys (only while this layout shows)
