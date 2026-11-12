@@ -48,8 +48,9 @@ branch**: the whole branch in one review tab.
 - **Tree | Flat**: folders you can fold, or one list. Both remembered.
 - Above the diff: **Wrap** (lines wrap to the panel instead of scrolling sideways), **Expand** (the file's
   review in a floating window: one per file, several open at once, dragged by its header and left where you
-  drop it; − / + resize it by 10 %, ⛶ fills the app window and Restore goes back, ✕ or Esc closes; the last
-  size is remembered; expanding the same file again brings its window back), **Review** (in a tab), **Open file** (the file itself in a
+  drop it; drag any corner to resize it (the opposite corner stays put, an outline shows the new size, Esc
+  cancels), ⛶ fills the app window and Restore goes back, ✕ or Esc closes; expanding the same file again
+  brings its window back), **Review** (in a tab), **Open file** (the file itself in a
   preview tab). Expand and Review compare the way the panel does (uncommitted, branch, or that commit). The diff under the list is
 syntax highlighted. When review comments are waiting for these repos, a bar above the commit box sends them
 all to the agent.
@@ -168,6 +169,7 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | Interface font JetBrains Mono | `layouts/ks.json` (`ui_font`) |
 | PRs panel: open PRs of the session's worktrees, review each against its base | `mods/ks-prs/` (new), layout `prs` block, `mods/ks-tabs/main.js` |
 | Send dialog: choose, edit, delete, add a note, pick the agent, preview, then send | `mods/ks-send/` (new) |
+| Corner resizing of floating review windows (a full-app surface follows the drag, then the window reopens at the new size) | `mods/ks-resize/` (new), `mods/ks-review/main.js` |
 
 ## Keys (only while this layout shows)
 

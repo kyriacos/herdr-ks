@@ -255,6 +255,22 @@ export default class Review extends View {
       props: { ...this.openProps, mode: this.mode, wrap: this.wrap, winSize: { w, h }, prevSize: prev } });
   }
   grow(by) { this.resizeWindow({ w: this.winSize.w + by, h: this.winSize.h + by }); }
+  // A corner grip pressed: ks-resize takes the drag over the whole app and reopens this window at the new size.
+  startResize(corner) {
+    if (!this.windowKey || !this.winRect) return;
+    openOverlay({ mod: "ks-resize", kind: "window", frame: "none", key: "ks-resize", width: 1, height: 1, at: { x: 0, y: 0 },
+      props: { rect: this.winRect, corner, zoom: settings().zoom || 1,
+        reopen: { mod: "ks-review", key: this.windowKey, props: { ...this.openProps, mode: this.mode, wrap: this.wrap } } } });
+  }
+  grips(t) {
+    const g = (corner) => div().id(`grip-${corner}`).absolute().size(14)
+      .when(corner.includes("t"), (e) => e.top(0)).when(corner.includes("b"), (e) => e.bottom(0))
+      .when(corner.includes("l"), (e) => e.left(0)).when(corner.includes("r"), (e) => e.right(0))
+      .when(corner === "tl" || corner === "br", (e) => e.cursor_nwse_resize()).when(corner === "tr" || corner === "bl", (e) => e.cursor_nesw_resize())
+      .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.startResize(corner); })
+      .when(corner === "br", (e) => e.child(div().absolute().right(3).bottom(3).size(7).border_r_2().border_b_2().border_color(t.dim)));
+    return ["tl", "tr", "bl", "br"].map(g);
+  }
   toggleMax() {
     if (this.prevSize) this.resizeWindow(this.prevSize, null);
     else this.resizeWindow({ w: 1, h: 1 }, this.winSize);
@@ -595,7 +611,9 @@ export default class Review extends View {
       ? (this.commit ? (this.commit.sha === WORKTREE ? "Uncommitted changes" : `${this.commit.short} · ${this.commit.subject}`)
         : `Branch review · ${[...new Set(this.visibleRepos().map((r) => r.branch).filter(Boolean))].join(", ") || "no branch"}`)
       : f?.path ?? "";
-    return v_flex().id("review").size_full().bg(t.background).text_color(t.foreground).track_focus(this.handle)
+    return v_flex().id("review").size_full().relative().bg(t.background).text_color(t.foreground).track_focus(this.handle)
+      // A floating window's rect in window points (for the corner grips), from the pointer passing over it.
+      .when(Boolean(this.windowKey), (e) => e.on_mouse_move((ev) => { if (ev.bounds) this.winRect = ev.bounds; }))
       .on_key_down((e, cx) => {
         if (this.composer) { if (e.key === "escape") { this.closeComposer(cx); cx.stop_propagation(); } return; }
         if (this.vimKey(e, cx)) cx.stop_propagation();
@@ -612,8 +630,6 @@ export default class Review extends View {
         .child(button("comment-file", "Comment on file", (cx) => this.openComposer({ line: null, side: null, code: "" }, cx), false, Boolean(f)))
         .child(button("send-all", every.length ? `Send ${every.length} to agent…` : "No comments", () => this.openSend(), every.length > 0, every.length > 0))
         .when(Boolean(this.windowKey), (e) => e
-          .child(button("win-smaller", "−", () => this.grow(-0.1), false, this.winSize.w > 0.3 || this.winSize.h > 0.3))
-          .child(button("win-bigger", "+", () => this.grow(0.1), false, this.winSize.w < 1 || this.winSize.h < 1))
           .child(button("win-max", this.prevSize ? "Restore" : "⛶", () => this.toggleMax())))
         .when(Boolean(this.overlay), (e) => e.child(button("close-overlay", "✕", () => closeOverlay(this.overlay)))))
       .child(h_flex().h(22).flex_none().px(14).items_center().text_size(10.5).text_color(t.dim).border_b(1).border_color(t.border)
@@ -625,6 +641,7 @@ export default class Review extends View {
         .when(this.branchMode, (e) => e.child(this.fileList(t)))
         .child(fileState ? div().flex_1().p(16).text_color(this.error ? t.ansi1 : t.dim).child(fileState) : code)
         .child(this.commentsColumn(t, mine)))
-      .when(Boolean(this.composer), (e) => e.child(this.composerBar(t)));
+      .when(Boolean(this.composer), (e) => e.child(this.composerBar(t)))
+      .when(Boolean(this.windowKey), (e) => e.children(this.grips(t)));
   }
 }
