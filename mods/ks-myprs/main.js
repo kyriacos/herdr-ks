@@ -5,7 +5,7 @@
 // (layout.toggle my-prs). A toast when a PR's CI turns red or green, or a review lands. Refreshes every minute.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
-import { exec, theme, run, notify } from "herdr";
+import { exec, theme, run, notify, openOverlay } from "herdr";
 
 const BLOCK = "my-prs", HEAD = 34, ROW = 50;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
@@ -96,6 +96,13 @@ export default class MyPrs extends View {
     if (!r || r.code !== 0) notify({ title: "Couldn't open the browser", body: url, level: "warning", timeout: 4000 });
   }
 
+  // The PR in a floating window (ks-prcard): details, its worktree / space / agent, a message to the agent.
+  openCard(pr) {
+    const key = `ks-prcard:${pr.url}`;
+    openOverlay({ mod: "ks-prcard", kind: "window", key, width: 560, height: 640,
+      props: { url: pr.url, repo: pr.repository.nameWithOwner, number: pr.number, windowKey: key } });
+  }
+
   step(label, tone, t) {
     return div().flex_none().px(5).rounded(6).border_1().border_color(tone).text_size(9.5).text_color(tone).whitespace_nowrap().child(label);
   }
@@ -107,7 +114,7 @@ export default class MyPrs extends View {
     const merge = { ready: ["ready", t.ansi2], blocked: ["blocked", t.muted], approval: ["needs approval", t.muted], behind: ["behind", t.blocked], conflicts: ["conflicts", t.ansi1], unstable: ["unstable", t.blocked], draft: ["draft", t.dim], checking: ["…", t.dim] }[s.merge];
     const mark = s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? t.blocked : s.urgent === 2 ? t.ansi2 : t.dim;
     return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 4).mx(6).mb(4).px(8).py(4).gap(3).rounded(7).cursor_pointer()
-      .border_l_2().border_color(mark).hover((st) => st.bg(t.hover)).on_click(() => this.openUrl(pr.url))
+      .border_l_2().border_color(mark).hover((st) => st.bg(t.hover)).on_click(() => this.openCard(pr))
       .child(h_flex().gap(5).items_center().text_size(11.5)
         .child(div().flex_none().text_color(t.dim).child(`${repo}#${pr.number}`))
         .child(div().flex_1().min_w(0).truncate().text_color(pr.isDraft ? t.muted : t.foreground).child(pr.title)))
