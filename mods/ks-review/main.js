@@ -12,7 +12,8 @@
 // comments' buttons live outside the list.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
-import { props, exec, theme, settings, watchFolder, closeOverlay, openOverlay, shared, setShared } from "herdr";
+import { props, exec, theme, settings, watchFolder, closeOverlay, openOverlay, shared, setShared, nextCommand } from "herdr";
+import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { langOf, colorsFor } from "./lib/highlight.js";
 import { parseDiff, fileRows, splitRows, wrapTokens, colsFor, charWidth, longest } from "./lib/diff.js";
 import * as comments from "./lib/comments.js";
@@ -46,6 +47,23 @@ export default class Review extends View {
     this.rows = []; this.status = "loading"; this.composer = null; this.half = "new"; this.list = [];
     this.handle = cx.focus_handle();
     this.handle.focus(); // vim keys work as soon as the tab opens
+    // A floating review takes the key modes' resize keys while it has the keyboard (lib/windows.js): - = narrower /
+    // wider, _ + shorter / taller, 0 its default size.
+    if (this.windowKey) {
+      trackActive(this, cx, this.windowKey, "ks-review");
+      cx.spawn(async (cx) => {
+        for (;;) {
+          const c = await nextCommand();
+          if (c !== "winresize") continue;
+          const r = takeRequest(this, this.windowKey);
+          if (!r) continue;
+          const step = 0.02 * (r.dir || 1), sz = this.winSize;
+          if (r.reset) this.resizeWindow({ w: 0.7, h: 0.8 }, null);
+          else this.resizeWindow({ w: sz.w + (r.kind === "tall" ? 0 : step), h: sz.h + (r.kind === "wide" ? 0 : step) });
+          raiseStrip();
+        }
+      });
+    }
     this.scroll = VirtualListScrollHandle.new();
     this.cursorAt = 0; this.visible = { start: 0, end: 0 }; this.pendingG = false;
     this.input = InputState.new({ placeholder: "Your comment, then Enter" });

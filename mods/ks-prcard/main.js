@@ -6,7 +6,8 @@
 // Movable by its header, resizable from its corners (ks-resize), one window per PR.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, Scrollbar } from "gpui-base";
-import { props, exec, hc, theme, run, notify, agents, spaces, panes, shared, settings, appHome, openOverlay, closeOverlay } from "herdr";
+import { props, exec, hc, theme, run, notify, agents, spaces, panes, shared, settings, appHome, openOverlay, closeOverlay, nextCommand } from "herdr";
+import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { candidates, git } from "./lib/branch.js";
 import * as cache from "./lib/cache.js";
 import { fetchPr, prKey } from "./lib/github.js";
@@ -87,6 +88,23 @@ export default class PrCard extends View {
     // Redraw when the box goes from empty to not (the buttons depend on it).
     this.msg.on("change", (_e, cx) => { const has = Boolean(this.msg.value().trim()); if (has !== this.hasText) { this.hasText = has; cx.notify(); } });
     this.handle = cx.focus_handle(); this.handle.focus();
+    // The key modes' resize keys while it has the keyboard (lib/windows.js): reopened at the new size, in px.
+    if (this.windowKey) {
+      trackActive(this, cx, this.windowKey, "ks-prcard");
+      cx.spawn(async (cx) => {
+        for (;;) {
+          const c = await nextCommand();
+          if (c !== "winresize") continue;
+          const r = takeRequest(this, this.windowKey);
+          if (!r) continue;
+          const cur = this.size ?? { width: 560, height: 640 }, step = 24 * (r.dir || 1);
+          const width = r.reset ? 560 : Math.max(380, Math.round(cur.width + (r.kind === "tall" ? 0 : step)));
+          const height = r.reset ? 640 : Math.max(300, Math.round(cur.height + (r.kind === "wide" ? 0 : step)));
+          openOverlay({ mod: "ks-prcard", kind: "window", key: this.windowKey, width, height, props: this.openProps });
+          raiseStrip();
+        }
+      });
+    }
     if (!this.url) { this.error = "No pull request"; return; }
     // Stale while revalidate: the last known PR (and where it lives) at once, then a fresh look.
     cx.spawn(async (cx) => {
@@ -206,6 +224,7 @@ export default class PrCard extends View {
     const pill = (label, tone) => div().flex_none().px(6).py(1).rounded(8).border_1().border_color(tone).text_size(10).text_color(tone).whitespace_nowrap().child(label);
     const section = (title) => div().flex_none().pt(10).pb(3).text_size(11).font_semibold().text_color(t.muted).child(title);
     const root = v_flex().id("prcard").size_full().relative().bg(t.background).text_color(t.foreground).track_focus(this.handle)
+      .on_size_change((size) => { this.size = size; })
       .on_key_down((e, cx) => { if (e.key === "escape") { this.close(); cx.stop_propagation(); } })
       .when(Boolean(this.windowKey), (e) => e.on_mouse_move((ev) => { if (ev.bounds) this.winRect = ev.bounds; }));
     if (!pr) return root.child(h_flex().h(40).px(14).items_center().gap(8).border_b(1).border_color(t.border).bg(t.chrome)

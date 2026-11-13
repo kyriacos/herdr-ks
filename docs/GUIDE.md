@@ -263,8 +263,9 @@ Every ks setting in one panel, like Herdr's Settings: the **⚙** at the right o
 
 ## Resizing from the keyboard
 
-In service mode (and in the sticky **resize** mode, service `r`) the resize keys act on **what you're in**: the zen
-window when it's open, else the pane you're in along its split, else (a lone pane) the pane against the side panel.
+In service mode (and in the sticky **resize** mode, service `r`) the resize keys act on **what you're in**: a floating
+window (a review or PR window) when it had the keyboard, else the zen window when it's open, else the pane you're in
+along its split, else (a lone pane) the pane against the side panel.
 The plain key goes one way, the same key with Shift the other; the strip shows which thing they act on.
 
 | Key | Does |
@@ -272,7 +273,7 @@ The plain key goes one way, the same key with Shift the other; the strip shows w
 | `-` / `=` | Narrower / wider |
 | `_` / `+` (Shift) | Shorter / taller |
 | `,` / `.` and `<` / `>` (Shift) | The same pair again in resize mode (in service mode `,` `.` rename and open settings, so only `<` `>`) |
-| `0` | Default size: zen centered, a split even, the side panel to its default width |
+| `0` | Default size: a floating window's default, zen centered, a split even, the side panel to its default width |
 
 Each press is the same small step both ways (2% of the window in zen, 4% of the split); repeated presses build on the
 last one, so they don't jump. A count repeats a key in resize mode (`5=`). Resize mode also has fixed targets: `[` / `]`

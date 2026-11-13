@@ -101,7 +101,13 @@ async function defaultPx(id) {
 // split, tall: a stacked one, size: either); else, for a lone pane, the pane grows by shrinking the side panel (or the
 // sidebar when the panel is hidden). = puts it back: zen to its default size, centered; a split even; the panel to
 // the layout's width. Returns what to show in the strip.
-async function resizeFocused(kind, dir, reset, pane) {
+async function resizeFocused(kind, dir, reset, pane, win = null) {
+  // A floating window you were in (review, PR): it resizes itself (see shared/windows.js in the repo).
+  if (win?.key) {
+    setShared("ks.windowResize", { key: win.key, kind, dir, reset: Boolean(reset), n: Date.now() });
+    run(`${win.mod}.winresize`);
+    return reset ? "Window: default size" : `Window ${{ size: dir > 0 ? "larger" : "smaller", wide: dir > 0 ? "wider" : "narrower", tall: dir > 0 ? "taller" : "shorter" }[kind]}`;
+  }
   if (shared("ks-zen.state")?.win) {
     if (reset) return run("ks-zen.reset"), "Zen: default size, centered";
     const cmd = { size: dir > 0 ? "grow" : "shrink", wide: dir > 0 ? "wider" : "narrower", tall: dir > 0 ? "taller" : "shorter" }[kind];
@@ -152,6 +158,8 @@ async function openMode(id, keep = null) {
   if (!m || m.off) return;
   // The pane you're in, before the strip takes the keyboard.
   const f = keep ?? focused();
+  // A floating window that had the keyboard (review, PR): the resize keys go to it (shared "ks.activeWindow").
+  const floating = keep ? keep.window ?? null : shared("ks.activeWindow") ?? null;
   // Reopening (keep) replaces the strip by its key: closing it first would hand the keyboard away.
   if (!keep && shared(OPEN)) closeOverlay(shared(OPEN));
   const zoom = settings().zoom || 1, win = await windowSize();
@@ -161,7 +169,7 @@ async function openMode(id, keep = null) {
   // A window, not a popup: Herdr closes popups on Esc itself, and that Esc could then reach the terminal behind
   // (Claude takes it as "interrupt" and redraws). A window leaves every key to this mod.
   setShared(OPEN, openOverlay({ mod: "ks-keys", kind: "window", key: "ks-keys-mode", frame: "none", width: W, height, ...(at ? { at } : {}),
-    props: { mode: id, pane: f?.pane ?? null, terminal: f?.terminal ?? null, flash: keep?.flash ?? null } }));
+    props: { mode: id, pane: f?.pane ?? null, terminal: f?.terminal ?? null, window: floating, flash: keep?.flash ?? null } }));
 }
 // The open strip's mode and pane, for ks-zen's "raise" (shared "ks-keys.live").
 const LIVE = "ks-keys.live";
@@ -210,6 +218,7 @@ export default class Keys extends View {
     this.mode = p.mode;
     this.pane = p.pane ?? null;         // the pane you were in (pane commands get it explicitly)
     this.terminal = p.terminal ?? null;
+    this.window = p.window ?? null; // { key, mod }: a floating window the resize keys act on
     this.flash = p.flash ?? null;
     this.seq = [];    // the keys of a sequence typed so far ("g" of "g t")
     this.count = "";  // digits typed before a key (counts modes)
@@ -220,7 +229,7 @@ export default class Keys extends View {
     this.publish();
   }
 
-  publish() { setShared(LIVE, { mode: this.mode, pane: this.pane, terminal: this.terminal, flash: this.flash }); }
+  publish() { setShared(LIVE, { mode: this.mode, pane: this.pane, terminal: this.terminal, window: this.window, flash: this.flash }); }
 
   async close() {
     const p = props() ?? {};
@@ -285,7 +294,7 @@ export default class Keys extends View {
         if (t) hc(["keys", t, ...a.send]);
       } else if (a.command === "ks-keys.editor") { openEditor(); return; }
       else if (a.command === "resize" && a.args.focus) {
-        resizeFocused(a.args.focus, Math.sign(a.args.by ?? 1) || 1, Boolean(a.args.reset), this.pane)
+        resizeFocused(a.args.focus, Math.sign(a.args.by ?? 1) || 1, Boolean(a.args.reset), this.pane, this.window)
           .then((msg) => { if (msg && !this.leaving) { this.flash = msg; cx.notify(); } }).catch(() => {});
       }
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24, this.pane);
@@ -363,6 +372,7 @@ export default class Keys extends View {
 
   // What - + < > v ^ = act on right now, in words, for the strip's header (modes that have those keys).
   resizeTarget() {
+    if (this.window?.key) return `the ${this.window.mod === "ks-prcard" ? "PR" : "review"} window`;
     if (shared("ks-zen.state")?.win) return "the zen window";
     const me = panes().find((p) => p.pane === this.pane);
     if (me && panes().filter((p) => p.tab === me.tab).length > 1) return "this pane, in its split";
