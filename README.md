@@ -167,7 +167,7 @@ bring it back as it was; **⌘⇧T** undoes the latest. Closing a space's last t
 After 30 s it closes for real (a close due while Herdr was quit happens at the next start). Scripts can use
 `herdr-app do ks-tabs.soft-close:<tab id>` and `ks-tabs.undo`.
 
-**Key modes** (`ks-keys`, self-contained). Key chords as modes: `ctrl-b` enters tmux mode (`%` `"` split,
+**Key modes** (`ks-keys`, self-contained). Key chords as modes: `ctrl-;` enters service mode (`%` `"` split,
 `h j k l` go, `H J K L` swap, `z` zoom, `c` `n` `p` tabs, `x` close, …); a strip at the bottom shows the mode's keys
 and catches the next one. Sticky modes (move, tabs, spaces) repeat keys until Esc. A vim mode is shipped (off;
 give it `ctrl-w`). `cmd-k` (or `?`) opens the editor: add modes, set entry keys, make them sticky, edit every key
@@ -244,7 +244,7 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | cmd-shift-m | Show / hide My PRs in the sidebar |
 | cmd-w / cmd-shift-w | Close tab / pane (a tab asks, then can be undone for 30 s) |
 | cmd-shift-t | Undo the last close (tab or space) |
-| ctrl-b | tmux key mode (configurable) |
+| ctrl-; | Service key mode (configurable) |
 | cmd-k | Key modes editor (configurable) |
 
 ## Upstream updates

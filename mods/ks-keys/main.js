@@ -1,7 +1,7 @@
-// ks-keys: key chords as modes. A key bound in keys.json (ctrl-b by default) enters a mode; the mode shows its
+// ks-keys: key chords as modes. A key bound in keys.json (ctrl-; by default) enters a mode; the mode shows its
 // keys at the bottom of the window (which-key style) and catches the next key: one key and out, or, in a sticky
 // mode (move, tabs, spaces), key after key until Esc. Pressing the entry key again inside sends it on to the
-// terminal (ctrl-b ctrl-b, as in tmux). Self-contained: keymap.js has the defaults and the keys.json sync, the
+// terminal (ctrl-; ctrl-; sends ctrl-;, as tmux's prefix twice). Self-contained: keymap.js has the defaults and the keys.json sync, the
 // editor (cmd-k, or ? in a mode) changes all of it, kept in shared state "ks-keys.config".
 //
 // One mod, three roles, by props:
@@ -15,7 +15,7 @@ import { props, run, theme, openOverlay, closeOverlay, nextCommand, shared, setS
 import * as km from "./keymap.js";
 
 const OPEN = "ks-keys.open"; // the mode popup's overlay id, so a second entry key replaces it
-const W = 620; // the popup's width, mod px
+const W = 820; // the popup's width, mod px (four columns of keys)
 
 async function windowSize() {
   const r = await exec("cat", [`${appHome()}/window.json`]).catch(() => null);
@@ -25,13 +25,14 @@ async function windowSize() {
 // Arrow keys repeat h/j/k/l: shown once.
 const ARROWS = new Set(["left", "right", "up", "down"]);
 const shownBindings = (m) => m.bindings.filter((b) => !(ARROWS.has(b.key) && m.bindings.some((o) => o !== b && o.label === b.label && !ARROWS.has(o.key))));
-const keyLabel = (k) => ({ left: "←", right: "→", up: "↑", down: "↓", enter: "⏎", escape: "esc", space: "␣" }[k] ?? k.replace(/^ctrl-/, "⌃").replace(/^cmd-/, "⌘").replace(/^alt-/, "⌥").replace(/^shift-/, "⇧"));
+const keyLabel = (k) => km.tokens(k).map(one).join(" ");
+const one = (k) => ({ left: "←", right: "→", up: "↑", down: "↓", enter: "⏎", escape: "esc", space: "␣" }[k] ?? k.replace(/^ctrl-/, "⌃").replace(/^cmd-/, "⌘").replace(/^alt-/, "⌥").replace(/^shift-/, "⇧"));
 
 async function openMode(id) {
   const c = km.config(), m = c.modes[id];
-  if (!m) return;
+  if (!m || m.off) return;
   if (shared(OPEN)) closeOverlay(shared(OPEN));
-  const rows = Math.ceil(shownBindings(m).length / 3);
+  const rows = Math.ceil(shownBindings(m).filter((b) => !b.do.startsWith("mode:") || km.usable(c, b.do.slice(5).trim())).length / 4);
   const height = Math.min(520, 64 + rows * 24 + 30);
   const zoom = settings().zoom || 1, win = await windowSize();
   const at = win ? { x: Math.round(win.w / 2 - (W * zoom) / 2), y: Math.round(win.h - height * zoom - 56) } : undefined;
@@ -45,16 +46,17 @@ export default class Keys extends View {
     const p = props() ?? {};
     if (p.mode) return this.initMode(p, cx);
     if (p.editor) return this.initEditor(cx);
-    // The floating copy.
-    this.synced = null;
+    // The floating copy: keeps keys.json holding the entry keys (it only writes when they're missing or changed,
+    // so a reinstall that drops them gets them back within seconds).
+    let busy = false;
     const sync = async () => {
-      const c = km.config(), sig = JSON.stringify([c.sections, c.editor, Object.entries(c.modes).map(([id, m]) => [id, m.entry])]);
-      if (sig === this.synced) return;
-      this.synced = sig;
-      await km.syncKeys(c).catch((e) => console.log("ks-keys: keys.json sync failed", String(e)));
+      if (busy) return;
+      busy = true;
+      try { await km.syncKeys(); } catch (e) { console.log("ks-keys: keys.json sync failed", String(e)); }
+      busy = false;
     };
     cx.spawn(async () => sync());
-    cx.timer.every(2000, () => { sync(); });
+    cx.timer.every(3000, () => { sync(); });
     cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
@@ -77,6 +79,8 @@ export default class Keys extends View {
   initMode(p, cx) {
     this.mode = p.mode;
     this.flash = null;
+    this.seq = [];    // the keys of a sequence typed so far ("g" of "g t")
+    this.count = "";  // digits typed before a key (counts modes)
     this.handle = cx.focus_handle();
     this.handle.focus();
     cx.timer.after(200, () => this.handle.focus());
@@ -89,57 +93,85 @@ export default class Keys extends View {
 
   leave() { closeOverlay(props().overlay); }
 
-  act(b, cx) {
-    const a = km.parse(b.do), m = km.config().modes[this.mode];
+  // Runs a binding: its `count` action when a count was typed (# = the count), else `do`, repeated count times.
+  act(b, cx, count = null) {
+    const m = km.config().modes[this.mode];
+    const a = km.parse(count && b.count ? b.count : b.do, count);
+    if (a.leave) return this.leave();
+    // Another mode: reopened at that mode's size.
     if (a.mode) {
-      if (km.config().modes[a.mode]) { this.mode = a.mode; this.flash = null; cx.notify(); }
+      if (km.usable(km.config(), a.mode)) openMode(a.mode);
+      else { this.flash = `${a.mode} mode is off`; cx.notify(); }
       return;
     }
     // A one-shot mode closes before running, so a dialog the command opens (rename) gets the keyboard.
     if (!m.sticky) this.leave();
-    if (a.send) {
-      const t = focused()?.terminal;
-      if (t) hc(["keys", t, ...a.send]);
-    } else if (a.command === "ks-keys.editor") { this.leave(); openEditor(); }
-    else if (a.command === "tab.shift") {
-      const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;
-      if (i >= 0) run("tab.move", { id: sp.tabs[i].id, index: Math.max(1, Math.min(sp.tabs.length, i + 1 + (a.args.by ?? 1))) });
-    } else if (a.command) run(a.command, a.args);
-    if (m.sticky) { this.flash = b.label; cx.notify(); }
+    const times = count && !b.count && !String(b.do).includes("#") ? Math.min(count, 50) : 1;
+    for (let n = 0; n < times; n++) {
+      if (a.send) {
+        const t = focused()?.terminal;
+        if (t) hc(["keys", t, ...a.send]);
+      } else if (a.command === "ks-keys.editor") { this.leave(); openEditor(); return; }
+      else if (a.command === "tab.shift") {
+        const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;
+        if (i >= 0) run("tab.move", { id: sp.tabs[i].id, index: Math.max(1, Math.min(sp.tabs.length, i + 1 + (a.args.by ?? 1))) });
+      } else if (a.command) run(a.command, a.args);
+    }
+    if (m.sticky) { this.flash = `${count ? count + "× " : ""}${b.label}`; cx.notify(); }
   }
 
   key(e, cx) {
     const m = km.config().modes[this.mode];
     if (!m) return this.leave();
-    if (e.keystroke === "escape" || (m.sticky && (e.keystroke === "enter" || e.key_char === "q") && !m.bindings.some((b) => km.matches(b.key, e)))) return this.leave();
-    // The mode's own entry key again: on to the terminal.
+    if (km.isModifier(e)) return;
+    if (e.keystroke === "escape") {
+      // Esc first drops a half-typed sequence or count, then leaves.
+      if (this.seq.length || this.count) { this.seq = []; this.count = ""; this.flash = null; cx.notify(); return; }
+      return this.leave();
+    }
+    // The mode's own entry key again: on to the terminal (pressed twice sends it).
     if (m.entry && e.keystroke === m.entry) {
       this.leave();
       const t = focused()?.terminal;
       if (t) hc(["keys", t, km.hcKey(m.entry)]);
       return;
     }
-    if (["shift", "control", "alt", "platform", "function"].includes(e.key) || /^(shift|ctrl|alt|cmd|fn)$/.test(e.keystroke)) return;
-    const b = m.bindings.find((x) => km.matches(x.key, e));
-    if (b) return this.act(b, cx);
+    const tok = km.token(e);
+    if (m.counts && !this.seq.length && /^[0-9]$/.test(tok) && (this.count || tok !== "0")) {
+      this.count += tok; this.flash = this.count; cx.notify(); return;
+    }
+    const seq = [...this.seq, tok];
+    const starts = m.bindings.filter((b) => { const k = km.tokens(b.key); return k.length >= seq.length && seq.every((x, i) => k[i] === x); });
+    const exact = starts.find((b) => km.tokens(b.key).length === seq.length);
+    const longer = starts.some((b) => km.tokens(b.key).length > seq.length);
+    const run = (b, cx) => { const count = this.count ? Number(this.count) : null; this.seq = []; this.count = ""; this.act(b, cx, count); };
+    if (exact && !longer) return run(exact, cx);
+    if (starts.length) {
+      this.seq = seq; this.flash = `${this.count}${seq.join(" ")}…`; cx.notify();
+      // Both a key and the start of a longer one: the key alone, if nothing follows soon.
+      if (exact) { const at = seq.join(" "); cx.timer.after(700, (cx) => { if (this.seq.join(" ") === at) run(exact, cx); }); }
+      return;
+    }
+    this.seq = []; this.count = "";
     if (!m.sticky) return this.leave();
-    this.flash = `No key ${e.key_char || e.keystroke} here`;
+    this.flash = `No key ${seq.join(" ")} here`;
     cx.notify();
   }
 
   renderMode(cx) {
     const t = theme(), m = km.config().modes[this.mode];
     if (!m) return div();
-    const list = shownBindings(m);
-    const cell = (b, i) => h_flex().id(`b-${i}`).w(196).h(24).gap(8).items_center().px(6).rounded(5).hover((s) => s.bg(t.hover))
+    const cfg = km.config();
+    const list = shownBindings(m).filter((b) => !b.do.startsWith("mode:") || km.usable(cfg, b.do.slice(5).trim()));
+    const cell = (b, i) => h_flex().id(`b-${i}`).w(198).h(24).gap(8).items_center().px(6).rounded(5).hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => this.act(b, cx))
-      .child(div().min_w(30).h(18).px(5).flex().items_center().justify_center().rounded(4).bg(t.accent + "26").text_color(t.accent).text_size(11.5).font_semibold().child(keyLabel(b.key)))
+      .child(div().min_w(34).h(18).px(5).flex().items_center().justify_center().rounded(4).bg(t.accent + "26").text_color(t.accent).text_size(11.5).font_semibold().child(keyLabel(b.key)))
       .child(div().flex_1().truncate().text_size(11.5).text_color(b.do.startsWith("mode:") ? t.accent : t.foreground).child(b.label));
     return v_flex().id("mode").track_focus(this.handle).size_full().p(10).gap(6).bg(t.popover)
       .on_key_down((e, cx) => { cx.stop_propagation(); this.key(e, cx); })
       .child(h_flex().gap(8).items_center()
         .child(div().px(7).h(20).flex().items_center().rounded(5).bg(t.accent).text_color(t.solid_foreground ?? t.background).text_size(11).font_semibold().child(m.name.toUpperCase()))
-        .child(div().text_size(11.5).text_color(t.muted).child(m.sticky ? "sticky: keys repeat until esc" : "one key"))
+        .child(div().text_size(11.5).text_color(t.muted).child(m.sticky ? `sticky: keys repeat until esc${m.counts ? " · counts: 3j, 2gt" : ""}` : "one key"))
         .child(div().flex_1())
         .when(Boolean(this.flash), (el) => el.child(div().text_size(11.5).text_color(t.accent).child(this.flash))))
       .child(div().flex().flex_wrap().gap_x(4).children(list.map(cell)))
@@ -178,14 +210,16 @@ export default class Keys extends View {
   }
 
   editRow(i) {
-    const b = i === "new" ? { key: "", label: "", do: "" } : this.cfg.modes[this.sel].bindings[i];
+    const b = i === "new" ? { key: "", label: "", do: "", count: "" } : this.cfg.modes[this.sel].bindings[i];
     this.row = i;
-    this.inputs = { key: this.input(b.key, "a character, or a chord like ctrl-x / left"), label: this.input(b.label, "what it does"), do: this.input(b.do, "pane.split direction=right · mode:move · send:ctrl+c") };
+    this.inputs = { key: this.input(b.key, "a character, a chord (ctrl-d, left) or a sequence (g t)"), label: this.input(b.label, "what it does"), do: this.input(b.do, "pane.split direction=right · mode:move · leave · send:ctrl+c"), count: this.input(b.count ?? "", "with a count (optional): tab.select index=#") };
     this.inputs.key.focus();
   }
 
   applyRow() {
-    const b = { key: this.inputs.key.value().trim(), label: this.inputs.label.value().trim(), do: this.inputs.do.value().trim() };
+    const b = { key: km.tokens(this.inputs.key.value()).join(" "), label: this.inputs.label.value().trim(), do: this.inputs.do.value().trim() };
+    const count = this.inputs.count.value().trim();
+    if (count) b.count = count;
     if (!b.key || !b.do) return;
     const list = this.cfg.modes[this.sel].bindings;
     if (this.row === "new") list.push({ ...b, label: b.label || b.do }); else list[this.row] = { ...b, label: b.label || b.do };
@@ -224,11 +258,11 @@ export default class Keys extends View {
         .bg(id === this.sel ? t.selected : t.popover).hover((s) => s.bg(t.hover))
         .on_click((_e, cx) => { this.pick(id); cx.notify(); })
         .child(div().flex_1().truncate().text_size(12.5).child(x.name))
-        .child(div().text_size(10.5).text_color(x.entry ? t.accent : t.dim).child(x.entry ? keyLabel(x.entry) : x.sticky ? "sticky" : "—"))))
+        .child(div().text_size(10.5).text_color(x.off ? t.dim : x.entry ? t.accent : t.dim).child(x.off ? "off" : x.entry ? keyLabel(x.entry) : x.sticky ? "sticky" : "—"))))
       .child(div().h(8))
       .child(btn("m-add", "+ New mode", false, () => {
         let n = 1; while (cfg.modes[`mode${n}`]) n++;
-        this.applyMode(); cfg.modes[`mode${n}`] = { name: `mode ${n}`, entry: "", sticky: true, bindings: [] }; this.pick(`mode${n}`, false); this.dirty = true;
+        this.applyMode(); cfg.modes[`mode${n}`] = { name: `mode ${n}`, entry: "", sticky: true, counts: false, bindings: [{ key: "q", label: "Done", do: "leave" }] }; this.pick(`mode${n}`, false); this.dirty = true;
       }))
       .child(div().h(14))
       .child(label("Open this editor"))
@@ -249,6 +283,7 @@ export default class Keys extends View {
         .child(v_flex().gap(3).child(label("Key")).child(field(this.inputs.key, 120)))
         .child(v_flex().gap(3).child(label("Label")).child(field(this.inputs.label, 200)))
         .child(v_flex().flex_1().gap(3).child(label("Does")).child(field(this.inputs.do, 300))))
+      .child(h_flex().gap(8).child(v_flex().flex_1().gap(3).child(label("With a count (# is the count; empty: repeat the key)")).child(field(this.inputs.count, 400))))
       .child(h_flex().gap(8).justify_end()
         .child(btn("e-cancel", "Cancel", false, () => { this.row = null; this.inputs = null; }))
         .child(btn("e-ok", this.row === "new" ? "Add key" : "Apply", true, () => this.applyRow())));
@@ -260,9 +295,17 @@ export default class Keys extends View {
           .text_size(12).text_color(m.sticky ? t.accent : t.muted).cursor_pointer()
           .on_click((_e, cx) => { m.sticky = !m.sticky; this.dirty = true; cx.notify(); })
           .child(m.sticky ? "■ Sticky" : "□ Sticky"))
+        .child(h_flex().id("off").h(30).px(10).gap(6).items_center().rounded(7).border_1().border_color(m.off ? t.input : t.accent)
+          .text_size(12).text_color(m.off ? t.muted : t.accent).cursor_pointer()
+          .on_click((_e, cx) => { m.off = !m.off; this.dirty = true; cx.notify(); })
+          .child(m.off ? "□ On" : "■ On"))
+        .child(h_flex().id("counts").h(30).px(10).gap(6).items_center().rounded(7).border_1().border_color(m.counts ? t.accent : t.input)
+          .text_size(12).text_color(m.counts ? t.accent : t.muted).cursor_pointer()
+          .on_click((_e, cx) => { m.counts = !m.counts; this.dirty = true; cx.notify(); })
+          .child(m.counts ? "■ Counts" : "□ Counts"))
         .child(div().flex_1())
         .child(btn("m-del", "Delete mode", false, () => { if (Object.keys(cfg.modes).length > 1) { delete cfg.modes[this.sel]; this.pick(Object.keys(cfg.modes)[0], false); this.dirty = true; } })))
-      .child(div().text_size(10.5).text_color(t.dim).child("Entry key: e.g. ctrl-b, ctrl-a, ctrl-space, ctrl-w. Empty: reached only from another mode (mode:<id>). Sticky: keys repeat until esc."))
+      .child(div().text_size(10.5).text_color(t.dim).child("On: off removes the mode, its entry key and every key that leads to it. Entry key: e.g. ctrl-;, ctrl-a, ctrl-space. Empty: reached only from another mode (mode:<id>). Sticky: keys repeat until esc. Counts: digits first repeat a key (3j) or fill its count action (3gt). A key can be a sequence: g t."))
       .child(h_flex().gap(10).px(6).pt(4).child(div().w(56).text_size(10.5).text_color(t.dim).child("Key")).child(div().w(190).text_size(10.5).text_color(t.dim).child("Label")).child(div().flex_1().text_size(10.5).text_color(t.dim).child("Does")))
       .child(v_flex().id("rows").flex_1().min_h(0).overflow_y_scroll().children(rows))
       .when(Boolean(editing), (el) => el.child(editing))

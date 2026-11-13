@@ -218,7 +218,7 @@ Only while the `ks` layout shows.
 | `cmd-shift-m` | Show or hide My PRs |
 | `cmd-w` / `cmd-shift-w` | Close tab (asks, 30 s undo) / close pane |
 | `cmd-shift-t` | Undo the last close |
-| `ctrl-b` | tmux mode (configurable) |
+| `ctrl-;` | Service mode (configurable) |
 | `cmd-k` | Key modes editor (configurable) |
 
 Herdr's own keys still apply (`cmd-t` new tab, `cmd-d` split, `cmd-1`…`9` tabs, `cmd-alt-arrows` panes, …).

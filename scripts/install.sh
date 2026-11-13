@@ -29,7 +29,9 @@ done
 keys="$app/keys.json"
 [ -f "$keys" ] || echo '{}' > "$keys"
 cp "$keys" "$keys.bak-$(date +%s)"
-jq --slurpfile ours "$src/keys.json" --arg s "layout:$name" '. + {($s): ($ours[0][$s] // {})}' "$keys" > "$keys.tmp"
+# Entries ks-keys wrote (its entry keys, "ks-keys.*") are kept: they come from its editor, not from this repo.
+jq --slurpfile ours "$src/keys.json" --arg s "layout:$name" \
+  '. + {($s): (($ours[0][$s] // {}) + ((.[$s] // {}) | with_entries(select((.value | type) == "string" and (.value | startswith("ks-keys."))))))}' "$keys" > "$keys.tmp"
 mv "$keys.tmp" "$keys"
 
 for d in "$app"/mods/ks-*/; do herdr-app check "$d"; done
