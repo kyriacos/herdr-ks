@@ -58,6 +58,9 @@ function pathTo(node, id, acc = []) {
 // The pane's share of its nearest split (`axis`: "row" for width, "column" for height, null for either) grows by
 // `delta` (0.05 = 5% of the split), its siblings giving or taking in proportion; `reset` evens the split out.
 // False when the pane isn't in such a split (a lone pane), so the caller can resize something else.
+// The weights the last resize set, per split: Herdr animates a resize, so reading them back right after gives a
+// value on the way, and steps would come out uneven. Repeated presses build on what was set instead.
+let lastSplit = null; // { parent, weights: { id: w }, at }
 async function resizePane(paneId, delta, axis = null, reset = false) {
   const p = paneId && panes().find((x) => x.pane === paneId);
   if (!p) return false;
@@ -66,11 +69,19 @@ async function resizePane(paneId, delta, axis = null, reset = false) {
   for (let i = path.length - 2; i >= 0; i--) {
     const parent = path[i], child = path[i + 1], kids = parent.children ?? [];
     if (kids.length < 2 || (axis && parent.type !== axis)) continue;
-    if (reset) { for (const c of kids) run("layout.resize", { id: c.id, weight: 1 }); return true; }
-    const ws = kids.map((c) => c.size?.weight ?? 1), total = ws.reduce((a, b) => a + b, 0), at = kids.indexOf(child);
+    if (reset) {
+      for (const c of kids) run("layout.resize", { id: c.id, weight: 1 });
+      lastSplit = { parent: parent.id, weights: Object.fromEntries(kids.map((c) => [c.id, 1])), at: Date.now() };
+      return true;
+    }
+    const recent = lastSplit && lastSplit.parent === parent.id && Date.now() - lastSplit.at < 5000 && kids.every((c) => c.id in lastSplit.weights);
+    const ws = kids.map((c) => (recent ? lastSplit.weights[c.id] : c.size?.weight ?? 1)), total = ws.reduce((a, b) => a + b, 0), at = kids.indexOf(child);
     const share = ws[at] / total, next = Math.max(0.1, Math.min(0.9, share + delta));
     // Weights keep their total: the pane gets `next` of it, the others share the rest as before.
-    kids.forEach((c, j) => run("layout.resize", { id: c.id, weight: Math.round((j === at ? next * total : (ws[j] * (1 - next)) / (1 - share)) * 1000) / 1000 }));
+    const weights = {};
+    kids.forEach((c, j) => { weights[c.id] = Math.round((j === at ? next * total : (ws[j] * (1 - next)) / (1 - share)) * 1000) / 1000; });
+    for (const [id, weight] of Object.entries(weights)) run("layout.resize", { id, weight });
+    lastSplit = { parent: parent.id, weights, at: Date.now() };
     return true;
   }
   return false;
@@ -216,16 +227,13 @@ export default class Keys extends View {
     if (p.mode && shared(OPEN) === p.overlay) { setShared(OPEN, null); setShared(LIVE, null); }
   }
 
-  // Closes the strip and gives the keyboard back: to zen's terminal when zen is open (else the same terminal in the
-  // tab underneath would take it, at another size, and Claude redraws), else to the pane you were in. Not after a
-  // key that opened a dialog (`refocus` false): that has the keyboard.
+  // Closes the strip; the keyboard goes back to what had it (`refocus` is kept for callers, unused now).
   leave(refocus = true) {
     this.leaving = true;
     closeOverlay(props().overlay);
     if (!refocus) return;
-    // Outside zen, closing the window already gives the keyboard back to the focused pane: no second focus change.
-    const zt = zenTerminal();
-    if (zt) run("pane.focus", { terminal: zt });
+    // Closing the window gives the keyboard back to what had it: the pane, or in zen the zen window. No pane.focus:
+    // in zen it would switch to the terminal's tab instead of zen.
   }
 
   // Leaving on a key: the strip keeps the keyboard until that key is released, so neither it (Esc, i, q) nor its
@@ -313,7 +321,9 @@ export default class Keys extends View {
       return;
     }
     const tok = km.token(e);
-    if (m.counts && !this.seq.length && /^[0-9]$/.test(tok) && (this.count || tok !== "0")) {
+    // A digit starts a count, unless the mode has a key for it (service: 1-9 pick a tab, 0 the default size).
+    const digitBound = m.bindings.some((b) => km.tokens(b.key)[0] === tok);
+    if (m.counts && !this.seq.length && /^[0-9]$/.test(tok) && !digitBound && (this.count || tok !== "0")) {
       this.count += tok; this.flash = this.count; cx.notify(); return;
     }
     const seq = [...this.seq, tok];
@@ -367,7 +377,7 @@ export default class Keys extends View {
         .child(div().px(7).h(20).flex().items_center().rounded(5).bg(t.accent).text_color(t.solid_foreground ?? t.background).text_size(11).font_semibold().child(m.name.toUpperCase()))
         .child(div().text_size(11.5).text_color(t.muted).child(m.sticky ? `sticky: keys repeat until esc${m.counts ? " · counts: 3j, 2gt" : ""}` : "one key"))
         .when(resizes, (el) => el.child(div().px(6).h(20).flex().items_center().rounded(5).bg(t.hover).text_size(11).text_color(t.foreground)
-          .child(`- + < > v ^ = resize ${this.resizeTarget()}`)))
+          .child(`- = narrower / wider · shift: _ + shorter / taller · 0 default · ${this.resizeTarget()}`)))
         .child(div().flex_1())
         .when(Boolean(this.flash), (el) => el.child(div().text_size(11.5).text_color(t.accent).child(this.flash))))
       .child(div().id("keys").flex_1().min_h(0).overflow_y_scroll()

@@ -193,7 +193,7 @@ in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 
 | Mode | Enter with | Keys |
 |---|---|---|
-| service (sticky) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `z` zoom pane, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `Z` zen, `f` focus mode, `F` focus & zen settings, `.` all settings, `-`/`+` `<`/`>` `v`/`^` resize what you're in, `=` its default size (zen centered, a split even), `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor, Esc out |
+| service (sticky) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `z` zoom pane, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `Z` zen, `f` focus mode, `F` focus & zen settings, `.` all settings, `-`/`=` narrower/wider and `_`/`+` shorter/taller (what you're in), `0` default size, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor, Esc out |
 | tmux (one key, off) | `ctrl-b` once switched on | `%` `"` split, `x` close pane, `z` zoom, `c` `n` `p` tabs, `&` close tab, `,` `$` rename, `(` `)` spaces, `o` next agent, `s` pick a space, `h j k l` go, `1`–`9`, `[` vim mode |
 | vim (normal mode for the window) | service `[` | `h j k l` pane, `H J K L` swap, `gt`/`gT` or `w`/`b` next/previous tab, `3gt` tab 3, `}`/`{` next/previous space, `3gs` space 3, `ctrl-d`/`ctrl-u` half page, `ctrl-f`/`ctrl-b` page, `ctrl-e`/`ctrl-y` line, `gg`/`G` top/bottom of the scrollback, `/` search, `s`/`v` split, `o` zoom, `dd` close pane, `dt` close tab, `t` new tab, `r` rename, `u` undo close, `zz` zen, `:` palette, `i`/`a`/`q`/Esc back to the terminal |
 | move (sticky) | service `m` | `h j k l` go, `H J K L` swap, `z` zoom, `s`/`v` split, `x` close, `n`/`p` tabs, `t` tab mode, `q`/Enter done |
@@ -230,6 +230,8 @@ whatever theme is showing.
 - **The window:** drag its title bar to move it, its corners to resize it; **Narrower** / **Wider**, **⚙** and
   **Exit** in its bar. Clicking the backdrop brings it back in front. Its size is remembered.
 - `cmd-shift-z` again (or Exit) closes it. Switching layouts closes it too.
+- While zen is open the space shows a blank "zen" tab, so your tab's terminal is drawn only in zen (at zen's size);
+  closing zen removes it and brings your tab back.
 - In zen, service mode's pane keys (`h j k l`, splits, zoom, swap) do nothing: zen shows one terminal. `-` / `+` / `=`
   resize and center it, and the key strip stays in front.
 
@@ -261,19 +263,21 @@ Every ks setting in one panel, like Herdr's Settings: the **⚙** at the right o
 
 ## Resizing from the keyboard
 
-In service mode (and in the sticky **resize** mode, service `r`), the resize keys act on **what you're in**, and the
-strip says which ("- + < > v ^ = resize the zen window / this pane, in its split / this pane, against the side panel"):
+In service mode (and in the sticky **resize** mode, service `r`) the resize keys act on **what you're in**: the zen
+window when it's open, else the pane you're in along its split, else (a lone pane) the pane against the side panel.
+The plain key goes one way, the same key with Shift the other; the strip shows which thing they act on.
 
-| Key | Zen open | A split pane | A lone pane |
-|---|---|---|---|
-| `-` / `+` | Smaller / larger | Its share of the nearest split | Narrower / wider, the side panel (or sidebar) giving way |
-| `<` / `>` | Narrower / wider | Its share of the side-by-side split | Same as `-` / `+` |
-| `v` / `^` | Shorter / taller | Its share of the stacked split | Nothing to resize |
-| `=` | Default size, centered | Split evened out | Side panel back to its default width |
+| Key | Does |
+|---|---|
+| `-` / `=` | Narrower / wider |
+| `_` / `+` (Shift) | Shorter / taller |
+| `,` / `.` and `<` / `>` (Shift) | The same pair again in resize mode (in service mode `,` `.` rename and open settings, so only `<` `>`) |
+| `0` | Default size: zen centered, a split even, the side panel to its default width |
 
-Each press is a small step (2% of the window in zen, 4% of the split), and a count repeats it (`5+`). Resize mode
-also has fixed targets: `[` / `]` (or `h` / `l`) the sidebar, `{` / `}` the side panel, `j` / `k` My PRs. `q`, Enter or
-Esc ends it.
+Each press is the same small step both ways (2% of the window in zen, 4% of the split); repeated presses build on the
+last one, so they don't jump. A count repeats a key in resize mode (`5=`). Resize mode also has fixed targets: `[` / `]`
+(or `h` / `l`) the sidebar, `{` / `}` the side panel, `j` / `k` My PRs. `q`, Enter or Esc ends it. A lone pane has nothing
+above or below it, so `_` / `+` do nothing there.
 
 ## All keys
 

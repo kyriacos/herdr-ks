@@ -28,7 +28,7 @@ export const KEY = "ks-keys.config";
 // Commands that open a dialog, a picker or a search: a sticky mode leaves before them, so they get the keyboard.
 export const EXITS = new Set(["tab.rename", "space.rename", "app.palette", "mod.open", "terminal.search", "ks-keys.editor",
   "ks-zen.settings", "ks-tabs.close", "ks-tabs.close-space", "space.new", "app.help"]);
-export const VERSION = 10;
+export const VERSION = 11;
 
 const go = [
   { key: "h", label: "Go left", do: "pane.go direction=left" },
@@ -81,13 +81,13 @@ export const DEFAULTS = {
         { key: "F", label: "Focus & zen settings", do: "ks-zen.settings" },
         { key: ".", label: "herdr-ks settings", do: "mod.open name=ks-settings" },
         { key: "r", label: "Resize mode (sticky)", do: "mode:resize" },
-        { key: "-", label: "Smaller (what you're in)", do: "resize focus=size by=-1" },
-        { key: "+", label: "Larger (what you're in)", do: "resize focus=size by=1" },
-        { key: "=", label: "Default size (zen centered, split even)", do: "resize focus=size reset=true" },
-        { key: "<", label: "Narrower (what you're in)", do: "resize focus=wide by=-1" },
-        { key: ">", label: "Wider (what you're in)", do: "resize focus=wide by=1" },
-        { key: "v", label: "Shorter (what you're in)", do: "resize focus=tall by=-1" },
-        { key: "^", label: "Taller (what you're in)", do: "resize focus=tall by=1" },
+        { key: "-", label: "Narrower (what you're in)", do: "resize focus=wide by=-1" },
+        { key: "=", label: "Wider (what you're in)", do: "resize focus=wide by=1" },
+        { key: "_", label: "Shorter (what you're in)", do: "resize focus=tall by=-1" },
+        { key: "+", label: "Taller (what you're in)", do: "resize focus=tall by=1" },
+        { key: "<", label: "Shorter (what you're in)", do: "resize focus=tall by=-1" },
+        { key: ">", label: "Taller (what you're in)", do: "resize focus=tall by=1" },
+        { key: "0", label: "Default size (zen centered, split even)", do: "resize focus=size reset=true" },
         { key: "[", label: "Vim mode (normal)", do: "mode:vim" },
         { key: "m", label: "Move mode (sticky)", do: "mode:move" },
         { key: "t", label: "Tab mode (sticky)", do: "mode:tabs" },
@@ -177,13 +177,15 @@ export const DEFAULTS = {
     resize: {
       name: "resize", entry: "", sticky: true, counts: true, off: false,
       bindings: [
-        { key: "-", label: "Smaller (what you're in)", do: "resize focus=size by=-1" },
-        { key: "+", label: "Larger (what you're in)", do: "resize focus=size by=1" },
-        { key: "=", label: "Default size (zen centered, split even)", do: "resize focus=size reset=true" },
-        { key: "<", label: "Narrower (what you're in)", do: "resize focus=wide by=-1" },
-        { key: ">", label: "Wider (what you're in)", do: "resize focus=wide by=1" },
-        { key: "v", label: "Shorter (what you're in)", do: "resize focus=tall by=-1" },
-        { key: "^", label: "Taller (what you're in)", do: "resize focus=tall by=1" },
+        { key: "-", label: "Narrower (what you're in)", do: "resize focus=wide by=-1" },
+        { key: "=", label: "Wider (what you're in)", do: "resize focus=wide by=1" },
+        { key: "_", label: "Shorter (what you're in)", do: "resize focus=tall by=-1" },
+        { key: "+", label: "Taller (what you're in)", do: "resize focus=tall by=1" },
+        { key: ",", label: "Narrower (what you're in)", do: "resize focus=wide by=-1" },
+        { key: ".", label: "Wider (what you're in)", do: "resize focus=wide by=1" },
+        { key: "<", label: "Shorter (what you're in)", do: "resize focus=tall by=-1" },
+        { key: ">", label: "Taller (what you're in)", do: "resize focus=tall by=1" },
+        { key: "0", label: "Default size (zen centered, split even)", do: "resize focus=size reset=true" },
         { key: "[", label: "Sidebar narrower", do: "resize id=sidebar by=-24" },
         { key: "]", label: "Sidebar wider", do: "resize id=sidebar by=24" },
         { key: "h", label: "Sidebar narrower", do: "resize id=sidebar by=-24" },
@@ -270,11 +272,12 @@ function upgrade(old) {
     if (!mine) continue;
     mine.bindings = mine.bindings.filter((b) => !(["-", "=", "+", "_"].includes(b.key) && /^resize /.test(b.do)));
   }
-  // Version 10: - + < > v ^ = all act on what you're in (zen, the split pane, else the pane against the panel).
-  if ((old.version ?? 0) < 10) for (const id of ["service", "resize"]) {
+  // Version 11: the plain key one way, Shift the other: - = narrower / wider, _ + shorter / taller (and , . / < >),
+  // 0 the default size; all on what you're in. Older resize keys on these go.
+  if ((old.version ?? 0) < 11) for (const id of ["service", "resize"]) {
     const mine = c.modes[id];
     if (!mine) continue;
-    mine.bindings = mine.bindings.filter((b) => !(["-", "=", "+", "_", "<", ">", "v", "^"].includes(b.key) && /^resize /.test(b.do)));
+    mine.bindings = mine.bindings.filter((b) => !(["-", "=", "+", "_", "<", ">", "v", "^", ",", ".", "0"].includes(b.key) && /^resize /.test(b.do)));
   }
   for (const [id, m] of Object.entries(DEFAULTS.modes)) {
     if (!c.modes[id]) { c.modes[id] = clone(m); continue; }

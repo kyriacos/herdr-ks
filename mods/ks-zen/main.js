@@ -62,13 +62,13 @@ function zenSpec(terminal, rect) {
 }
 
 // Opens (or reopens, to move or resize) the zen window. A window opened last is on top, so when the key modes strip
-// is open (resizing zen from service mode) it is asked to come back on top, and it keeps the keyboard; otherwise the
-// zen terminal gets it.
+// is open (resizing zen from service mode) it is asked to come back on top, and it keeps the keyboard.
 function showZen(terminal, rect) {
   const win = openOverlay(zenSpec(terminal, rect));
   setShared(ZEN, { ...(zen() ?? {}), terminal, rect, win });
+  // No pane.focus: focusing the terminal would switch back to its tab (Herdr prefers the pane). The window opened
+  // last has the keyboard.
   if (shared("ks-keys.open")) run("ks-keys.raise");
-  else run("pane.focus", { terminal });
 }
 
 async function openZen() {
@@ -78,7 +78,22 @@ async function openZen() {
   const rect = { width: Math.round(w * share), height: Math.round(h * Math.min(0.92, share + 0.1)) };
   rect.x = Math.round((w - rect.width) / 2); rect.y = Math.round((h - rect.height) / 2);
   const backdrop = openOverlay({ mod: "ks-zen", kind: "window", key: "ks-zen-backdrop", frame: "none", width: 1, height: 1, at: { x: 0, y: 0 }, props: { backdrop: true } });
-  setShared(ZEN, { terminal, rect, backdrop, win: null });
+  // The tab behind must not be drawn while zen shows its terminal: drawn twice at two sizes, the terminal is resized
+  // back and forth (Claude's screen breaks) and focusing it lands in the tab, not zen. So the space shows a blank
+  // placeholder tab meanwhile; closing zen removes it and shows the tab again.
+  const tab = panes().find((p) => p.terminal === terminal)?.tab ?? null;
+  const space = spaces().find((s) => s.tabs.some((t) => t.id === tab))?.id ?? null;
+  setShared(ZEN, { terminal, rect, backdrop, win: null, tab, placeholder: null });
+  if (tab && space) {
+    const before = new Set(spaces().find((s) => s.id === space)?.tabs.map((t) => t.id) ?? []);
+    run("tab.new", { space, name: "zen", mod: "ks-zen", props: { placeholder: true } });
+    // Herdr's live data catches up in a moment: the new tab is the one that wasn't there.
+    for (let i = 0; i < 10; i++) {
+      await exec("sleep", ["0.05"]).catch(() => null);
+      const fresh = spaces().find((s) => s.id === space)?.tabs.find((t) => !before.has(t.id));
+      if (fresh) { setShared(ZEN, { ...zen(), placeholder: fresh.id }); break; }
+    }
+  }
   showZen(terminal, rect);
 }
 
@@ -92,6 +107,9 @@ function closeZen() {
   closeKey("ks-zen");
   closeKey("ks-zen-backdrop");
   setShared(ZEN, null);
+  // The tab comes back, shown, with the terminal focused in it; the placeholder goes.
+  if (st.tab) run("tab.select", { id: st.tab });
+  if (st.placeholder) run("tab.close", { id: st.placeholder, confirmed: true });
   if (st.terminal) run("pane.focus", { terminal: st.terminal });
 }
 
@@ -133,7 +151,7 @@ export default class Zen extends View {
   init(_props, cx) {
     const p = props() ?? {};
     if (p.settings) { this.handle = cx.focus_handle(); this.handle.focus(); return; }
-    if (p.closing) return;
+    if (p.closing || p.placeholder) return;
     if (p.backdrop || p.bar || p.foot) {
       // A window reopened by ks-resize carries its new rect.
       if (p.rect && zen() && JSON.stringify(p.rect) !== JSON.stringify(zen().rect)) setShared(ZEN, { ...zen(), rect: p.rect });
@@ -179,6 +197,7 @@ export default class Zen extends View {
   render() {
     const p = props() ?? {}, t = theme();
     if (p.settings) return this.renderSettings();
+    if (p.placeholder) return div().size_full().bg(t.background); // zen's stand-in tab (see openZen)
     if (p.backdrop) {
       const pr = prefs(), base = pr.backdrop === "dark" ? "#000000" : String(t.background).slice(0, 7);
       // Over everything: the theme's own background (or black), opaque, or see-through like glass at lower opacity.

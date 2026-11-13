@@ -175,7 +175,7 @@ See the [guide](docs/GUIDE.md#key-modes).
 
 **Zen mode** (`cmd-shift-z`): the terminal you're in, alone in a floating window (drag to move, corners to resize)
 over an opaque or translucent backdrop, in your current theme. **Focus mode** (`cmd-shift-f`): everything around
-the terminals dims until hovered. **Resizing** in service mode: `-` / `+`, `<` / `>`, `v` / `^` resize what you're in (zen, the split pane, else the pane against the side panel), `=` puts it back; the strip says what they act on.
+the terminals dims until hovered. **Resizing** in service mode: `-` / `=` narrower / wider, Shift (`_` / `+`) shorter / taller, `0` the default size, all on what you're in (zen, the split pane, else the pane against the side panel).
 
 **Settings** (⚙ in the tab bar, `cmd-shift-,`): every ks setting in one panel: focus, zen, keys and modes, asking
 before closing and the undo time, the session card, My PRs, panels, the GitHub cache.
