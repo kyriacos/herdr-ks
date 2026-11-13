@@ -5,6 +5,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { spaces, panes, focused, exec, shared, theme, run, notify } from "herdr";
+import * as cache from "./lib/cache.js";
 
 const FIELDS = "number,title,state,url,baseRefName,headRefName,isDraft,reviewDecision,additions,deletions,changedFiles,statusCheckRollup,author";
 const base = (p) => p.replace(/\/+$/, "").split("/").pop();
@@ -49,6 +50,9 @@ export default class Prs extends View {
     if (this.loading || (!force && key === this.key)) return;
     this.key = key; this.loading = true;
     cx.spawn(async (cx) => {
+      // Stale while revalidate: the last list for these worktrees at once, then a fresh one.
+      const hit = await cache.get(`prs:${key}`);
+      if (hit?.value && this.key === key) { this.prs = hit.value.prs ?? []; this.without = hit.value.without ?? []; cx.notify(); }
       const prs = [], without = [], seen = new Set();
       let error = null;
       for (const { root } of roots) {
@@ -74,6 +78,7 @@ export default class Prs extends View {
         } catch { without.push({ root: dir, branch }); }
       }
       if (this.key === key) { this.prs = prs; this.without = without; this.error = error; }
+      if (!error) cache.set(`prs:${key}`, { prs, without });
       this.loading = false; cx.notify();
     });
   }
@@ -125,7 +130,7 @@ export default class Prs extends View {
         .child(div().px(5).py(1).rounded(4).border_1().border_color(t.border).text_size(10).text_color(t.muted).child(`${this.prs.length} open`))
         .child(div().flex_1())
         .child(div().id("prs-refresh").h(24).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).text_size(11).cursor_pointer()
-          .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.refresh(cx, true)).child(this.loading ? "…" : "Refresh"))
+          .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.refresh(cx, true)).child(this.loading ? (this.prs.length ? "Updating…" : "…") : "Refresh"))
         .when(this.prs.length > 1, (e) => e.child(div().id("prs-review-all").h(24).px(8).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground)
           .text_size(11).cursor_pointer().on_click(() => this.review(this.prs)).child("Review all"))))
       .child(div().flex_1().min_h(0).relative()

@@ -137,6 +137,11 @@ it, **Auto** to follow the Changes panel / the focused terminal again. Remembere
 
 **Font.** The interface uses JetBrains Mono, the same monospace as the diffs (`ui_font` on the layout).
 
+**Speed: stale while revalidate.** GitHub answers (`gh`) are cached in `~/.config/herdr-app/data/ks-cache/`
+(small JSON files shared by every mod and window). My PRs, the PRs panel and the PR window show the last
+answer at once and refresh it in the background ("updating…"); My PRs also pre-fetches every PR's details
+after each refresh, so a PR window opens instantly. Delete the folder to start over.
+
 ## Set up
 
 1. Install Herdr App from [herdr.dev](https://herdr.dev) and start it once (it creates `~/.config/herdr-app`).
@@ -183,7 +188,7 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | New worktree dialog (clone of Herdr's `worktree`): **New space + worktree** from any repo into any folder, default `~/code/worktrees/<repo>/<branch>` | `mods/ks-worktree/`, `mods/ks-menu/main.js` |
 | Panel commands `panel:files` / `panel:changes` | `mods/ks-tabs/main.js` |
 | Review tab: one file or a whole branch (vs merge-base, over several repos), inline / side by side, highlighted, line and file comments sent to an agent, vim keys | `mods/ks-review/` (new) |
-| Shared code: highlighter, diff model and wrapping, comment store, branch/commit/worktree git; copied into `lib/` of the mods using it by `install.sh` | `shared/` |
+| Shared code: highlighter, diff model and wrapping, comment store, branch/commit/worktree git, GitHub (`gh`) and a file cache; copied into `lib/` of the mods using it by `install.sh` | `shared/` |
 | Changes panel: Uncommitted / Branch / Commits, tree / flat, Wrap / Expand / Review / Open file above the diff | `mods/ks-changes/main.js` |
 | Files panel: "Review & comment" menu entry; follows the Changes panel's pinned or agent checkout | `mods/ks-files/input.js`, `main.js`, `location.js` |
 | Interface font JetBrains Mono | `layouts/ks.json` (`ui_font`) |

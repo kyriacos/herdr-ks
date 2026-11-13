@@ -14,7 +14,7 @@ command -v rsync >/dev/null || { echo "needs rsync" >&2; exit 1; }
 
 # Mods can't import from each other: shared/ (highlighter, diff model, review comments) is copied into the
 # mods that use it before they're installed.
-for m in ks-changes ks-review ks-send ks-prcard; do
+for m in ks-changes ks-review ks-send ks-prcard ks-myprs ks-prs; do
   mkdir -p "$src/mods/$m/lib" && cp "$src"/shared/*.js "$src/mods/$m/lib/"
 done
 

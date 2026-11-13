@@ -8,17 +8,13 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, Scrollbar } from "gpui-base";
 import { props, exec, hc, theme, run, notify, agents, spaces, panes, shared, settings, appHome, openOverlay, closeOverlay } from "herdr";
 import { candidates, git } from "./lib/branch.js";
+import * as cache from "./lib/cache.js";
+import { fetchPr, prKey } from "./lib/github.js";
 
-const FIELDS = "number,title,url,state,isDraft,headRefName,baseRefName,additions,deletions,changedFiles,commits,reviewDecision,mergeStateStatus,statusCheckRollup,latestReviews,reviewRequests,updatedAt,author";
 const same = (a, b) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
 const inside = (p, dir) => Boolean(p && dir && (same(p, dir) || p.toLowerCase().startsWith(dir.toLowerCase().replace(/\/+$/, "") + "/")));
 const ago = (iso) => { const s = (Date.now() - Date.parse(iso)) / 1000; return s < 3600 ? `${Math.max(1, Math.round(s / 60))}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`; };
 
-async function gh(args, cwd) {
-  let r = await exec("gh", args, cwd ? { cwd } : undefined).catch(() => null);
-  if (!r || (r.code !== 0 && /not found|No such file/i.test(r.stderr ?? ""))) r = await exec("/opt/homebrew/bin/gh", args, cwd ? { cwd } : undefined).catch(() => null);
-  return r;
-}
 
 // Checkouts of `repoName` on `branch`: from the repos next to the session's worktrees, else from ~/code.
 async function localWorktrees(repoName, branch) {
@@ -74,21 +70,37 @@ export default class PrCard extends View {
     this.msg.on("change", (_e, cx) => { const has = Boolean(this.msg.value().trim()); if (has !== this.hasText) { this.hasText = has; cx.notify(); } });
     this.handle = cx.focus_handle(); this.handle.focus();
     if (!this.url) { this.error = "No pull request"; return; }
-    this.load(cx);
+    // Stale while revalidate: the last known PR (and where it lives) at once, then a fresh look.
+    cx.spawn(async (cx) => {
+      const hit = await cache.get(prKey(this.url));
+      if (hit?.value?.pr && !this.fresh) {
+        this.pr = hit.value.pr;
+        const alive = new Set(agents().map((a) => a.address));
+        if (hit.value.places) this.places = hit.value.places.map((w) => ({ ...w, agents: (w.agents ?? []).filter((a) => alive.has(a.address)) }));
+        this.target = this.places?.flatMap((w) => w.agents)[0]?.address ?? null;
+        cx.notify();
+      }
+      this.load(cx);
+    });
   }
 
   load(cx) {
+    this.updating = true; cx.notify();
     cx.spawn(async (cx) => {
-      const r = await gh(["pr", "view", String(this.number), "-R", this.repo, "--json", FIELDS]);
-      if (!r || r.code !== 0) { this.error = (r?.stderr || "Couldn't read the PR with gh").trim().split("\n")[0]; cx.notify(); return; }
-      try { this.pr = JSON.parse(r.stdout); } catch { this.error = "Couldn't read GitHub's answer"; cx.notify(); return; }
+      const got = await fetchPr(this.repo, this.number);
+      if (got.error) { if (!this.pr) this.error = got.error; this.updating = false; cx.notify(); return; }
+      this.pr = got.pr; this.fresh = true;
+      cache.set(prKey(this.url), { pr: this.pr, places: this.places });
       cx.notify();
       // Where it lives here: worktrees on its branch, their spaces and agents.
       const wts = await localWorktrees(this.repo.split("/").pop(), this.pr.headRefName).catch(() => []);
       const places = [];
       for (const w of wts) places.push({ ...w, spaces: spacesWith(w.root), agents: await agentsIn(w.root).catch(() => []) });
+      const keep = this.target && places.some((w) => w.agents.some((a) => a.address === this.target)) ? this.target : null;
       this.places = places;
-      this.target = places.flatMap((p) => p.agents)[0]?.address ?? null; // only ever an agent on this PR by default
+      this.target = keep ?? places.flatMap((p) => p.agents)[0]?.address ?? null; // only ever an agent on this PR by default
+      this.updating = false;
+      cache.set(prKey(this.url), { pr: this.pr, places });
       cx.notify();
     });
   }
@@ -237,7 +249,7 @@ export default class PrCard extends View {
       .child(h_flex().h(44).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).bg(t.chrome)
         .child(v_flex().flex_1().min_w(0)
           .child(div().truncate().font_semibold().text_size(13).child(pr.title))
-          .child(div().truncate().text_size(11).text_color(t.dim).child(`${this.repo}#${pr.number}`)))
+          .child(div().truncate().text_size(11).text_color(t.dim).child(`${this.repo}#${pr.number}${this.updating ? " · updating…" : ""}`)))
         .child(button("gh", "Open on GitHub", () => this.openUrl()))
         .child(button("x", "✕", () => this.close())))
       .child(div().flex_1().min_h(0).relative().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(body).child(Scrollbar.vertical("prcard-body").absolute().inset_0()))

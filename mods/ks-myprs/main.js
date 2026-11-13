@@ -6,6 +6,8 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { exec, theme, run, notify, openOverlay } from "herdr";
+import * as cache from "./lib/cache.js";
+import { fetchPr, prKey } from "./lib/github.js";
 
 const BLOCK = "my-prs", HEAD = 34, ROW = 50;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
@@ -44,6 +46,15 @@ export default class MyPrs extends View {
   init(_props, cx) {
     this.prs = []; this.error = null; this.loading = false; this.loaded = false; this.last = {};
     this.collapsed = load("collapsed", false);
+    // Stale while revalidate: the last list at once (no toasts for it), then a fresh one.
+    cx.spawn(async (cx) => {
+      const hit = await cache.get("myprs");
+      if (hit?.value && !this.loaded) {
+        this.prs = hit.value.map((pr) => ({ ...pr, s: stateOf(pr) }));
+        this.last = Object.fromEntries(this.prs.map((pr) => [pr.url, { ci: pr.s.ci, review: pr.s.review }]));
+        this.cached = true; this.fit(); cx.notify();
+      }
+    });
     this.refresh(cx);
     cx.timer.every(60000, (cx) => this.refresh(cx));
   }
@@ -60,12 +71,29 @@ export default class MyPrs extends View {
           const nodes = JSON.parse(r.stdout).data.search.nodes.filter((n) => n?.url);
           const prs = nodes.map((pr) => ({ ...pr, s: stateOf(pr) }))
             .sort((a, b) => a.s.urgent - b.s.urgent || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+          if (this.cached && !this.loaded) this.loaded = true; // the cached list counts as the first look for toasts
           this.announce(prs);
           this.prs = prs; this.error = null; this.loaded = true;
+          cache.set("myprs", nodes);
+          this.prefetch(prs);
         } catch (e) { this.error = "Couldn't read GitHub's answer"; }
       }
       this.loading = false; this.fit(); cx.notify();
     });
+  }
+
+  // Each PR's details into the cache in the background, so its window opens at once (only stale ones).
+  prefetch(prs) {
+    if (this.prefetching) return;
+    this.prefetching = true;
+    (async () => {
+      for (const pr of prs) {
+        const hit = await cache.get(prKey(pr.url));
+        if (cache.age(hit) < 120000) continue;
+        const got = await fetchPr(pr.repository.nameWithOwner, pr.number);
+        if (got.pr) await cache.set(prKey(pr.url), { pr: got.pr, places: hit?.value?.places ?? null });
+      }
+    })().finally(() => { this.prefetching = false; });
   }
 
   // Toasts for what changed since the last look (not on the first one).
