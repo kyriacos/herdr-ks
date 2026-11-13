@@ -230,6 +230,8 @@ whatever theme is showing.
 - **The window:** drag its title bar to move it, its corners to resize it; **Narrower** / **Wider**, **⚙** and
   **Exit** in its bar. Clicking the backdrop brings it back in front. Its size is remembered.
 - `cmd-shift-z` again (or Exit) closes it. Switching layouts closes it too.
+- In zen, service mode's pane keys (`h j k l`, splits, zoom, swap) do nothing: zen shows one terminal. `-` / `+` / `=`
+  resize and center it, and the key strip stays in front.
 
 ## Focus mode
 

@@ -88,7 +88,8 @@ async function openMode(id, keep = null) {
   if (!m || m.off) return;
   // The pane you're in, before the strip takes the keyboard.
   const f = keep ?? focused();
-  if (shared(OPEN)) closeOverlay(shared(OPEN));
+  // Reopening (keep) replaces the strip by its key: closing it first would hand the keyboard away.
+  if (!keep && shared(OPEN)) closeOverlay(shared(OPEN));
   const zoom = settings().zoom || 1, win = await windowSize();
   const room = win ? Math.floor(win.h / zoom) - 90 : 700;
   const height = stripHeight(c, room);
@@ -98,6 +99,8 @@ async function openMode(id, keep = null) {
   setShared(OPEN, openOverlay({ mod: "ks-keys", kind: "window", key: "ks-keys-mode", frame: "none", width: W, height, ...(at ? { at } : {}),
     props: { mode: id, pane: f?.pane ?? null, terminal: f?.terminal ?? null, flash: keep?.flash ?? null } }));
 }
+// The open strip's mode and pane, for ks-zen's "raise" (shared "ks-keys.live").
+const LIVE = "ks-keys.live";
 const zenTerminal = () => shared("ks-zen.state")?.win ? shared("ks-zen.state").terminal : null;
 
 const openEditor = () => openOverlay({ mod: "ks-keys", kind: "dialog", width: 860, height: 640, props: { editor: true } });
@@ -122,6 +125,8 @@ export default class Keys extends View {
       for (;;) {
         const command = await nextCommand();
         if (command.startsWith("enter:")) openMode(command.slice(6));
+        // ks-zen reopened its window over the strip: the strip comes back on top, same mode and pane.
+        else if (command === "raise") { const live = shared(LIVE); if (shared(OPEN) && live?.mode) openMode(live.mode, live); }
         else if (command === "editor") openEditor();
         cx.notify();
       }
@@ -148,11 +153,14 @@ export default class Keys extends View {
     this.handle = cx.focus_handle();
     this.handle.focus();
     cx.timer.after(200, () => this.handle.focus());
+    this.publish();
   }
+
+  publish() { setShared(LIVE, { mode: this.mode, pane: this.pane, terminal: this.terminal, flash: this.flash }); }
 
   async close() {
     const p = props() ?? {};
-    if (p.mode && shared(OPEN) === p.overlay) setShared(OPEN, null);
+    if (p.mode && shared(OPEN) === p.overlay) { setShared(OPEN, null); setShared(LIVE, null); }
   }
 
   // Closes the strip and gives the keyboard back: to zen's terminal when zen is open (else the same terminal in the
@@ -184,7 +192,7 @@ export default class Keys extends View {
     // Another mode: reopened at that mode's size.
     // Another mode: switched here, in the same strip (reopening it lost the keyboard).
     if (a.mode) {
-      if (km.usable(km.config(), a.mode)) { this.mode = a.mode; this.seq = []; this.count = ""; this.flash = null; }
+      if (km.usable(km.config(), a.mode)) { this.mode = a.mode; this.seq = []; this.count = ""; this.flash = null; this.publish(); }
       else this.flash = `${a.mode} mode is off`;
       cx.notify();
       return;
@@ -194,6 +202,11 @@ export default class Keys extends View {
     if (f?.pane) { this.pane = f.pane; this.terminal = f.terminal ?? this.terminal; }
     if (PANE_ARG.has(a.command) && this.pane && a.args.pane === undefined) a.args.pane = this.pane;
     if (TERMINAL_ARG.has(a.command) && this.terminal && a.args.terminal === undefined) a.args.terminal = this.terminal;
+    // In zen there's one terminal, in a window: pane commands would act on the tab under it (and move the keyboard
+    // to the same terminal there, at another size). They do nothing here.
+    if (zenTerminal() && (PANE_ARG.has(a.command) || a.command === "pane.go")) {
+      this.flash = "Not in zen (one terminal)"; cx.notify(); return;
+    }
     // A one-shot mode closes before running; a sticky one before a command that opens something to type into
     // (rename, palette, a confirm), so that gets the keyboard.
     const exits = !m.sticky || b.exit || km.EXITS.has(a.command);
@@ -217,13 +230,6 @@ export default class Keys extends View {
       // Commands like pane.go or zen's resize move the keyboard: a sticky mode takes it back, so it stays on until Esc.
       cx.timer.after(150, () => { if (!this.leaving) this.handle.focus(); });
       cx.timer.after(500, () => { if (!this.leaving) this.handle.focus(); });
-      // In zen a command can bring the zen window over the strip (it's the window opened or focused last): the
-      // strip opens itself again on top, same mode, same pane.
-      if (zenTerminal()) cx.timer.after(250, () => {
-        if (this.leaving) return;
-        this.leaving = true;
-        openMode(this.mode, { pane: this.pane, terminal: this.terminal, flash: this.flash });
-      });
     }
   }
 

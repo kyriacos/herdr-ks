@@ -61,10 +61,14 @@ function zenSpec(terminal, rect) {
   };
 }
 
+// Opens (or reopens, to move or resize) the zen window. A window opened last is on top, so when the key modes strip
+// is open (resizing zen from service mode) it is asked to come back on top, and it keeps the keyboard; otherwise the
+// zen terminal gets it.
 function showZen(terminal, rect) {
   const win = openOverlay(zenSpec(terminal, rect));
   setShared(ZEN, { ...(zen() ?? {}), terminal, rect, win });
-  run("pane.focus", { terminal });
+  if (shared("ks-keys.open")) run("ks-keys.raise");
+  else run("pane.focus", { terminal });
 }
 
 async function openZen() {
