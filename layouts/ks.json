@@ -13,6 +13,7 @@
     16
   ],
   "background": "canvas",
+  "preview": "layouts/ks.png",
   "terminal_opacity": 0,
   "terminal_padding": [
     14,
