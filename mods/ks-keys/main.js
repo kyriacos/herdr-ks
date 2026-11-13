@@ -82,11 +82,12 @@ function stripHeight(c, room) {
   return Math.min(room, PAD * 2 + 26 + 8 + rows * ROW + 8 + 18 + 6);
 }
 
-async function openMode(id) {
+// `keep` reopens the strip on top again (in zen, the zen window can come over it): the same pane and message.
+async function openMode(id, keep = null) {
   const c = km.config(), m = c.modes[id];
   if (!m || m.off) return;
   // The pane you're in, before the strip takes the keyboard.
-  const f = focused();
+  const f = keep ?? focused();
   if (shared(OPEN)) closeOverlay(shared(OPEN));
   const zoom = settings().zoom || 1, win = await windowSize();
   const room = win ? Math.floor(win.h / zoom) - 90 : 700;
@@ -95,8 +96,9 @@ async function openMode(id) {
   // A window, not a popup: Herdr closes popups on Esc itself, and that Esc could then reach the terminal behind
   // (Claude takes it as "interrupt" and redraws). A window leaves every key to this mod.
   setShared(OPEN, openOverlay({ mod: "ks-keys", kind: "window", key: "ks-keys-mode", frame: "none", width: W, height, ...(at ? { at } : {}),
-    props: { mode: id, pane: f?.pane ?? null, terminal: f?.terminal ?? null } }));
+    props: { mode: id, pane: f?.pane ?? null, terminal: f?.terminal ?? null, flash: keep?.flash ?? null } }));
 }
+const zenTerminal = () => shared("ks-zen.state")?.win ? shared("ks-zen.state").terminal : null;
 
 const openEditor = () => openOverlay({ mod: "ks-keys", kind: "dialog", width: 860, height: 640, props: { editor: true } });
 
@@ -139,7 +141,7 @@ export default class Keys extends View {
     this.mode = p.mode;
     this.pane = p.pane ?? null;         // the pane you were in (pane commands get it explicitly)
     this.terminal = p.terminal ?? null;
-    this.flash = null;
+    this.flash = p.flash ?? null;
     this.seq = [];    // the keys of a sequence typed so far ("g" of "g t")
     this.count = "";  // digits typed before a key (counts modes)
     this.leaving = false;
@@ -153,16 +155,26 @@ export default class Keys extends View {
     if (p.mode && shared(OPEN) === p.overlay) setShared(OPEN, null);
   }
 
-  leave() { this.leaving = true; closeOverlay(props().overlay); }
+  // Closes the strip and gives the keyboard back: to zen's terminal when zen is open (else the same terminal in the
+  // tab underneath would take it, at another size, and Claude redraws), else to the pane you were in. Not after a
+  // key that opened a dialog (`refocus` false): that has the keyboard.
+  leave(refocus = true) {
+    this.leaving = true;
+    closeOverlay(props().overlay);
+    if (!refocus) return;
+    const zt = zenTerminal();
+    if (zt) run("pane.focus", { terminal: zt });
+    else if (this.pane) run("pane.focus", { pane: this.pane });
+  }
 
   // Leaving on a key: the strip keeps the keyboard until that key is released, so neither it (Esc, i, q) nor its
   // release reaches the terminal behind. A fallback closes it anyway if the release is missed.
-  leaveOnRelease(cx) {
+  leaveOnRelease(cx, refocus = true) {
     if (this.leaving) return;
-    this.leaving = true; this.releaseWanted = true;
-    cx.timer.after(400, () => { if (this.releaseWanted) this.leave(); });
+    this.leaving = true; this.releaseWanted = true; this.refocus = refocus;
+    cx.timer.after(400, () => { if (this.releaseWanted) { this.releaseWanted = false; this.leave(this.refocus); } });
   }
-  keyUp() { if (this.releaseWanted) { this.releaseWanted = false; this.leave(); } }
+  keyUp() { if (this.releaseWanted) { this.releaseWanted = false; this.leave(this.refocus); } }
 
   // Runs a binding: its `count` action when a count was typed (# = the count), else `do`, repeated count times.
   act(b, cx, count = null) {
@@ -185,7 +197,7 @@ export default class Keys extends View {
     // A one-shot mode closes before running; a sticky one before a command that opens something to type into
     // (rename, palette, a confirm), so that gets the keyboard.
     const exits = !m.sticky || b.exit || km.EXITS.has(a.command);
-    if (exits) this.leaveOnRelease(cx);
+    if (exits) this.leaveOnRelease(cx, !(b.exit || km.EXITS.has(a.command)));
     const times = count && !b.count && !String(b.do).includes("#") ? Math.min(count, 50) : 1;
     for (let n = 0; n < times; n++) {
       if (a.send) {
@@ -205,6 +217,13 @@ export default class Keys extends View {
       // Commands like pane.go or zen's resize move the keyboard: a sticky mode takes it back, so it stays on until Esc.
       cx.timer.after(150, () => { if (!this.leaving) this.handle.focus(); });
       cx.timer.after(500, () => { if (!this.leaving) this.handle.focus(); });
+      // In zen a command can bring the zen window over the strip (it's the window opened or focused last): the
+      // strip opens itself again on top, same mode, same pane.
+      if (zenTerminal()) cx.timer.after(250, () => {
+        if (this.leaving) return;
+        this.leaving = true;
+        openMode(this.mode, { pane: this.pane, terminal: this.terminal, flash: this.flash });
+      });
     }
   }
 

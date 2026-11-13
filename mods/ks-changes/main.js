@@ -20,6 +20,9 @@ const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 let pins = load("pins", {});
 for (const [k, v] of Object.entries(pins)) if (typeof v === "string") pins[k] = { path: v }; // older form
 let pairing = load("pairing", true);
+// Matching repos pair a feature branch (backend and web on the same branch). Everything sits on main, so a default
+// branch never pairs.
+const DEFAULT_BRANCHES = ["main", "master", "develop", "trunk"];
 
 // Reads write nothing under .git (no index refresh or lock, no fsmonitor cookie):
 // the folder watch would see it, and every refresh would start the next one.
@@ -247,7 +250,7 @@ export default class Changes extends View {
           // Every checkout it works in is a section; matching repos on the same branch come after, once each.
           const sections = [];
           for (const root of where.roots) { try { sections.push(await readSection(root, null)); } catch {} }
-          if (pairing && sections[0]) {
+          if (pairing && sections[0] && !DEFAULT_BRANCHES.includes(sections[0].branch)) {
             for (const p of await partners(sections[0].main, sections[0].branch, sections[0].root)) {
               if (sections.some((s) => same(s.root, p))) continue;
               // A repo the agent already works in keeps the agent's checkout, not the matching one.
@@ -264,7 +267,7 @@ export default class Changes extends View {
         if (top.code !== 0) { this.sections = []; this.open = null; this.setLines([]); this.error = `Not a git repository: ${tilde(cwd)}`; return; }
         const first = await readSection(top.stdout.trim(), loc.on);
         const sections = [first];
-        if (pairing && !loc.on) {
+        if (pairing && !loc.on && !DEFAULT_BRANCHES.includes(first.branch)) {
           for (const p of await partners(first.main, first.branch, first.root)) {
             try { sections.push(await readSection(p, null)); } catch {}
           }
@@ -282,7 +285,8 @@ export default class Changes extends View {
     // there is, or it's the folder you're in yourself (following focus). Files and PRs read this list too.
     const loc = location(), idle = (x) => pref("hideIdleMain") && ["main", "master"].includes(x.branch) && !x.files.length;
     const kept = sections.filter((x, i) => !idle(x) || (i === 0 && loc.mode !== "agent"));
-    if (kept.length) sections = kept;
+    // All idle: just the first (where you or the agent are), not every one of them.
+    sections = kept.length ? kept : sections.slice(0, 1);
     if (this.scope !== "working") for (const s of sections) {
       s.branchInfo = await readBranch(s.root, s.on).catch(() => null);
       if (this.scope === "commits") s.commitList = s.branchInfo ? await readCommits(s.branchInfo).catch(() => []) : [];
