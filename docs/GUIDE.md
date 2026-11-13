@@ -178,8 +178,11 @@ Key chords as modes, in the self-contained `ks-keys` mod. Everything works as us
 then a strip at the bottom of the window shows that mode's keys and catches what you type next. It works the same
 in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 
-- **One-shot** (service): one key and out.
-- **Sticky** (vim, move, tabs, spaces): keys repeat until Esc (or a "leave" key such as `i` or `q`).
+- **Service mode** is sticky: once in, its keys keep working until Esc. A key that opens something to type into
+  (rename, new space, palette, the space picker, search, a close confirmation, the editors) leaves it first.
+- **Sticky** modes in general (service, vim, move, resize, tabs, spaces): keys repeat until Esc (or a "leave" key
+  such as `i` or `q`).
+- **One-shot** (tmux): one key, then back to the terminal.
 - **Counts** (vim, move): digits first repeat a key (`3l`) or fill it in (`3gt` goes to tab 3).
 - **Sequences**: a key can be several keys (`g t`, `d d`, `g g`); typing the start waits for the rest.
 - Pressing a mode's entry key again sends it on to the terminal.
@@ -189,7 +192,8 @@ in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 
 | Mode | Enter with | Keys |
 |---|---|---|
-| service (tmux style) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `z` zoom, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `Z` zen, `f` focus mode, `F` focus & zen settings, `-`/`=` smaller/larger, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor |
+| service (sticky) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `Z` zoom pane, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `z` zen, `f` focus mode, `F` focus & zen settings, `-`/`=` smaller/larger, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor, Esc out |
+| tmux (one key, off) | `ctrl-b` once switched on | `%` `"` split, `x` close pane, `z` zoom, `c` `n` `p` tabs, `&` close tab, `,` `$` rename, `(` `)` spaces, `o` next agent, `s` pick a space, `h j k l` go, `1`–`9`, `[` vim mode |
 | vim (normal mode for the window) | service `[` | `h j k l` pane, `H J K L` swap, `gt`/`gT` or `w`/`b` next/previous tab, `3gt` tab 3, `}`/`{` next/previous space, `3gs` space 3, `ctrl-d`/`ctrl-u` half page, `ctrl-f`/`ctrl-b` page, `ctrl-e`/`ctrl-y` line, `gg`/`G` top/bottom of the scrollback, `/` search, `s`/`v` split, `o` zoom, `dd` close pane, `dt` close tab, `t` new tab, `r` rename, `u` undo close, `zz` zen, `:` palette, `i`/`a`/`q`/Esc back to the terminal |
 | move (sticky) | service `m` | `h j k l` go, `H J K L` swap, `z` zoom, `s`/`v` split, `x` close, `n`/`p` tabs, `t` tab mode, `q`/Enter done |
 | resize (sticky) | service `r` | see [Resizing from the keyboard](#resizing-from-the-keyboard) |
@@ -216,7 +220,7 @@ entry keys into `keys.json` (and keeps them there, even after a reinstall); the 
 
 ## Zen mode
 
-`cmd-shift-z` (or service `Z`, vim `zz`, main menu **Zen mode**). The tab you're in, alone and centered in a
+`cmd-shift-z` (or service `z`, vim `zz`, main menu **Zen mode**). The tab you're in, alone and centered in a
 rounded frame; sidebar, tab bar, panels and status bar are gone. It uses your theme's own background, or an
 almost black one if you choose **Dark** in the settings. A slim bar above it shows the tab and space, with
 **Pane only** / **Whole tab** (zoom the focused pane, also `cmd-shift-enter`), **Narrower** / **Wider**, **⚙**
@@ -238,7 +242,7 @@ inside inactive panes keeps its brightness.
 
 ## Resizing from the keyboard
 
-Service `-` / `=` makes the side panel (or, in zen, the tab) smaller or larger, one step. Service `r` enters the
+In service mode, `-` / `=` make the side panel (or, in zen, the tab) smaller or larger, step by step. Service `r` enters the
 sticky **resize** mode, so you keep pressing:
 
 | Key | Does |

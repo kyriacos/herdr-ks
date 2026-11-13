@@ -1,6 +1,8 @@
 // ks-keys' keymap: modes you enter with a key, each a list of bindings. Self-contained: everything ks-keys knows
 // is here and in shared state "ks-keys.config" (edited in its editor, saved across restarts).
 //
+// A binding can also say exit: true (a sticky mode leaves before running it); commands that open something to
+// type into (EXITS below) always leave first.
 // A mode: { name, off (switched off: no entry key, not reachable), entry (a key in keys.json spelling, "" = only
 // from another mode), sticky (stays until Esc or a
 // "leave" key; otherwise one key and out), counts (digits before a key repeat it, or fill its `count` action, as in
@@ -19,7 +21,11 @@
 import { exec, appHome, shared, setShared } from "herdr";
 
 export const KEY = "ks-keys.config";
-export const VERSION = 4;
+
+// Commands that open a dialog, a picker or a search: a sticky mode leaves before them, so they get the keyboard.
+export const EXITS = new Set(["tab.rename", "space.rename", "app.palette", "mod.open", "terminal.search", "ks-keys.editor",
+  "ks-zen.settings", "ks-tabs.close", "ks-tabs.close-space", "space.new", "app.help"]);
+export const VERSION = 5;
 
 const go = [
   { key: "h", label: "Go left", do: "pane.go direction=left" },
@@ -44,9 +50,45 @@ export const DEFAULTS = {
   sections: ["layout:ks", "layout:ks-zen", "layout:ks-zen-dark"],
   editor: "cmd-k",
   modes: {
-    // One key after the prefix, as tmux.
+    // Service mode: entered with ctrl-;, its keys work until Esc (a key that opens something to type into, such as
+    // rename or the palette, leaves it first).
     service: {
-      name: "service", entry: "ctrl-;", sticky: false, counts: false, off: false,
+      name: "service", entry: "ctrl-;", sticky: true, counts: true, off: false,
+      bindings: [
+        { key: "%", label: "Split right", do: "pane.split direction=right" },
+        { key: "\"", label: "Split down", do: "pane.split direction=down" },
+        { key: "x", label: "Close pane", do: "ks-tabs.close-pane" },
+        { key: "Z", label: "Zoom pane", do: "pane.zoom" },
+        { key: "c", label: "New tab", do: "tab.new" },
+        { key: "n", label: "Next tab", do: "tab.next" },
+        { key: "p", label: "Previous tab", do: "tab.prev" },
+        { key: "&", label: "Close tab", do: "ks-tabs.close" },
+        { key: ",", label: "Rename tab", do: "tab.rename" },
+        { key: "$", label: "Rename space", do: "space.rename" },
+        { key: "(", label: "Previous space", do: "space.prev" },
+        { key: ")", label: "Next space", do: "space.next" },
+        { key: "o", label: "Next agent", do: "agent.next" },
+        { key: "s", label: "Pick a space", do: "mod.open name=picker" },
+        { key: "/", label: "Search terminal", do: "terminal.search" },
+        { key: ":", label: "Command palette", do: "app.palette" },
+        { key: "u", label: "Undo close", do: "ks-tabs.undo" },
+        { key: "z", label: "Zen mode", do: "ks-zen.toggle" },
+        { key: "f", label: "Focus mode", do: "ks-zen.focus" },
+        ...go, ...swap, ...tabNumbers,
+        { key: "F", label: "Focus & zen settings", do: "ks-zen.settings" },
+        { key: "r", label: "Resize mode (sticky)", do: "mode:resize" },
+        { key: "-", label: "Smaller (panel / zen)", do: "resize id=auto by=-32" },
+        { key: "=", label: "Larger (panel / zen)", do: "resize id=auto by=32" },
+        { key: "[", label: "Vim mode (normal)", do: "mode:vim" },
+        { key: "m", label: "Move mode (sticky)", do: "mode:move" },
+        { key: "t", label: "Tab mode (sticky)", do: "mode:tabs" },
+        { key: "S", label: "Space mode (sticky)", do: "mode:spaces" },
+        { key: "?", label: "Edit key modes", do: "ks-keys.editor" },
+      ],
+    },
+    // tmux: one key after the prefix, then back to the terminal. Off by default (ctrl-b stays the terminal's).
+    tmux: {
+      name: "tmux", entry: "ctrl-b", sticky: false, counts: false, off: true,
       bindings: [
         { key: "%", label: "Split right", do: "pane.split direction=right" },
         { key: "\"", label: "Split down", do: "pane.split direction=down" },
@@ -62,21 +104,8 @@ export const DEFAULTS = {
         { key: ")", label: "Next space", do: "space.next" },
         { key: "o", label: "Next agent", do: "agent.next" },
         { key: "s", label: "Pick a space", do: "mod.open name=picker" },
-        { key: "/", label: "Search terminal", do: "terminal.search" },
-        { key: ":", label: "Command palette", do: "app.palette" },
-        { key: "u", label: "Undo close", do: "ks-tabs.undo" },
-        { key: "Z", label: "Zen mode", do: "ks-zen.toggle" },
-        { key: "f", label: "Focus mode", do: "ks-zen.focus" },
-        ...go, ...swap, ...tabNumbers,
-        { key: "F", label: "Focus & zen settings", do: "ks-zen.settings" },
-        { key: "r", label: "Resize mode (sticky)", do: "mode:resize" },
-        { key: "-", label: "Smaller (panel / zen)", do: "resize id=auto by=-32" },
-        { key: "=", label: "Larger (panel / zen)", do: "resize id=auto by=32" },
         { key: "[", label: "Vim mode (normal)", do: "mode:vim" },
-        { key: "m", label: "Move mode (sticky)", do: "mode:move" },
-        { key: "t", label: "Tab mode (sticky)", do: "mode:tabs" },
-        { key: "S", label: "Space mode (sticky)", do: "mode:spaces" },
-        { key: "?", label: "Edit key modes", do: "ks-keys.editor" },
+        ...go, ...tabNumbers,
       ],
     },
     // A normal mode for the window: motions, counts and sequences, until i / Esc.
@@ -210,7 +239,14 @@ export const config = () => {
 // keys that none of its keys take. (The tmux mode of version 1 is the service mode now.)
 function upgrade(old) {
   const c = clone(old);
-  if (c.modes.tmux && !c.modes.service) { c.modes.service = { ...c.modes.tmux, name: "service" }; delete c.modes.tmux; }
+  if ((old.version ?? 0) < 2 && c.modes.tmux && !c.modes.service) { c.modes.service = { ...c.modes.tmux, name: "service" }; delete c.modes.tmux; }
+  // Version 5: service mode stays on until Esc, Z zooms and z is zen (when those keys are still the old defaults).
+  if ((old.version ?? 0) < 5 && c.modes.service) {
+    const sv = c.modes.service;
+    sv.sticky = true;
+    const z = sv.bindings.find((b) => b.key === "z"), Z = sv.bindings.find((b) => b.key === "Z");
+    if (z?.do === "pane.zoom" && Z?.do === "ks-zen.toggle") { z.key = "Z"; Z.key = "z"; }
+  }
   for (const [id, m] of Object.entries(DEFAULTS.modes)) {
     if (!c.modes[id]) { c.modes[id] = clone(m); continue; }
     const mine = c.modes[id];

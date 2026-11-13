@@ -167,8 +167,8 @@ bring it back as it was; **⌘⇧T** undoes the latest. Closing a space's last t
 After 30 s it closes for real (a close due while Herdr was quit happens at the next start). Scripts can use
 `herdr-app do ks-tabs.soft-close:<tab id>` and `ks-tabs.undo`.
 
-**Key modes** (`ks-keys`, self-contained). `ctrl-;` enters service mode (tmux style: `%` `"` split, `h j k l` go,
-`x` close, `z` zoom, …): a strip at the bottom shows its keys and takes one. `[` from there enters a vim normal mode
+**Key modes** (`ks-keys`, self-contained). `ctrl-;` enters service mode: a strip at the bottom shows its keys (`%` `"` split,
+`h j k l` go, `x` close, `Z` zoom, `z` zen, …) and they keep working until Esc. A one-shot tmux mode (`ctrl-b`) ships off. `[` from there enters a vim normal mode
 for the window (motions, counts, `gt`/`3gt`, `gg`/`G`, `ctrl-d`/`ctrl-u` scrolling, `dd`), until `i` or Esc. Sticky
 move, tab and space modes too. `cmd-k` opens the editor: switch modes off, change entry keys, edit every key.
 See the [guide](docs/GUIDE.md#key-modes).

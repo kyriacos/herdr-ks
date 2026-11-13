@@ -128,21 +128,23 @@ export default class Keys extends View {
       else { this.flash = `${a.mode} mode is off`; cx.notify(); }
       return;
     }
-    // A one-shot mode closes before running, so a dialog the command opens (rename) gets the keyboard.
-    if (!m.sticky) this.leave();
+    // A one-shot mode closes before running; a sticky one before a command that opens something to type into
+    // (rename, palette, a confirm), so that gets the keyboard.
+    const exits = !m.sticky || b.exit || km.EXITS.has(a.command);
+    if (exits) this.leave();
     const times = count && !b.count && !String(b.do).includes("#") ? Math.min(count, 50) : 1;
     for (let n = 0; n < times; n++) {
       if (a.send) {
         const t = focused()?.terminal;
         if (t) hc(["keys", t, ...a.send]);
-      } else if (a.command === "ks-keys.editor") { this.leave(); openEditor(); return; }
+      } else if (a.command === "ks-keys.editor") { openEditor(); return; }
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24);
       else if (a.command === "tab.shift") {
         const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;
         if (i >= 0) run("tab.move", { id: sp.tabs[i].id, index: Math.max(1, Math.min(sp.tabs.length, i + 1 + (a.args.by ?? 1))) });
       } else if (a.command) run(a.command, a.args);
     }
-    if (m.sticky) { this.flash = `${count ? count + "× " : ""}${b.label}`; cx.notify(); }
+    if (!exits) { this.flash = `${count ? count + "× " : ""}${b.label}`; cx.notify(); }
   }
 
   key(e, cx) {
