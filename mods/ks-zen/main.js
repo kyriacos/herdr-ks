@@ -48,11 +48,12 @@ function currentTerminal() {
 
 // The zen window's openOverlay spec: a title bar, the terminal, a bottom edge with grips. `rect` in window points;
 // width/height go to Herdr in mod pixels (points / zoom).
-function zenSpec(terminal, rect) {
+// Not moved (`moved` false): no `at`, so Herdr centers it exactly; after a drag, at its place.
+function zenSpec(terminal, rect, moved = false) {
   const z = settings().zoom || 1;
   return {
     mod: "ks-zen", kind: "window", key: "ks-zen", width: Math.round(rect.width / z), height: Math.round(rect.height / z),
-    at: { x: Math.round(rect.x), y: Math.round(rect.y) }, props: { bar: true },
+    ...(moved ? { at: { x: Math.round(rect.x), y: Math.round(rect.y) } } : {}), props: { bar: true },
     layout: { type: "column", children: [
       { type: "block", size: { px: 36 }, content: { mod: "ks-zen", props: { bar: true } } },
       { type: "block", content: { terminal } },
@@ -63,9 +64,9 @@ function zenSpec(terminal, rect) {
 
 // Opens (or reopens, to move or resize) the zen window. A window opened last is on top, so when the key modes strip
 // is open (resizing zen from service mode) it is asked to come back on top, and it keeps the keyboard.
-function showZen(terminal, rect) {
-  const win = openOverlay(zenSpec(terminal, rect));
-  setShared(ZEN, { ...(zen() ?? {}), terminal, rect, win });
+function showZen(terminal, rect, moved = zen()?.moved ?? false) {
+  const win = openOverlay(zenSpec(terminal, rect, moved));
+  setShared(ZEN, { ...(zen() ?? {}), terminal, rect, win, moved });
   // No pane.focus: focusing the terminal would switch back to its tab (Herdr prefers the pane). The window opened
   // last has the keyboard.
   if (shared("ks-keys.open")) run("ks-keys.raise");
@@ -122,7 +123,10 @@ async function resizeZen(dw, dh) {
   if (!st?.win) return;
   const { w, h } = await windowSize(), r = st.rect;
   const width = Math.max(420, Math.min(w, r.width + Math.round(w * dw) * 2)), height = Math.max(300, Math.min(h, r.height + Math.round(h * dh) * 2));
-  const rect = { width, height, x: Math.max(0, Math.round(r.x + (r.width - width) / 2)), y: Math.max(0, Math.round(r.y + (r.height - height) / 2)) };
+  // A centered window stays centered (Herdr centers it); a moved one grows around its middle.
+  const rect = st.moved
+    ? { width, height, x: Math.max(0, Math.round(r.x + (r.width - width) / 2)), y: Math.max(0, Math.round(r.y + (r.height - height) / 2)) }
+    : { width, height, x: Math.round((w - width) / 2), y: Math.round((h - height) / 2) };
   if (dw) setShared(PREFS, { ...prefs(), share: Math.round((width / w) * 100) / 100 });
   showZen(st.terminal, rect);
 }
@@ -136,7 +140,7 @@ async function resetZen() {
   const rect = { width: Math.round(w * share), height: Math.round(h * Math.min(0.92, share + 0.1)) };
   rect.x = Math.round((w - rect.width) / 2); rect.y = Math.round((h - rect.height) / 2);
   setShared(PREFS, { ...prefs(), share });
-  showZen(st.terminal, rect);
+  showZen(st.terminal, rect, false);
 }
 
 function toggleFocus() {
@@ -154,7 +158,8 @@ export default class Zen extends View {
     if (p.closing || p.placeholder) return;
     if (p.backdrop || p.bar || p.foot) {
       // A window reopened by ks-resize carries its new rect.
-      if (p.rect && zen() && JSON.stringify(p.rect) !== JSON.stringify(zen().rect)) setShared(ZEN, { ...zen(), rect: p.rect });
+      // A corner drag placed it: from now on it keeps its place.
+      if (p.rect && zen() && JSON.stringify(p.rect) !== JSON.stringify(zen().rect)) setShared(ZEN, { ...zen(), rect: p.rect, moved: true });
       return;
     }
     // The layout copy starts with the layout, and a layout switch closes windows: zen isn't open any more.
@@ -183,7 +188,7 @@ export default class Zen extends View {
     const st = zen();
     if (!st?.win) return;
     openOverlay({ mod: "ks-resize", kind: "window", frame: "none", key: "ks-resize", width: 1, height: 1, at: { x: 0, y: 0 },
-      props: { rect: st.rect, corner, zoom: settings().zoom || 1, reopen: zenSpec(st.terminal, st.rect) } });
+      props: { rect: st.rect, corner, zoom: settings().zoom || 1, reopen: zenSpec(st.terminal, st.rect, true) } });
   }
   grips(t, corners) {
     return corners.map((corner) => div().id(`zgrip-${corner}`).absolute().size(14)
@@ -220,9 +225,17 @@ export default class Zen extends View {
       .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop).on_click((_e, cx) => { act(); cx.notify(); }).child(label);
     // Unhandled presses on the bar drag the window; after a move, the bar's new place updates the rect.
     return h_flex().id("zen-bar").size_full().relative().px(10).gap(4).items_center().bg(t.chrome).border_b(1).border_color(t.border)
+      // A drag moves the window: how far the bar moved (not where it is, whose coordinates may differ from the
+      // window's) is added to the rect, and the window keeps its place from then on.
       .on_mouse_move((ev) => {
         const b = ev.bounds, r = st?.rect;
-        if (b && r && (Math.abs(b.x - r.x) > 2 || Math.abs(b.y - r.y) > 2)) setShared(ZEN, { ...st, rect: { ...r, x: Math.round(b.x), y: Math.round(b.y) } });
+        if (!b || !r) return;
+        if (!this.barAt) { this.barAt = { x: b.x, y: b.y }; return; }
+        const dx = b.x - this.barAt.x, dy = b.y - this.barAt.y;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+          this.barAt = { x: b.x, y: b.y };
+          setShared(ZEN, { ...st, rect: { ...r, x: Math.round(r.x + dx), y: Math.round(r.y + dy) }, moved: true });
+        }
       })
       .child(div().px(7).h(20).flex().items_center().rounded(5).bg(t.accent).text_color(t.solid_foreground ?? t.background).text_size(10.5).font_semibold().child("ZEN"))
       .child(div().pl(6).min_w(0).truncate().text_size(12).text_color(t.foreground).child(tab?.name && !/^tb\d+$/.test(tab.name) ? tab.name : "tab"))
