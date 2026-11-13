@@ -16,18 +16,36 @@ const inside = (p, dir) => Boolean(p && dir && (same(p, dir) || p.toLowerCase().
 const ago = (iso) => { const s = (Date.now() - Date.parse(iso)) / 1000; return s < 3600 ? `${Math.max(1, Math.round(s / 60))}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`; };
 
 
-// Checkouts of `repoName` on `branch`: from the repos next to the session's worktrees, else from ~/code.
-async function localWorktrees(repoName, branch) {
+// Every checkout of `repoName` (main checkout first): from the repos next to the session's worktrees, else from ~/code.
+async function repoCheckouts(repoName) {
   const session = Object.values(shared("ks.session") ?? {}).flat().filter((w) => !w.on).map((w) => w.root);
   let list = session.length ? await candidates(session, null).catch(() => []) : [];
   if (!list.some((c) => same(c.repo, repoName))) {
-    const home = (await exec("sh", ["-c", 'printf %s "$HOME"'])).stdout;
-    const r = await exec("sh", ["-c", 'for d in "$1"/*/ "$1"/*/*/; do [ -d "$d.git" ] && [ "$(basename "$d")" = "$2" ] && printf "%s\\n" "${d%/}"; done', "sh", `${home}/code`, repoName]).catch(() => null);
+    const r = await exec("sh", ["-c", 'for d in "$1"/*/ "$1"/*/*/; do [ -d "$d.git" ] && [ "$(basename "$d")" = "$2" ] && printf "%s\\n" "${d%/}"; done', "sh", `${await home()}/code`, repoName]).catch(() => null);
     const roots = (r?.stdout ?? "").split("\n").filter(Boolean);
     if (roots.length) list = [...list, ...await candidates(roots, null).catch(() => [])];
   }
   const seen = new Set();
-  return list.filter((c) => same(c.repo, repoName) && c.branch === branch && !seen.has(c.root.toLowerCase()) && seen.add(c.root.toLowerCase()));
+  return list.filter((c) => same(c.repo, repoName) && !seen.has(c.root.toLowerCase()) && seen.add(c.root.toLowerCase()));
+}
+const home = async () => (await exec("sh", ["-c", 'printf %s "$HOME"'])).stdout;
+
+// Checkouts of `repoName` on `branch`.
+async function localWorktrees(repoName, branch) {
+  return (await repoCheckouts(repoName)).filter((c) => c.branch === branch);
+}
+
+// A worktree of the PR's branch where the new-worktree dialog would put it (~/code/worktrees/<repo>/<branch>),
+// from the repo's main checkout: the local branch if there is one, else the remote's. { root } or { error }.
+async function makeWorktree(repoName, branch) {
+  const main = (await repoCheckouts(repoName))[0]?.root;
+  if (!main) return { error: `No local clone of ${repoName} under ~/code.` };
+  const path = `${await home()}/code/worktrees/${repoName}/${branch}`;
+  const g = (args) => exec("git", ["-C", main, ...args]).catch((e) => ({ code: 1, stderr: String(e) }));
+  await g(["fetch", "origin", branch]);
+  const local = (await g(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`])).code === 0;
+  const r = await g(local ? ["worktree", "add", path, branch] : ["worktree", "add", "-b", branch, path, `origin/${branch}`]);
+  return r.code === 0 ? { root: path } : { error: (r.stderr || r.stdout || "git worktree add failed").trim().slice(0, 300) };
 }
 
 // Agents working in `root`: Claude Code agents by what they touched (agent_where.py, as the Changes panel's
@@ -119,14 +137,30 @@ export default class PrCard extends View {
         .child(div().text_size(10.5).text_color(onPr ? t.ansi2 : t.dim).child(note)));
   }
 
-  // No agent on this PR: Claude Code in its worktree's space, with the message (and the PR) as its first task.
-  startAgent(cx) {
-    const w = (this.places ?? [])[0], text = this.msg.value().trim();
-    if (!w || !text) return;
-    const pr = this.pr;
-    run("tab.new", { name: `PR #${pr.number}`, space: w.spaces[0]?.id, folder: w.root, argv: ["claude"],
-      task: `About ${this.repo}#${pr.number} "${pr.title}" (branch ${pr.headRefName} → ${pr.baseRefName}, ${this.url}):\n\n${text}` });
-    this.msg.set_value(""); notify({ title: "Started an agent on the PR", body: `${this.repo}#${pr.number} in ${w.root.split("/").pop()}`, level: "success", timeout: 3000 });
+  // No agent on this PR: start Claude Code with the message (and the PR) as its first task: in a new tab of the
+  // space showing its worktree, else in a new space there; with no local checkout, a new worktree first.
+  async startAgent(cx) {
+    const text = this.msg.value().trim(), pr = this.pr;
+    if (!text || this.sending || !pr) return;
+    this.sending = true; cx.notify();
+    const repoName = this.repo.split("/").pop();
+    let w = (this.places ?? [])[0];
+    if (!w) {
+      const made = await makeWorktree(repoName, pr.headRefName);
+      if (made.error) {
+        this.sending = false; cx.notify();
+        return notify({ title: "Couldn't make a worktree for the PR", body: made.error, level: "error", timeout: 6000 });
+      }
+      w = { root: made.root, spaces: [], agents: [] };
+    }
+    const task = `About ${this.repo}#${pr.number} "${pr.title}" (branch ${pr.headRefName} → ${pr.baseRefName}, ${this.url}):\n\n${text}`;
+    if (w.spaces[0]) run("tab.new", { name: `PR #${pr.number}`, space: w.spaces[0].id, folder: w.root, argv: ["claude"], task });
+    else run("space.new", { name: `${repoName} #${pr.number}`, folder: w.root, argv: ["claude"], task });
+    this.sending = false;
+    this.msg.set_value("");
+    notify({ title: "Started a session on the PR", body: `${this.repo}#${pr.number} in ${w.root.split("/").pop()}${w.spaces[0] ? "" : " (new space)"}`, level: "success", timeout: 4000 });
+    // Look again in a moment, so the new agent shows as the PR's.
+    cx.timer.after(6000, (cx) => this.load(cx));
     cx.notify();
   }
   async openUrl() { await exec("open", [this.url]).catch(() => null); }
@@ -193,6 +227,12 @@ export default class PrCard extends View {
     const others = agents().filter((a) => !here.has(a.address)).map((a) => ({ address: a.address, title: `${a.space_name} / ${a.title || a.address}` }));
     const target = onPr.find((a) => a.address === this.target) ?? others.find((a) => a.address === this.target) ?? null;
     const targetOnPr = Boolean(target && here.has(target.address));
+    // With no agent on the PR, sending starts one (startAgent): where, in words.
+    const noAgent = this.places !== null && !onPr.length, w0 = (this.places ?? [])[0];
+    const startWhere = !noAgent ? "" : w0
+      ? `Send starts Claude Code in ${w0.root.split("/").pop()} (${w0.spaces[0] ? `a new tab in space ${w0.spaces[0].name}` : "a new space"}), with your message as its first task.`
+      : `No local checkout of ${pr.headRefName}: send makes a worktree in ~/code/worktrees/${this.repo.split("/").pop()}/${pr.headRefName}, opens a space there and starts Claude Code with your message.`;
+    const starting = !target && noAgent;
 
     const body = v_flex().id("prcard-body").absolute().inset_0().overflow_y_scroll().px(14).pb(14)
       .child(h_flex().pt(10).gap(5).flex_wrap().items_center()
@@ -229,10 +269,8 @@ export default class PrCard extends View {
       // The agent(s) on this PR: its worktree is theirs.
       .when(this.places !== null && onPr.length > 0, (e) => e.children(onPr.map((a) => this.agentRow(a, true, `on this PR · in ${a.where}`, t))))
       .when(this.places !== null && !onPr.length, (e) => e.child(v_flex().gap(4).p(8).rounded(8).border_1().border_color(t.border).bg(t.chrome)
-        .child(div().text_size(11.5).text_color(t.muted).child(`No agent is working on this PR${(this.places ?? []).length ? "" : " (no local checkout of its branch)"}.`))
-        .when((this.places ?? []).length > 0, (e) => e.child(h_flex().gap(6).items_center()
-          .child(div().flex_1().text_size(11).text_color(t.dim).child(`Start Claude Code in ${this.places[0].root.split("/").pop()}, with the message below as its first task.`))
-          .child(button("start-agent", "Start an agent here", (cx) => this.startAgent(cx), false, Boolean(this.msg.value().trim())))))))
+        .child(div().text_size(11.5).text_color(t.muted).child("No agent is working on this PR."))
+        .child(div().text_size(11).text_color(t.dim).child(startWhere))))
       // Everyone else, apart and folded, so a message can't go there by accident.
       .when(others.length > 0, (e) => e.child(div().id("others-toggle").pt(6).text_size(11).text_color(t.dim).cursor_pointer()
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { this.showOthers = !this.showOthers; cx.notify(); })
@@ -242,8 +280,9 @@ export default class PrCard extends View {
         .child(Textarea.new(this.msg).w_full().text_size(12.5).text_color(t.foreground)))
       .child(h_flex().pt(6).gap(8).items_center()
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(!target ? t.dim : targetOnPr ? t.muted : t.blocked)
-          .child(!target ? "Pick the agent to send to" : targetOnPr ? `To ${target.title}, the agent on this PR` : `To ${target.title}, which is not working on this PR`))
-        .child(button("send", this.sending ? "Sending…" : !target ? "Send" : targetOnPr ? "Send to the PR's agent" : "Send anyway", (cx) => this.send(cx), true, Boolean(target) && !this.sending)));
+          .child(starting ? "Starts a new Claude Code session on this PR" : !target ? (this.places === null ? "Finding the agent…" : "Pick the agent to send to") : targetOnPr ? `To ${target.title}, the agent on this PR` : `To ${target.title}, which is not working on this PR`))
+        .child(button("send", this.sending ? (starting ? "Starting…" : "Sending…") : starting ? (w0 ? "Start a session & send" : "Create worktree, start & send") : !target ? "Send" : targetOnPr ? "Send to the PR's agent" : "Send anyway",
+          (cx) => (starting ? this.startAgent(cx) : this.send(cx)), true, (Boolean(target) || starting) && !this.sending && Boolean(this.msg.value().trim()))));
 
     return root
       .child(h_flex().h(44).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).bg(t.chrome)

@@ -205,5 +205,15 @@
       ]
     }
   ],
-  "ui_font": "JetBrains Mono"
+  "ui_font": "JetBrains Mono",
+  "floating": [
+    {
+      "id": "ks-keys",
+      "content": {
+        "mod": "ks-keys"
+      },
+      "edge": "bottom",
+      "align": "center"
+    }
+  ]
 }

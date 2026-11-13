@@ -5,6 +5,8 @@ layout (v0.10.0, Apache-2.0, see `LICENSE` and `THIRD_PARTY_NOTICES.md`) with ch
 worktrees and two repos. It is a separate layout with its own `ks-*` mods: an installed Herdr-Roundup
 stays untouched next to it.
 
+**[Read the guide](docs/GUIDE.md)** for a tour of everything it does and how to use it.
+
 ## What it does
 
 **The window.** A sidebar on the left with your spaces (one per project or worktree) and below it every
@@ -118,8 +120,10 @@ first); **reviews** and who's been asked; **where it lives here**: the local wor
 (its diff against its base); **Open on GitHub**; and **Message the agent**, sent right away with the PR (repo, number, title, branch,
 link) as context. The agent working on the PR (in one of its worktrees) is named as such and preselected;
 other agents are kept apart, folded under "Other agents, not working on this PR", and picking one turns the
-button into **Send anyway** with a warning. With no agent on the PR, **Start an agent here** opens Claude Code
-in its worktree with the message as its first task.
+button into **Send anyway** with a warning. With no agent on the PR, the button becomes **Start a session &
+send**: Claude Code starts in the PR's worktree (a new tab in the space showing it, else a new space) with the
+message as its first task; with no local checkout, **Create worktree, start & send** makes the worktree first
+(`~/code/worktrees/<repo>/<branch>`, from the local branch or `origin`).
 
 **PRs panel** (`cmd-shift-u`, or **PRs** next to Files and Changes). The open pull requests of this
 session's worktrees: the ones the Changes panel shows, so while it follows an agent, every worktree the agent
@@ -162,6 +166,12 @@ disappears from the tab bar and the sidebar, and a toast and a **↶ Undo** chip
 bring it back as it was; **⌘⇧T** undoes the latest. Closing a space's last tab closes the space the same way.
 After 30 s it closes for real (a close due while Herdr was quit happens at the next start). Scripts can use
 `herdr-app do ks-tabs.soft-close:<tab id>` and `ks-tabs.undo`.
+
+**Key modes** (`ks-keys`, self-contained). Key chords as modes: `ctrl-b` enters tmux mode (`%` `"` split,
+`h j k l` go, `H J K L` swap, `z` zoom, `c` `n` `p` tabs, `x` close, …); a strip at the bottom shows the mode's keys
+and catches the next one. Sticky modes (move, tabs, spaces) repeat keys until Esc. A vim mode is shipped (off;
+give it `ctrl-w`). `cmd-k` (or `?`) opens the editor: add modes, set entry keys, make them sticky, edit every key
+and what it runs; entry keys are written into `keys.json` for you. Full list in the [guide](docs/GUIDE.md#key-modes).
 
 ## Set up
 
@@ -220,6 +230,8 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | Corner resizing of floating review windows (a full-app surface follows the drag, then the window reopens at the new size) | `mods/ks-resize/` (new), `mods/ks-review/main.js` |
 | Resume Claude sessions after a reboot: recorded per terminal, a card of the last session inside the terminal, ↻ Resume in the tab and the pane header | `mods/ks-tabs/main.js`, `session_of.py`, `last_session.py`, `mods/ks-pane/main.js`, `shared/sessions.js` |
 | Closing tabs and spaces asks, then waits 30 s with Undo (toast, tab bar chip, ⌘⇧T) | `shared/closing.js`, `mods/ks-tabs/` (`close.js`, `main.js`), `mods/ks-pane/close.js`, `mods/ks-confirm/`, `mods/ks-menu/`, `mods/ks-spaces/` |
+| Key modes: tmux / vim / sticky modes with a which-key strip, an editor, and keys.json kept in step | `mods/ks-keys/` (new), layout `floating` |
+| PR window: Start a session & send (and Create worktree) when no agent is on the PR | `mods/ks-prcard/main.js` |
 
 ## Keys (only while this layout shows)
 
@@ -232,6 +244,8 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | cmd-shift-m | Show / hide My PRs in the sidebar |
 | cmd-w / cmd-shift-w | Close tab / pane (a tab asks, then can be undone for 30 s) |
 | cmd-shift-t | Undo the last close (tab or space) |
+| ctrl-b | tmux key mode (configurable) |
+| cmd-k | Key modes editor (configurable) |
 
 ## Upstream updates
 

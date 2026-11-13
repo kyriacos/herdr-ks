@@ -40,6 +40,7 @@ export default class Tabs extends View {
         else if (command === "close-pane" && focused()?.pane) closePane(focused().pane);
         // ks: undo a close (⌘⇧T: the latest; the toast: `undo:<key>`), lib/closing.js.
         else if (command.startsWith("soft-close:")) closing.closeTab(command.slice("soft-close:".length));
+        else if (command === "close-space") { const sp = spaces().find(s => s.active); if (sp) closing.askSpace(sp.id); }
         else if (command === "undo") closing.undo(null);
         else if (command.startsWith("undo:")) closing.undo(command.slice("undo:".length));
         // Local change: panel:files / panel:changes (cmd-shift-e / cmd-shift-g) toggle the side panel like its buttons.
