@@ -5,7 +5,6 @@
     "version": "0.1.14"
   },
   "version": "0.10.0",
-  "preview": "layouts/ks.svg",
   "terminal_menu": "ks-pane",
   "type": "row",
   "titlebar": "none",

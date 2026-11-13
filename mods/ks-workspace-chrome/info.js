@@ -21,7 +21,7 @@ export function info(t, { installed, herdr, checking, error = get("error"), live
   const failed = live && !checking && error && !room;
   const at = live && checking ? "checking…" : failed ? "failed" : checked ? when(checked, Date.now()) : "–";
   return v_flex().gap(3).text_size(12)
-    .child(div().mb(3).font_semibold().text_size(13).line_height("16px").text_color(t.foreground).child("Herdr Roundup"))
+    .child(div().mb(3).font_semibold().text_size(13).line_height("16px").text_color(t.foreground).child("herdr-ks"))
     .child(kv("Installed", installed ?? "–"))
     .when(Boolean(herdr), el => el.child(kv("Based on", `Herdr ${herdr}`)))
     .child(kv("Latest", latest ? `${latest.version}${skipped ? " · skipped" : ""}` : "–",

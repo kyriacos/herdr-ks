@@ -13,7 +13,7 @@ const stripOpen = () => Boolean(shared("ks-keys.open"));
 
 // Herdr handed this panel the keyboard (pane.go): mark it, and focus it unless the key strip is open.
 export function gotFocus(view, cx, mod) {
-  if (shared(MARK)?.mod !== mod) setShared(MARK, { mod });
+  setShared(MARK, { mod, at: Date.now() });
   if (!stripOpen()) view.handle?.focus();
   cx.notify();
 }
@@ -36,8 +36,8 @@ export function watchFocus(view, cx, mod, extra = null) {
   let was = false;
   cx.timer.every(200, () => {
     const real = Boolean(view.handle?.is_focused() || (extra && extra()));
-    if (!real && !stripOpen() && shared(MARK)?.mod === mod && view.__unfocusedTicks++ > 2) setShared(MARK, null);
     if (real || stripOpen()) view.__unfocusedTicks = 0;
+    else if (shared(MARK)?.mod === mod) { view.__unfocusedTicks = (view.__unfocusedTicks ?? 0) + 1; if (view.__unfocusedTicks > 3) setShared(MARK, null); }
     const now = focusedNow(view, mod, extra);
     if (now !== was) { was = now; cx.notify(); }
   });

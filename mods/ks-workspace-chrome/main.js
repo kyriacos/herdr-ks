@@ -134,7 +134,7 @@ export default class WorkspaceChrome extends View {
   card(t, installed) {
     return v_flex().mt(4).w(236).p(12).rounded(10).border(1).border_color(t.border).bg(t.popover).shadow_lg()
       .child(info(t, { installed, herdr: herdrVersion(this.file), checking: this.checking }))
-      .child(div().mt(9).pt(7).border_t(1).border_color(t.border).text_size(11.5).text_color(available(installed) ? t.accent : t.dim).child("Click the Roundup title for update options"));
+      .child(div().mt(9).pt(7).border_t(1).border_color(t.border).text_size(11.5).text_color(available(installed) ? t.accent : t.dim).child("Click the title for upstream Roundup update options"));
   }
   brand(t, sidebar, pad) {
     const installed = this.file?.version, release = available(installed);
@@ -150,7 +150,7 @@ export default class WorkspaceChrome extends View {
         .when(Boolean(release), el => el.child(div().absolute().top(-3).right(-3).size(10).rounded_full().border(2).border_color(t.chrome).bg(t.accent))))
       // The name keeps its width; a longer sub line ("0.10.0-beta.1 available", 117 px to the name's 96) is cut where
       // the row has no room for it (brand.js's nameRoom), and doesn't run under the search button.
-      .child(v_flex().min_w(0).child(div().whitespace_nowrap().font_semibold().text_size(13).line_height("16px").text_color(t.foreground).child("Herdr Roundup"))
+      .child(v_flex().min_w(0).child(div().whitespace_nowrap().font_semibold().text_size(13).line_height("16px").text_color(t.foreground).child("herdr-ks"))
         .when(Boolean(sub), el => el.child(div().when(room !== null, el => el.max_w(room)).min_w(0).truncate().text_size(11).line_height("14px").text_color(release ? t.accent : t.dim).child(sub))));
     // Content only while hovered, not right after a click and never over the open menu: the card's layer is above the
     // popup, and the pointer can come back to the name while the menu is open.

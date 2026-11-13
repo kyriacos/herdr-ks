@@ -201,6 +201,17 @@ export default class Keys extends View {
         // ks-zen reopened its window over the strip: the strip comes back on top, same mode and pane.
         else if (command === "raise") { const live = shared(LIVE); if (shared(OPEN) && live?.mode) openMode(live.mode, live); }
         else if (command === "editor") openEditor();
+        // The strip closed after a move: the keyboard goes where Herdr's focus is (a pane), or to the side panel
+        // you moved to.
+        else if (command === "refocus" || command.startsWith("refocus:")) {
+          const panel = command.startsWith("refocus:") ? command.slice(8) : null;
+          cx.timer.after(80, () => {
+            if (shared(OPEN) || zenTerminal()) return;
+            if (panel) { run(`${panel}.focus`); return; }
+            const f = focused();
+            if (f?.pane) run("pane.focus", { pane: f.pane });
+          });
+        }
         // How long the strip waits before it shows (ms), from the settings panel.
         else if (command.startsWith("delay:")) { const c = km.config(); c.delay = Math.max(0, Number(command.slice(6)) || 0); km.save(c); }
         // "Vim keys" on or off (the settings panel's switch): ctrl-w window commands, ctrl-\\ vim normal mode.
@@ -233,6 +244,7 @@ export default class Keys extends View {
     this.seq = [];    // the keys of a sequence typed so far ("g" of "g t")
     this.count = "";  // digits typed before a key (counts modes)
     this.leaving = false;
+    this.openedAt = Date.now(); // a panel reached after this gets the keyboard when the strip closes
     // Which-key style: the strip catches keys at once but shows only once you pause for the delay (shared config,
     // default 1 s); every key typed meanwhile starts the wait again, so a combo never shows it. A message shows it.
     this.shown = Boolean(p.flash) || Boolean(p.shown) || (km.config().delay ?? 1000) <= 0;
@@ -262,11 +274,14 @@ export default class Keys extends View {
     this.leaving = true;
     closeOverlay(props().overlay);
     // You moved onto a side panel while the strip had the keyboard: the panel gets it now.
-    const panel = shared(PANEL)?.mod;
-    if (panel) { if (shared(OPEN) === props().overlay) setShared(OPEN, null); run(`${panel}.focus`); }
-    if (!refocus) return;
-    // Closing the window gives the keyboard back to what had it: the pane, or in zen the zen window. No pane.focus:
-    // in zen it would switch to the terminal's tab instead of zen.
+    const mark = shared(PANEL), panel = mark?.at >= (this.openedAt ?? Infinity) ? mark.mod : null;
+    if (shared(OPEN) === props().overlay) setShared(OPEN, null);
+    // Closing the window gives the keyboard back to what had it before: after a move that's the old pane while
+    // Herdr's focus is on the new one, and neither shows the focus border. The floating copy (this window is gone
+    // by then) puts the keyboard where Herdr's focus is, a moment later. Not in zen (pane.focus would switch to
+    // the terminal's tab instead of zen), nor after a key that opened something to type into.
+    if (panel) run(`ks-keys.refocus:${panel}`);
+    else if (refocus && this.moved && !zenTerminal()) run("ks-keys.refocus");
   }
 
   // Leaving on a key: the strip keeps the keyboard until that key is released, so neither it (Esc, i, q) nor its
@@ -309,6 +324,7 @@ export default class Keys extends View {
     }
     // A one-shot mode closes before running; a sticky one before a command that opens something to type into
     // (rename, palette, a confirm), so that gets the keyboard.
+    if (a.command && !/^resize\b/.test(a.command)) this.moved = true;
     const exits = !m.sticky || b.exit || km.EXITS.has(a.command);
     if (exits) this.leaveOnRelease(cx, !(b.exit || km.EXITS.has(a.command)));
     const times = count && !b.count && !String(b.do).includes("#") ? Math.min(count, 50) : 1;
