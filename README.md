@@ -142,6 +142,15 @@ it, **Auto** to follow the Changes panel / the focused terminal again. Remembere
 answer at once and refresh it in the background ("updating…"); My PRs also pre-fetches every PR's details
 after each refresh, so a PR window opens instantly. Delete the folder to start over.
 
+**Resume after a reboot.** A reboot (or logout) brings each terminal back as a plain shell in its last
+folder; Herdr never re-runs Claude. So the tab bar records, every 20 s, which Claude Code session each agent
+terminal runs (its id, the folder Claude was started in, and its title: your `/rename`, else Claude's own title,
+else the first prompt), kept in Herdr's shared state so it survives the restart. When a terminal's agent is
+gone and it shows a shell, its **tab** gets a **↻ Resume** chip (hover: which session, how long ago) and its
+**pane header** a **↻ Resume <title> · 3h ago** button, both typing `cd <folder> && claude --resume <id>`
+into that shell. On hover the header also has **Pick…** (Claude's own list of that folder's sessions) and
+**✕** (forget it). Records of closed tabs go after a week.
+
 ## Set up
 
 1. Install Herdr App from [herdr.dev](https://herdr.dev) and start it once (it creates `~/.config/herdr-app`).
@@ -197,6 +206,7 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | My PRs in the sidebar: your open PRs with CI, review and merge state, foldable, hideable | `mods/ks-myprs/` (new), layout `my-prs` block |
 | PR window: details, checks, reviews, its worktree / space / agent, message the agent | `mods/ks-prcard/` (new) |
 | Corner resizing of floating review windows (a full-app surface follows the drag, then the window reopens at the new size) | `mods/ks-resize/` (new), `mods/ks-review/main.js` |
+| Resume Claude sessions after a reboot: recorded per terminal, ↻ Resume in the tab and the pane header | `mods/ks-tabs/main.js`, `mods/ks-tabs/session_of.py`, `mods/ks-pane/main.js`, `shared/sessions.js` |
 
 ## Keys (only while this layout shows)
 

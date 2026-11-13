@@ -22,6 +22,7 @@ import { panes, terminals, props, run, theme, settings, home, hc, shared, setSha
 import { closePane, givenName, fallbackName, NAME_LABEL, NAMES } from "./close.js";
 import { menuView, shortcut } from "./menu.js";
 import { folder, paneId, cutName } from "./header-text.js";
+import * as sessions from "./lib/sessions.js";
 
 function icon(p, size, color) {
   if (!p?.icon) return null;
@@ -96,6 +97,25 @@ export default class Pane extends View {
       .child(svg(`mods/ks-pane/${icon}.svg`).size(14));
   }
 
+  // "↻ Resume <title> · 3h ago": types `claude --resume <id>` (in the folder Claude was started in) into this
+  // shell. On hover also: pick another session from Claude's list, or forget this one.
+  resumePill(t, p, rec) {
+    const small = (id, text, tip, act) => div().id(id).flex_none().h(18).px(6).flex().items_center().rounded(5)
+      .text_size(10.5).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip)
+      .on_click((_e, cx) => { cx.stop_propagation(); act(); }).child(text);
+    return h_flex().flex_none().gap(4).items_center()
+      .child(h_flex().id(`ph-resume-${p.pane}`).flex_none().h(20).px(7).gap(6).items_center().rounded(5)
+        .bg(t.accent + "22").text_size(11).text_color(t.accent).hover((s) => s.bg(t.accent + "40"))
+        .tooltip(`claude --resume ${rec.sessionId}\nin ${folder(rec.cwd, home())}`)
+        .on_click((_e, cx) => { cx.stop_propagation(); sessions.resume(p.terminal, rec); })
+        .child(div().font_semibold().child("↻ Resume"))
+        .child(div().max_w(240).truncate().child(sessions.label(rec)))
+        .child(div().text_color(t.dim).child(sessions.ago(rec.at ?? Date.now()))))
+      .when(this.hovered, (el) => el
+        .child(small(`ph-pick-${p.pane}`, "Pick…", "Choose from this folder's Claude sessions", () => sessions.resume(p.terminal, rec, true)))
+        .child(small(`ph-forget-${p.pane}`, "✕", "Forget this session", () => sessions.forget(p.terminal))));
+  }
+
   openRename(p, given, fallback) {
     openOverlay({
       mod: "ks-pane",
@@ -127,6 +147,7 @@ export default class Pane extends View {
     const pic = icon(p.program, 14, t.dim);
     const st = p.status;
     const pane = p.pane;
+    const lost = p.terminal ? sessions.resumable(p.terminal, !p.program?.agent) : null;
     return h_flex()
       .id(`pane-head-${pane}`)
       .size_full()
@@ -167,6 +188,8 @@ export default class Pane extends View {
         .on_click((e, cx) => { if (e.click_count === 2) { cx.stop_propagation(); this.copyId(cx, id); } })
         .child(this.copied ? "copied" : id.shown))
       .child(div().flex_1().truncate().text_color(t.dim).child(folder(p.cwd, home())))
+      // ks: Claude ran here before this terminal was lost (a reboot): resume that session (lib/sessions.js).
+      .when(Boolean(lost), (el) => el.child(this.resumePill(t, p, lost)))
       .when(st === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
       .when(st === "blocked", el => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.blocked + "26").text_size(10.5).font_semibold().text_color(t.blocked).child("Needs you")))
       .when(st === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(t.done)))

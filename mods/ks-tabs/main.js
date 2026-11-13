@@ -1,7 +1,8 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, run, openOverlay, theme, window, shared, layout, settings, focused, props, nextCommand } from "herdr";
+import { spaces, run, openOverlay, theme, window, shared, setShared, layout, settings, focused, props, nextCommand, agents, panes, terminals, hc, exec, appHome } from "herdr";
 import { closeTab, closePane, tabName, tabProgram } from "./close.js";
+import * as sessions from "./lib/sessions.js";
 import { menuView, shortcut } from "./menu.js";
 
 function find(node, id) {
@@ -24,6 +25,7 @@ export default class Tabs extends View {
       return;
     }
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
+    this.recordSessions(cx);
     // cmd-w: the shown tab, or `close:<id>` for another one. cmd-shift-w (`close-pane`): the focused pane,
     // here and not in ks-pane, as the tab bar has one copy and every pane header would get it.
     cx.spawn(async (cx) => {
@@ -41,6 +43,58 @@ export default class Tabs extends View {
         cx.notify();
       }
     });
+  }
+
+  // ks: which Claude Code session each agent terminal runs, every 20 s, into shared "ks.sessions" (see
+  // lib/sessions.js), so a terminal lost to a reboot can resume it. The session log is read again when the
+  // agent's pid changes, every 3 minutes (for its title), and every sweep until it has a conversation; shared state is written only when something changed.
+  recordSessions(cx) {
+    const seen = new Map(); // pid -> { at, info }
+    const python = async (args) => {
+      let r = await exec("python3", args).catch(() => null);
+      if (!r || r.code !== 0) r = await exec("/usr/bin/python3", args).catch(() => null);
+      return r?.code === 0 ? r.stdout : null;
+    };
+    const sweep = async () => {
+      const live = agents().filter((a) => /claude/i.test(a.app ?? ""));
+      const pids = {};
+      for (const a of live) {
+        const r = await hc(["get", a.address]).catch(() => null);
+        try { const pid = JSON.parse(r.stdout).foreground?.pid; if (pid) pids[a.address] = pid; } catch {}
+      }
+      const stale = Object.values(pids).filter((pid) => !seen.get(pid)?.info || Date.now() - seen.get(pid).at > 180000);
+      if (stale.length) {
+        const out = await python(["-I", `${appHome()}/mods/ks-tabs/session_of.py`, ...stale.map(String)]);
+        let found = {}; try { found = JSON.parse(out ?? "{}"); } catch {}
+        for (const pid of stale) seen.set(pid, { at: Date.now(), info: found[String(pid)] ?? null });
+      }
+      const before = sessions.all(), next = { ...before }, ps = panes();
+      let changed = false;
+      for (const a of live) {
+        const info = seen.get(pids[a.address])?.info;
+        if (!info) continue;
+        const old = before[a.address] ?? {}, pane = ps.find((p) => p.terminal === a.address)?.pane ?? old.pane ?? null;
+        const rec = { sessionId: info.sessionId, cwd: info.cwd, title: info.title ?? null, pane, tab: a.tab ?? old.tab ?? null };
+        const same = ["sessionId", "cwd", "title", "pane", "tab"].every((k) => rec[k] === old[k]);
+        // `at` (last seen running) is refreshed at most every 10 minutes, so a sweep doesn't write for nothing.
+        if (!same || Date.now() - (old.at ?? 0) > 600000) { next[a.address] = { ...rec, at: Date.now() }; changed = true; }
+      }
+      // Forget terminals that are gone (their tab closed) once a week has passed, and only once Herdr knows them.
+      const known = new Set((terminals() ?? []).map((t) => t.address));
+      if (known.size) for (const [addr, rec] of Object.entries(next)) {
+        if (!known.has(addr) && Date.now() - (rec.at ?? 0) > 7 * 86400000) { delete next[addr]; changed = true; }
+      }
+      if (changed) setShared(sessions.KEY, next);
+    };
+    let busy = false;
+    const tick = async () => {
+      if (busy) return;
+      busy = true;
+      try { await sweep(); } catch (e) { console.log("ks-tabs: session sweep failed", String(e)); }
+      busy = false;
+    };
+    cx.spawn(async () => tick());
+    cx.timer.every(20000, () => { tick(); });
   }
 
   // Herdr's own tab menu (Rename, New tab, Close), with Close going through closeTab, then when
@@ -90,8 +144,12 @@ export default class Tabs extends View {
     const stop = (_e, cx) => cx.stop_propagation();
     const button = (id, label, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", stop).on_click(action).child(label);
+    const allPanes = panes();
+    // ks: a tab's terminals whose Claude session can be resumed (their agent is gone; the pane shows a shell).
+    const resumables = (c) => allPanes.filter((p) => p.tab === c.id && p.terminal)
+      .map((p) => ({ address: p.terminal, rec: sessions.resumable(p.terminal, !p.program?.agent) })).filter((x) => x.rec);
     const item = (c, i) => {
-      const program = tabProgram(c), name = tabName(c, program);
+      const program = tabProgram(c), name = tabName(c, program), lost = resumables(c);
       return h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
         .border(1).border_color(c.active ? t.border : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover))
@@ -104,6 +162,11 @@ export default class Tabs extends View {
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "ks-tabs", kind: "popup", width: 220, height: 237, props: { menu: { id: c.id, space: space.id } } }); })
         .when(Boolean(program?.icon), el => el.child(program.tint ? svg(program.icon).size(14).text_color(t.muted) : image(program.icon).size(14)))
         .child(div().max_w(170).truncate().child(c.zoomed ? `${name} Z` : name))
+        .when(lost.length > 0, el => el.child(div().id(`resume-${c.id}`).flex_none().h(18).px(6).flex().items_center().rounded(5)
+          .bg(t.accent + "22").text_size(10.5).font_semibold().text_color(t.accent).hover(s => s.bg(t.accent + "40"))
+          .tooltip(`Resume ${lost.map(x => `"${sessions.label(x.rec)}"`).join(", ")} · Claude ran here ${sessions.ago(Math.max(...lost.map(x => x.rec.at ?? 0)))}`)
+          .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); run("tab.select", { id: c.id }); for (const x of lost) sessions.resume(x.address, x.rec); })
+          .child(lost.length > 1 ? `↻ Resume ${lost.length}` : "↻ Resume")))
         .when(c.status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
         .when(c.status === "blocked" || c.status === "done", el => el.child(div().size(6).rounded(3).bg(t[c.status])))
         .when(c.active, el => el.child(div().id(`close-${c.id}`).text_color(t.dim).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); closeTab(c.id); }).child(svg("mods/pane/close.svg").size(12))));
