@@ -39,6 +39,21 @@ function findNode(node, id) {
 // `resize id=<node> by=<px>`: a layout block (sidebar, panel, my-prs) bigger or smaller.
 // id=auto (vertical): in zen the window's height, else My PRs' height.
 // id=wide (horizontal): in zen the window's width, else the side panel when it shows, else the sidebar.
+// The width a block has in the ks layout file (its default), or null.
+async function defaultPx(id) {
+  const r = await exec("cat", [`${appHome()}/layouts/ks.json`]).catch(() => null);
+  try { return findNode(JSON.parse(r.stdout), id)?.size?.px ?? null; } catch { return null; }
+}
+
+// resize id=size: smaller / larger as a whole; reset=true back to the default (and centered, for zen). In zen it's the
+// zen window; otherwise the side panel when it shows, else the sidebar.
+async function resizeSize(by, reset) {
+  if (shared("ks-zen.state")?.win) return run(reset ? "ks-zen.reset" : by > 0 ? "ks-zen.grow" : "ks-zen.shrink");
+  const root = layout(), panel = findNode(root, "panel"), id = panel && !panel.hidden ? "panel" : "sidebar";
+  if (reset) { const px = await defaultPx(id); if (px) run("layout.resize", { id, px }); return; }
+  resize(id, by);
+}
+
 function resize(id, by) {
   const root = layout(), zen = shared("ks-zen.state")?.win;
   if (id === "auto") {
@@ -131,13 +146,6 @@ export default class Keys extends View {
     this.handle = cx.focus_handle();
     this.handle.focus();
     cx.timer.after(200, () => this.handle.focus());
-    // Clicked away (the keyboard went elsewhere): the mode ends, as a popup would.
-    this.held = false;
-    cx.timer.every(300, () => {
-      if (this.leaving) return;
-      if (this.handle.is_focused()) this.held = true;
-      else if (this.held) this.leave();
-    });
   }
 
   async close() {
@@ -184,6 +192,7 @@ export default class Keys extends View {
         const t = focused()?.terminal;
         if (t) hc(["keys", t, ...a.send]);
       } else if (a.command === "ks-keys.editor") { openEditor(); return; }
+      else if (a.command === "resize" && a.args.id === "size") resizeSize(a.args.by ?? 32, Boolean(a.args.reset));
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24);
       else if (a.command === "pane.go") { run("pane.go", a.args); const g = focused(); if (g?.pane) { this.pane = g.pane; this.terminal = g.terminal ?? null; } }
       else if (a.command === "tab.shift") {
@@ -191,7 +200,12 @@ export default class Keys extends View {
         if (i >= 0) run("tab.move", { id: sp.tabs[i].id, index: Math.max(1, Math.min(sp.tabs.length, i + 1 + (a.args.by ?? 1))) });
       } else if (a.command) run(a.command, a.args);
     }
-    if (!exits) { this.flash = `${count ? count + "× " : ""}${b.label}`; cx.notify(); }
+    if (!exits) {
+      this.flash = `${count ? count + "× " : ""}${b.label}`; cx.notify();
+      // Commands like pane.go or zen's resize move the keyboard: a sticky mode takes it back, so it stays on until Esc.
+      cx.timer.after(150, () => { if (!this.leaving) this.handle.focus(); });
+      cx.timer.after(500, () => { if (!this.leaving) this.handle.focus(); });
+    }
   }
 
   key(e, cx) {

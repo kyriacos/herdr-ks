@@ -106,6 +106,17 @@ async function resizeZen(dw, dh) {
 }
 const widen = (step) => resizeZen(step, 0);
 
+// Back to the default size (78% wide), centered in the window.
+async function resetZen() {
+  const st = zen();
+  if (!st?.win) return;
+  const { w, h } = await windowSize(), share = 0.78;
+  const rect = { width: Math.round(w * share), height: Math.round(h * Math.min(0.92, share + 0.1)) };
+  rect.x = Math.round((w - rect.width) / 2); rect.y = Math.round((h - rect.height) / 2);
+  setShared(PREFS, { ...prefs(), share });
+  showZen(st.terminal, rect);
+}
+
 function toggleFocus() {
   const on = !focusOn();
   setFocus({ on });
@@ -133,6 +144,9 @@ export default class Zen extends View {
         else if (c === "focus") toggleFocus();
         else if (c === "wider") await widen(0.03);
         else if (c === "narrower") await widen(-0.03);
+        else if (c === "grow") await resizeZen(0.03, 0.03);
+        else if (c === "shrink") await resizeZen(-0.03, -0.03);
+        else if (c === "reset") await resetZen();
         else if (c === "taller") await resizeZen(0, 0.03);
         else if (c === "shorter") await resizeZen(0, -0.03);
         else if (c === "settings") openSettings();
