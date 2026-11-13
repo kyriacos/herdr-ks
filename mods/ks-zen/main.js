@@ -56,7 +56,9 @@ function zenSpec(terminal, rect, moved = false) {
     ...(moved ? { at: { x: Math.round(rect.x), y: Math.round(rect.y) } } : {}), props: { bar: true },
     layout: { type: "column", children: [
       { type: "block", size: { px: 36 }, content: { mod: "ks-zen", props: { bar: true } } },
-      { type: "block", content: { terminal } },
+      // The layout's terminals are see-through (terminal_opacity 0, so the panes' rounded frames show at the
+      // corners): this one gets the theme's background behind it.
+      { type: "block", background: "background", content: { terminal } },
       { type: "block", size: { px: 12 }, content: { mod: "ks-zen", props: { foot: true } } },
     ] },
   };
