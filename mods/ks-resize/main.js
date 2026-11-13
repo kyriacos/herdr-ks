@@ -36,7 +36,13 @@ export default class Resize extends View {
     this.done = true;
     if (apply && this.reopen) {
       const b = this.box();
-      openOverlay({ ...this.reopen, kind: "window", width: Math.round(b.w / this.zoom), height: Math.round(b.h / this.zoom), at: { x: Math.round(b.x), y: Math.round(b.y) } });
+      // The new rect (window points) goes to the window and to the mod blocks of a window holding a layout, so
+      // they know their size (ks-zen keeps it for its next move or resize).
+      const rect = { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.w), height: Math.round(b.h) };
+      const withRect = (n) => n?.content?.mod ? { ...n, content: { ...n.content, props: { ...(n.content.props ?? {}), rect } } }
+        : n?.children ? { ...n, children: n.children.map(withRect) } : n;
+      openOverlay({ ...this.reopen, kind: "window", width: Math.round(b.w / this.zoom), height: Math.round(b.h / this.zoom), at: { x: rect.x, y: rect.y },
+        props: { ...(this.reopen.props ?? {}), rect }, ...(this.reopen.layout ? { layout: withRect(this.reopen.layout) } : {}) });
     }
     closeOverlay(props()?.overlay);
   }

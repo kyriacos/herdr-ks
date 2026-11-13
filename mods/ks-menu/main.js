@@ -76,6 +76,7 @@ function items(p, git) {
       return [
         ["New space", "space.new", {}],
         ["Keybinds", "app.help", {}],
+        ["herdr-ks settings…", "mod.open", { name: "ks-settings" }],
         ["Key modes…", "ks-keys.editor", {}],
         ["Zen mode", "ks-zen.toggle", {}],
         ["Focus mode", "ks-zen.focus", {}],

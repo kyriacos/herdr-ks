@@ -41,7 +41,7 @@ function findNode(node, id) {
 function resize(id, by) {
   const root = layout();
   if (id === "auto") {
-    if (root?.id === "zen-root") return run(by > 0 ? "ks-zen.wider" : "ks-zen.narrower");
+    if (shared("ks-zen.state")?.win) return run(by > 0 ? "ks-zen.wider" : "ks-zen.narrower");
     const panel = findNode(root, "panel");
     id = panel && !panel.hidden ? "panel" : "sidebar";
   }

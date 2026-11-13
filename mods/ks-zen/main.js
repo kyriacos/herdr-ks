@@ -1,24 +1,31 @@
 // ks-zen: zen mode, focus mode, and their settings.
 //
-// Zen (cmd-shift-z, service Z, vim zz): the shown tab alone, centered, everything else gone. It is its own layout:
-// `ks-zen` on your theme's own background (default) or `ks-zen-dark` on an almost black one. This mod switches to
-// it and back, and draws the slim bar above the tab there: where you are, Pane only, narrower / wider, settings,
-// Exit. Drag the space around the tab to resize it too (its edges are resizable); Herdr keeps the size.
+// Zen (cmd-shift-z, service z, vim zz): the terminal you're in, alone in a floating window over everything, on a
+// glass backdrop that covers the rest of the window. Both are windows over the layout you're in, so they wear the
+// theme that's showing; nothing switches. The zen window has a title bar to drag it by, corner grips to resize it
+// (ks-resize, as the review windows), Narrower / Wider, ⚙ settings and Exit. Clicking the backdrop brings the zen
+// window back to the front.
 // Focus mode (cmd-shift-f, service f): the interface around the terminals dims until hovered (lib/focus.js).
-// Settings (main menu, service F, the bar's ⚙): focus on/off and how much it dims (live), zen's backdrop and width.
+// Settings (main menu, service F, the bar's ⚙): focus on/off and how much it dims (live), zen's backdrop.
 //
-// Copies: one floating in the ks layout (draws nothing, takes commands), the bar in the zen layouts, and the
-// settings dialog (props { settings: true }).
-import { View, div } from "gpui-kit";
+// Copies, by props: none (floating in the layout, draws nothing, takes the commands), { backdrop }, { bar } (the
+// zen window's title bar, with the top corner grips), { foot } (its bottom edge, with the bottom grips), and
+// { settings } (the dialog).
+import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { run, layout, spaces, panes, focused, nextCommand, shared, setShared, placement, notify, theme, props, openOverlay, closeOverlay } from "herdr";
+import { run, spaces, panes, focused, nextCommand, shared, setShared, notify, theme, props, openOverlay, closeOverlay, exec, appHome, settings, layout } from "herdr";
 import { focusOn, focusLevel, setFocus } from "./lib/focus.js";
 
-const ZEN = "ks-zen.state";   // { from, zoomed (the pane zen zoomed, unzoomed on exit) }
-const PREFS = "ks-zen.prefs"; // { backdrop: "theme" | "dark" }
-const prefs = () => ({ backdrop: "theme", ...(shared(PREFS) ?? {}) });
-const zenLayout = () => (prefs().backdrop === "dark" ? "ks-zen-dark" : "ks-zen");
-const inZen = () => layout()?.id === "zen-root";
+// Shared "ks-zen.state" while zen is open: { terminal, win (overlay id), backdrop (overlay id), rect: the zen
+// window in window points { x, y, width, height } }.
+const ZEN = "ks-zen.state";
+// { backdrop: "theme" | "dark" (its color), opacity: 0.4..1 (1 opaque; below, the layout shows through like glass),
+//   share: the zen window's size as a share of the app window }
+const PREFS = "ks-zen.prefs";
+const prefs = () => ({ backdrop: "theme", opacity: 1, share: 0.78, ...(shared(PREFS) ?? {}) });
+const hex2 = (a) => Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0");
+const zen = () => shared(ZEN);
+export const zenOpen = () => Boolean(zen()?.win);
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -26,16 +33,75 @@ function find(node, id) {
   return null;
 }
 
-function toggleZen() {
-  if (inZen()) {
-    const st = shared(ZEN) ?? {};
-    if (st.zoomed && panes().find((p) => p.pane === st.zoomed)?.zoomed) run("pane.zoom", { pane: st.zoomed });
-    setShared(ZEN, null);
-    run("layout.switch", { name: st.from || "ks" });
-  } else {
-    setShared(ZEN, { from: "ks", zoomed: null });
-    run("layout.switch", { name: zenLayout() });
-  }
+async function windowSize() {
+  const r = await exec("cat", [`${appHome()}/window.json`]).catch(() => null);
+  try { const b = JSON.parse(r.stdout).bounds; return { w: b[2], h: b[3] }; } catch { return { w: 1600, h: 1000 }; }
+}
+
+// The terminal to show: the focused pane's, else the shown tab's first.
+function currentTerminal() {
+  const ps = panes(), f = ps.find((p) => p.focused) ?? ps.find((p) => p.pane === focused()?.pane);
+  if (f?.terminal) return f.terminal;
+  const tab = spaces().find((s) => s.active)?.tabs.find((t) => t.active);
+  return ps.find((p) => p.tab === tab?.id && p.terminal)?.terminal ?? null;
+}
+
+// The zen window's openOverlay spec: a title bar, the terminal, a bottom edge with grips. `rect` in window points;
+// width/height go to Herdr in mod pixels (points / zoom).
+function zenSpec(terminal, rect) {
+  const z = settings().zoom || 1;
+  return {
+    mod: "ks-zen", kind: "window", key: "ks-zen", width: Math.round(rect.width / z), height: Math.round(rect.height / z),
+    at: { x: Math.round(rect.x), y: Math.round(rect.y) }, props: { bar: true },
+    layout: { type: "column", children: [
+      { type: "block", size: { px: 36 }, content: { mod: "ks-zen", props: { bar: true } } },
+      { type: "block", content: { terminal } },
+      { type: "block", size: { px: 12 }, content: { mod: "ks-zen", props: { foot: true } } },
+    ] },
+  };
+}
+
+function showZen(terminal, rect) {
+  const win = openOverlay(zenSpec(terminal, rect));
+  setShared(ZEN, { ...(zen() ?? {}), terminal, rect, win });
+  run("pane.focus", { terminal });
+}
+
+async function openZen() {
+  const terminal = currentTerminal();
+  if (!terminal) return notify({ title: "Zen needs a terminal", body: "Focus a terminal pane first.", level: "info", timeout: 2500 });
+  const { w, h } = await windowSize(), share = prefs().share;
+  const rect = { width: Math.round(w * share), height: Math.round(h * Math.min(0.92, share + 0.1)) };
+  rect.x = Math.round((w - rect.width) / 2); rect.y = Math.round((h - rect.height) / 2);
+  const backdrop = openOverlay({ mod: "ks-zen", kind: "window", key: "ks-zen-backdrop", frame: "none", width: 1, height: 1, at: { x: 0, y: 0 }, props: { backdrop: true } });
+  setShared(ZEN, { terminal, rect, backdrop, win: null });
+  showZen(terminal, rect);
+}
+
+// A window reopened by ks-resize has a new overlay id; opening its key again replaces it and returns the id
+// that closes it for sure.
+const closeKey = (key) => closeOverlay(openOverlay({ mod: "ks-zen", kind: "window", key, frame: "none", width: 1, height: 1, props: { closing: true } }));
+
+function closeZen() {
+  const st = zen();
+  if (!st) return;
+  closeKey("ks-zen");
+  closeKey("ks-zen-backdrop");
+  setShared(ZEN, null);
+  if (st.terminal) run("pane.focus", { terminal: st.terminal });
+}
+
+const toggleZen = () => (zenOpen() ? closeZen() : openZen());
+
+// Narrower / wider: the zen window grows or shrinks around its middle, and the share is remembered.
+async function widen(step) {
+  const st = zen();
+  if (!st?.win) return;
+  const { w, h } = await windowSize(), r = st.rect, dx = Math.round(w * step), dy = Math.round(h * step);
+  const width = Math.max(420, Math.min(w, r.width + dx * 2)), height = Math.max(300, Math.min(h, r.height + dy * 2));
+  const rect = { width, height, x: Math.max(0, Math.round(r.x + (r.width - width) / 2)), y: Math.max(0, Math.round(r.y + (r.height - height) / 2)) };
+  setShared(PREFS, { ...prefs(), share: Math.round((width / w) * 100) / 100 });
+  showZen(st.terminal, rect);
 }
 
 function toggleFocus() {
@@ -44,34 +110,27 @@ function toggleFocus() {
   notify({ title: on ? "Focus mode on" : "Focus mode off", body: on ? `Dims to ${Math.round(focusLevel() * 100)}% until you point at it. ⌘⇧F turns it off.` : "", level: "info", timeout: 2500 });
 }
 
-function togglePane() {
-  const p = panes().find((x) => x.focused) ?? panes().find((x) => x.pane === focused()?.pane);
-  if (!p) return;
-  run("pane.zoom", { pane: p.pane });
-  setShared(ZEN, { ...(shared(ZEN) ?? {}), zoomed: p.zoomed ? null : p.pane });
-}
-
-// Narrower / wider: the side spaces' share, 0 (edge to edge) to 30 each.
-function widen(step) {
-  if (!inZen()) return;
-  const left = find(layout(), "zen-left"), w = left?.size?.weight ?? 10;
-  const next = Math.max(0, Math.min(30, w - step));
-  for (const id of ["zen-left", "zen-right"]) run("layout.resize", { id, weight: next });
-}
-
-const openSettings = () => openOverlay({ mod: "ks-zen", kind: "dialog", width: 460, height: 400, props: { settings: true } });
+const openSettings = () => openOverlay({ mod: "ks-zen", kind: "dialog", width: 480, height: 460, props: { settings: true } });
 
 export default class Zen extends View {
   init(_props, cx) {
-    if (props()?.settings) { this.handle = cx.focus_handle(); this.handle.focus(); return; }
+    const p = props() ?? {};
+    if (p.settings) { this.handle = cx.focus_handle(); this.handle.focus(); return; }
+    if (p.closing) return;
+    if (p.backdrop || p.bar || p.foot) {
+      // A window reopened by ks-resize carries its new rect.
+      if (p.rect && zen() && JSON.stringify(p.rect) !== JSON.stringify(zen().rect)) setShared(ZEN, { ...zen(), rect: p.rect });
+      return;
+    }
+    // The layout copy starts with the layout, and a layout switch closes windows: zen isn't open any more.
+    if (zen()) setShared(ZEN, null);
     cx.spawn(async (cx) => {
       for (;;) {
         const c = await nextCommand();
-        if (c === "toggle") toggleZen();
+        if (c === "toggle") await toggleZen();
         else if (c === "focus") toggleFocus();
-        else if (c === "pane") togglePane();
-        else if (c === "wider") widen(3);
-        else if (c === "narrower") widen(-3);
+        else if (c === "wider") await widen(0.03);
+        else if (c === "narrower") await widen(-0.03);
         else if (c === "settings") openSettings();
         else if (c.startsWith("focus-level:")) setFocus({ level: Math.max(0.1, Math.min(0.9, Number(c.slice(12)) || 0.35)) });
         cx.notify();
@@ -79,27 +138,60 @@ export default class Zen extends View {
     });
   }
 
+  // The zen window's corners: ks-resize follows the drag over the whole app, then reopens the window at that size.
+  startResize(corner) {
+    const st = zen();
+    if (!st?.win) return;
+    openOverlay({ mod: "ks-resize", kind: "window", frame: "none", key: "ks-resize", width: 1, height: 1, at: { x: 0, y: 0 },
+      props: { rect: st.rect, corner, zoom: settings().zoom || 1, reopen: zenSpec(st.terminal, st.rect) } });
+  }
+  grips(t, corners) {
+    return corners.map((corner) => div().id(`zgrip-${corner}`).absolute().size(14)
+      .when(corner.includes("t"), (e) => e.top(0)).when(corner.includes("b"), (e) => e.bottom(0))
+      .when(corner.includes("l"), (e) => e.left(0)).when(corner.includes("r"), (e) => e.right(0))
+      .when(corner === "tl" || corner === "br", (e) => e.cursor_nwse_resize()).when(corner === "tr" || corner === "bl", (e) => e.cursor_nesw_resize())
+      .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.startResize(corner); })
+      .when(corner === "br", (e) => e.child(div().absolute().right(3).bottom(2).size(7).border_r_2().border_b_2().border_color(t.dim))));
+  }
+
   render() {
-    if (props()?.settings) return this.renderSettings();
-    if (placement() || !inZen()) return div();
-    const t = theme(), dark = prefs().backdrop === "dark";
+    const p = props() ?? {}, t = theme();
+    if (p.settings) return this.renderSettings();
+    if (p.backdrop) {
+      const pr = prefs(), base = pr.backdrop === "dark" ? "#000000" : String(t.background).slice(0, 7);
+      // Over everything: the theme's own background (or black), opaque, or see-through like glass at lower opacity.
+      // A click brings the zen window back in front.
+      // Translucent: the tab area (where the zen terminal also shows) stays solid, so it doesn't show twice; only the
+      // rest (sidebar, tab bar, panels) shows through. Its place, in mod px, from the layout's sizes.
+      const root = layout(), node = (id) => find(root, id), px = (n) => (n && !n.hidden ? n.size?.px ?? 0 : 0);
+      const pad = node("work-body")?.padding ?? 8, sidebar = px(node("sidebar")), panel = px(node("panel"));
+      const area = { left: sidebar ? sidebar + 1 : 0, top: px(node("tabs")), right: panel ? panel + pad : 0, bottom: px(node("status")) };
+      return div().id("zen-backdrop").size_full().relative().bg(base + hex2(pr.opacity))
+        .when(pr.opacity < 1, (e) => e.child(div().absolute().left(area.left).top(area.top).right(area.right).bottom(area.bottom).bg(base)))
+        .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); const st = zen(); if (st?.win) showZen(st.terminal, st.rect); });
+    }
+    if (p.foot) return div().id("zen-foot").size_full().relative().bg(t.background).children(this.grips(t, ["bl", "br"]));
+    if (!p.bar) return div();
     const sp = spaces().find((s) => s.active), tab = sp?.tabs.find((x) => x.active);
-    const zoomed = panes().some((p) => p.zoomed), split = panes().filter((p) => p.tab === tab?.id).length > 1;
-    const fg = dark ? "#e8eaf0" : t.foreground, dim = dark ? "#8a90a0" : t.muted, hover = dark ? "#ffffff14" : t.hover;
+    const st = zen();
     const stop = (_e, cx) => cx.stop_propagation();
-    const btn = (id, label, act, on = false) => h_flex().id(id).h(24).px(9).items_center().rounded(6).text_size(11.5)
-      .text_color(on ? fg : dim).bg(on ? hover : "#00000000").hover((s) => s.bg(hover).text_color(fg))
-      .on_mouse_down("left", stop).on_click((_e, cx) => { act(); cx.notify(); }).child(label);
-    return h_flex().id("zen-bar").size_full().px(4).gap(4).items_center()
+    const btn = (id, label, act) => h_flex().id(id).h(24).px(9).items_center().rounded(6).text_size(11.5).text_color(t.muted)
+      .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop).on_click((_e, cx) => { act(); cx.notify(); }).child(label);
+    // Unhandled presses on the bar drag the window; after a move, the bar's new place updates the rect.
+    return h_flex().id("zen-bar").size_full().relative().px(10).gap(4).items_center().bg(t.chrome).border_b(1).border_color(t.border)
+      .on_mouse_move((ev) => {
+        const b = ev.bounds, r = st?.rect;
+        if (b && r && (Math.abs(b.x - r.x) > 2 || Math.abs(b.y - r.y) > 2)) setShared(ZEN, { ...st, rect: { ...r, x: Math.round(b.x), y: Math.round(b.y) } });
+      })
       .child(div().px(7).h(20).flex().items_center().rounded(5).bg(t.accent).text_color(t.solid_foreground ?? t.background).text_size(10.5).font_semibold().child("ZEN"))
-      .child(div().pl(6).min_w(0).truncate().text_size(12).text_color(fg).child(tab?.name && !/^tb\d+$/.test(tab.name) ? tab.name : "tab"))
-      .child(div().min_w(0).truncate().text_size(11.5).text_color(dim).child(sp ? `· ${sp.name}` : ""))
+      .child(div().pl(6).min_w(0).truncate().text_size(12).text_color(t.foreground).child(tab?.name && !/^tb\d+$/.test(tab.name) ? tab.name : "tab"))
+      .child(div().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(sp ? `· ${sp.name}` : ""))
       .child(div().flex_1())
-      .when(split || zoomed, (e) => e.child(btn("zen-pane", zoomed ? "Whole tab" : "Pane only", togglePane, zoomed)))
-      .child(btn("zen-narrow", "Narrower", () => widen(-3)))
-      .child(btn("zen-wide", "Wider", () => widen(3)))
+      .child(btn("zen-narrow", "Narrower", () => widen(-0.03)))
+      .child(btn("zen-wide", "Wider", () => widen(0.03)))
       .child(btn("zen-settings", "⚙", openSettings))
-      .child(btn("zen-exit", "Exit  ⌘⇧Z", toggleZen));
+      .child(btn("zen-exit", "Exit  ⌘⇧Z", closeZen))
+      .children(this.grips(t, ["tl", "tr"]));
   }
 
   renderSettings() {
@@ -109,7 +201,6 @@ export default class Zen extends View {
       .text_size(12).cursor_pointer().hover((s) => s.opacity(0.88)).on_click((_e, cx) => { act(); cx.notify(); }).child(label);
     const label = (text) => div().pt(14).pb(6).text_size(11.5).text_color(t.dim).child(text);
     const pct = Math.round(level * 100);
-    // A bar showing the level: the filled part is how visible dimmed things stay.
     const bar = h_flex().h(8).w(220).rounded(4).bg(t.hover).child(div().h_full().w(220 * level).rounded(4).bg(t.accent));
     return v_flex().id("zen-settings").track_focus(this.handle).size_full().p(18).bg(t.popover).text_color(t.foreground)
       .on_key_down((e, cx) => { if (e.keystroke === "escape") { closeOverlay(props().overlay); cx.stop_propagation(); } })
@@ -123,10 +214,15 @@ export default class Zen extends View {
         .child(btn("f-more", "+", () => setFocus({ level: Math.min(0.9, Math.round((level + 0.05) * 100) / 100) }))))
       .child(h_flex().pt(8).gap(6)
         .children([0.2, 0.35, 0.5, 0.7].map((v) => btn(`f-${v}`, `${Math.round(v * 100)}%`, () => setFocus({ level: v, on: true }), Math.abs(level - v) < 0.001))))
-      .child(label("Zen backdrop (⌘⇧Z)"))
+      .child(label(`Zen backdrop (⌘⇧Z): ${p.opacity >= 1 ? "opaque" : `translucent, ${Math.round(p.opacity * 100)}%`}`))
       .child(h_flex().gap(8)
-        .child(btn("z-theme", "Your theme", () => setShared(PREFS, { ...p, backdrop: "theme" }), p.backdrop !== "dark"))
+        .child(btn("z-opaque", "Opaque", () => setShared(PREFS, { ...p, opacity: 1 }), p.opacity >= 1))
+        .child(btn("z-glass", "Translucent", () => setShared(PREFS, { ...p, opacity: 0.7 }), p.opacity < 1))
+        .child(btn("z-less", "−", () => setShared(PREFS, { ...p, opacity: Math.max(0.4, Math.round((p.opacity - 0.05) * 100) / 100) })))
+        .child(btn("z-more", "+", () => setShared(PREFS, { ...p, opacity: Math.min(1, Math.round((p.opacity + 0.05) * 100) / 100) }))))
+      .child(h_flex().pt(8).gap(8)
+        .child(btn("z-theme", "Theme color", () => setShared(PREFS, { ...p, backdrop: "theme" }), p.backdrop !== "dark"))
         .child(btn("z-dark", "Dark", () => setShared(PREFS, { ...p, backdrop: "dark" }), p.backdrop === "dark")))
-      .child(div().pt(6).text_size(11).text_color(t.dim).child(inZen() ? "Takes effect the next time you enter zen." : "Width: Narrower / Wider in zen's bar, drag the edges, or service r then - / +."));
+      .child(div().pt(6).text_size(11).text_color(t.dim).child("Zen's size: drag its corners, Narrower / Wider in its bar, or service r then - / +."));
   }
 }

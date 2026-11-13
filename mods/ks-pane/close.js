@@ -66,7 +66,7 @@ function closeAsking({ kind, agents, title, ends, more, command }) {
     : agents.length === 1 ? `${names} is still running in it. Closing ends it.`
     : `${agents.length} agents are still running in it (${names}). Closing ends them.`;
   if (shared(OPEN)) closeOverlay(shared(OPEN));
-  const detail = [why, more, soft ? "You can undo for 30 s." : ""].filter(Boolean).join(" ") || "Nothing runs in it.";
+  const detail = [why, more, soft ? `You can undo for ${Math.round(closing.grace() / 1000)} s.` : ""].filter(Boolean).join(" ") || "Nothing runs in it.";
   setShared(OPEN, openOverlay({ mod: "ks-confirm", kind: "dialog", width: 400, height: 170,
     props: { title, detail, command, soft } }));
 }

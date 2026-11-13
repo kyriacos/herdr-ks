@@ -4,6 +4,7 @@ import { spaces, run, openOverlay, theme, window, shared, setShared, layout, set
 import { closeTab, closePane, tabName, tabProgram } from "./close.js";
 import * as sessions from "./lib/sessions.js";
 import * as closing from "./lib/closing.js";
+import { pref } from "./lib/prefs.js";
 import { menuView, shortcut } from "./menu.js";
 import { dimmed } from "./lib/focus.js";
 
@@ -93,7 +94,7 @@ export default class Tabs extends View {
       // session's card in it once, with resume on Enter.
       const alive = new Set(live.map((a) => a.address));
       for (const [addr, rec] of Object.entries(next)) {
-        if (alive.has(addr) || !rec.sessionId) continue;
+        if (alive.has(addr) || !rec.sessionId || !pref("resumeCard")) continue;
         const r = await hc(["get", addr]).catch(() => null);
         let info = null; try { info = JSON.parse(r.stdout); } catch {}
         if (!info || info.state !== "live" || !(info.created_ms > (rec.at ?? 0)) || rec.carded === info.created_ms) continue;
@@ -233,6 +234,8 @@ export default class Tabs extends View {
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
       // ks: open pull requests for the session's worktrees (ks-prs).
       .child(panelButton("prs", "PRs", "mods/ks-changes/changes.svg"))
+      // ks: every ks setting in one panel (ks-settings).
+      .child(button("ks-settings", "⚙", () => openOverlay({ mod: "ks-settings", kind: "dialog", width: 860, height: 620 })))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/ks-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/ks-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/ks-tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));

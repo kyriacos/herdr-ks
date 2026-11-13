@@ -20,7 +20,7 @@ for d in "$src"/mods/ks-*/; do
 done
 
 mkdir -p "$app/layouts" "$app/mods"
-cp "$src/layouts/$name".* "$src/layouts/$name"-zen.json "$src/layouts/$name"-zen-dark.json "$app/layouts/"
+cp "$src/layouts/$name".* "$app/layouts/"
 
 for d in "$src"/mods/ks-*/; do
   rsync -a --delete --exclude gpui-kit.d.ts --exclude jsconfig.json "$d" "$app/mods/$(basename "$d")/"
@@ -31,7 +31,7 @@ keys="$app/keys.json"
 [ -f "$keys" ] || echo '{}' > "$keys"
 cp "$keys" "$keys.bak-$(date +%s)"
 # Entries ks-keys wrote (its entry keys, "ks-keys.*") are kept: they come from its editor, not from this repo.
-for s in "layout:$name" "layout:$name-zen" "layout:$name-zen-dark"; do
+for s in "layout:$name"; do
   jq --slurpfile ours "$src/keys.json" --arg s "$s" \
     '. + {($s): (($ours[0][$s] // {}) + ((.[$s] // {}) | with_entries(select((.value | type) == "string" and (.value | startswith("ks-keys."))))))}' "$keys" > "$keys.tmp"
   mv "$keys.tmp" "$keys"

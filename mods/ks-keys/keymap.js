@@ -25,7 +25,7 @@ export const KEY = "ks-keys.config";
 // Commands that open a dialog, a picker or a search: a sticky mode leaves before them, so they get the keyboard.
 export const EXITS = new Set(["tab.rename", "space.rename", "app.palette", "mod.open", "terminal.search", "ks-keys.editor",
   "ks-zen.settings", "ks-tabs.close", "ks-tabs.close-space", "space.new", "app.help"]);
-export const VERSION = 5;
+export const VERSION = 6;
 
 const go = [
   { key: "h", label: "Go left", do: "pane.go direction=left" },
@@ -47,7 +47,7 @@ const tabNumbers = Array.from({ length: 9 }, (_, i) => ({ key: String(i + 1), la
 
 export const DEFAULTS = {
   version: VERSION,
-  sections: ["layout:ks", "layout:ks-zen", "layout:ks-zen-dark"],
+  sections: ["layout:ks"],
   editor: "cmd-k",
   modes: {
     // Service mode: entered with ctrl-;, its keys work until Esc (a key that opens something to type into, such as
@@ -76,6 +76,7 @@ export const DEFAULTS = {
         { key: "f", label: "Focus mode", do: "ks-zen.focus" },
         ...go, ...swap, ...tabNumbers,
         { key: "F", label: "Focus & zen settings", do: "ks-zen.settings" },
+        { key: ".", label: "herdr-ks settings", do: "mod.open name=ks-settings" },
         { key: "r", label: "Resize mode (sticky)", do: "mode:resize" },
         { key: "-", label: "Smaller (panel / zen)", do: "resize id=auto by=-32" },
         { key: "=", label: "Larger (panel / zen)", do: "resize id=auto by=32" },
@@ -254,7 +255,8 @@ function upgrade(old) {
     const taken = new Set(mine.bindings.map((b) => tokens(b.key).join(" ")));
     for (const b of m.bindings) if (!taken.has(tokens(b.key).join(" "))) mine.bindings.push(clone(b));
   }
-  for (const sec of DEFAULTS.sections) if (!(c.sections ?? []).includes(sec)) c.sections = [...(c.sections ?? []), sec];
+  // Zen is a window now, not a layout: its key sections go.
+  c.sections = [...new Set([...(c.sections ?? []).filter((x) => !/^layout:ks-zen/.test(x)), ...DEFAULTS.sections])];
   c.version = VERSION;
   return c;
 }

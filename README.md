@@ -173,11 +173,12 @@ for the window (motions, counts, `gt`/`3gt`, `gg`/`G`, `ctrl-d`/`ctrl-u` scrolli
 move, tab and space modes too. `cmd-k` opens the editor: switch modes off, change entry keys, edit every key.
 See the [guide](docs/GUIDE.md#key-modes).
 
-**Zen mode** (`cmd-shift-z`): the tab alone, centered in a rounded frame on your theme's background (or dark), with
-a slim bar (pane only, narrower / wider, settings, exit); drag its edges to resize. **Focus mode** (`cmd-shift-f`):
-everything around the terminals dims until hovered, with the amount set in **Focus & zen settings** (main menu or
-service `F`). **Resize mode** (service `r`): keep pressing `-` / `+`, `[` / `]`, `{` / `}` to size the panel,
-sidebar or zen width.
+**Zen mode** (`cmd-shift-z`): the terminal you're in, alone in a floating window (drag to move, corners to resize)
+over an opaque or translucent backdrop, in your current theme. **Focus mode** (`cmd-shift-f`): everything around
+the terminals dims until hovered. **Resize mode** (service `r`): keep pressing `-` / `+`, `[` / `]`, `{` / `}`.
+
+**Settings** (⚙ in the tab bar, `cmd-shift-,`): every ks setting in one panel: focus, zen, keys and modes, asking
+before closing and the undo time, the session card, My PRs, panels, the GitHub cache.
 
 ## Set up
 
@@ -237,7 +238,8 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | Resume Claude sessions after a reboot: recorded per terminal, a card of the last session inside the terminal, ↻ Resume in the tab and the pane header | `mods/ks-tabs/main.js`, `session_of.py`, `last_session.py`, `mods/ks-pane/main.js`, `shared/sessions.js` |
 | Closing tabs and spaces asks, then waits 30 s with Undo (toast, tab bar chip, ⌘⇧T) | `shared/closing.js`, `mods/ks-tabs/` (`close.js`, `main.js`), `mods/ks-pane/close.js`, `mods/ks-confirm/`, `mods/ks-menu/`, `mods/ks-spaces/` |
 | Key modes: service (tmux style) / vim normal mode / sticky modes, counts and sequences, a which-key strip, an editor, and keys.json kept in step | `mods/ks-keys/` (new), layout `floating` |
-| Zen mode (own layouts, theme or dark backdrop) and focus mode (dims the interface until hovered), with a settings dialog | `mods/ks-zen/` (new), `layouts/ks-zen.json`, `layouts/ks-zen-dark.json`, `shared/focus.js`, every layout mod's `render` |
+| Zen mode (a floating window over a backdrop) and focus mode (dims the interface until hovered) | `mods/ks-zen/` (new), `mods/ks-resize/main.js`, `shared/focus.js`, every layout mod's `render` |
+| Settings panel for every ks setting | `mods/ks-settings/` (new), `shared/prefs.js`, ⚙ in `mods/ks-tabs/main.js`, `mods/ks-menu/main.js` |
 | Herdr's agents list and status bar cloned, so focus mode dims them | `mods/ks-agents/`, `mods/ks-status/` (clones), layout |
 | PR window: Start a session & send (and Create worktree) when no agent is on the PR | `mods/ks-prcard/main.js` |
 
@@ -256,6 +258,7 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | cmd-k | Key modes editor (configurable) |
 | cmd-shift-z | Zen mode |
 | cmd-shift-f | Focus mode |
+| cmd-shift-, | herdr-ks settings |
 
 ## Upstream updates
 

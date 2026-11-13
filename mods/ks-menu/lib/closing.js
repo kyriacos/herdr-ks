@@ -1,6 +1,6 @@
-// Closing with a 30 s grace period. A closed tab or space isn't closed at once: its tabs are settled (Herdr keeps
+// Closing with a grace period (30 s by default, "Undo a close for" in the settings). A closed tab or space isn't closed at once: its tabs are settled (Herdr keeps
 // them running, put away on this screen), the tab bar and the sidebar stop showing it, and a toast offers Undo.
-// After GRACE the tab bar (ks-tabs, one copy) closes it for real. ⌘⇧T, the toast, or the tab bar's
+// After grace() (30 s unless set otherwise) the tab bar (ks-tabs, one copy) closes it for real. ⌘⇧T, the toast, or the tab bar's
 // "↶ Undo close" chip brings it back as it was. Closing a space's last shown tab closes the space (as Herdr does).
 //
 // Shared state "ks.closing": [{ key, kind: "tab" | "space", id, space, name, tabs (the tabs settled for it),
@@ -8,9 +8,11 @@
 // while Herdr was closed happens at the next start. Source of truth: shared/closing.js; scripts/install.sh copies
 // it into each mod's lib/.
 import { shared, setShared, spaces, run, notify, openOverlay, closeOverlay } from "herdr";
+import { pref } from "./prefs.js";
 
 export const KEY = "ks.closing";
-export const GRACE = 30000;
+// How long a close waits (settings: "Undo a close for"), ms.
+export const grace = () => Math.max(5, Number(pref("undoSeconds")) || 30) * 1000;
 
 export const pending = () => shared(KEY) ?? [];
 export const hiddenSpace = (id) => pending().some((e) => e.kind === "space" && e.id === id);
@@ -23,9 +25,9 @@ function remember(entry) {
   setShared(KEY, [...pending().filter((e) => e.id !== entry.id), entry]);
   notify({
     title: `Closed ${entry.kind === "space" ? "space" : "tab"} ${entry.name}`,
-    body: "Click to undo within 30 s, or press ⌘⇧T.",
+    body: `Click to undo within ${Math.round(grace() / 1000)} s, or press ⌘⇧T.`,
     level: "info",
-    timeout: GRACE,
+    timeout: grace(),
     action: { name: `ks-tabs.undo:${entry.key}` },
   });
 }
@@ -42,7 +44,7 @@ export function closeTab(id) {
     if (next) run("tab.select", { id: next.id });
   }
   run("tab.settle", { id });
-  remember({ key: `${id}-${Date.now()}`, kind: "tab", id, space: space.id, name: tabLabel(tab), tabs: [id], until: Date.now() + GRACE });
+  remember({ key: `${id}-${Date.now()}`, kind: "tab", id, space: space.id, name: tabLabel(tab), tabs: [id], until: Date.now() + grace() });
 }
 
 export function closeSpace(id) {
@@ -56,7 +58,7 @@ export function closeSpace(id) {
   }
   const tabs = space.tabs.filter((c) => !c.settled).map((c) => c.id);
   for (const t of tabs) run("tab.settle", { id: t });
-  remember({ key: `${id}-${Date.now()}`, kind: "space", id, space: id, name: `"${space.name}"`, tabs, until: Date.now() + GRACE });
+  remember({ key: `${id}-${Date.now()}`, kind: "space", id, space: id, name: `"${space.name}"`, tabs, until: Date.now() + grace() });
 }
 
 // Brings back the entry with this key, else the most recent one.
@@ -88,7 +90,7 @@ export function finish(now = Date.now()) {
 export function ask({ kind, id, title, detail }) {
   if (shared("ks-confirm.open")) closeOverlay(shared("ks-confirm.open"));
   setShared("ks-confirm.open", openOverlay({ mod: "ks-confirm", kind: "dialog", width: 400, height: 170,
-    props: { title, detail: `${detail ? detail + " " : ""}You can undo for 30 s.`, soft: { kind, id } } }));
+    props: { title, detail: `${detail ? detail + " " : ""}You can undo for ${Math.round(grace() / 1000)} s.`, soft: { kind, id } } }));
 }
 
 export function askSpace(id) {

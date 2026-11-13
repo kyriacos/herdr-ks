@@ -9,6 +9,7 @@ import { exec, theme, run, notify, openOverlay } from "herdr";
 import * as cache from "./lib/cache.js";
 import { fetchPr, prKey } from "./lib/github.js";
 import { dimmed } from "./lib/focus.js";
+import { pref } from "./lib/prefs.js";
 
 const BLOCK = "my-prs", HEAD = 34, ROW = 50;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
@@ -103,13 +104,13 @@ export default class MyPrs extends View {
     for (const pr of prs) {
       const name = `${pr.repository.nameWithOwner.split("/").pop()}#${pr.number}`, before = was[pr.url];
       now[pr.url] = { ci: pr.s.ci, review: pr.s.review };
-      if (!this.loaded || !before) continue;
+      if (!this.loaded || !before || !pref("prToasts")) continue; // toasts can be off (settings)
       if (before.ci !== "fail" && pr.s.ci === "fail") notify({ title: `CI failing · ${name}`, body: pr.title, level: "error", timeout: 6000 });
       else if (before.ci !== "pass" && pr.s.ci === "pass") notify({ title: `CI passing · ${name}`, body: pr.title, level: "success", timeout: 4000 });
       if (before.review !== "approved" && pr.s.review === "approved") notify({ title: `Approved · ${name}`, body: pr.title, level: "success", timeout: 5000 });
       if (before.review !== "changes" && pr.s.review === "changes") notify({ title: `Changes requested · ${name}`, body: pr.title, level: "warning", timeout: 6000 });
     }
-    if (this.loaded) for (const url of Object.keys(was)) if (!now[url]) notify({ title: "PR merged or closed", body: url.replace("https://github.com/", ""), level: "info", timeout: 4000 });
+    if (this.loaded && pref("prToasts")) for (const url of Object.keys(was)) if (!now[url]) notify({ title: "PR merged or closed", body: url.replace("https://github.com/", ""), level: "info", timeout: 4000 });
     this.last = now;
   }
 

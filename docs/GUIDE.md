@@ -19,6 +19,7 @@ two repos (a backend and a frontend) at once, with you reviewing their work and 
 - [Key modes (service and vim)](#key-modes)
 - [Zen mode](#zen-mode)
 - [Focus mode](#focus-mode)
+- [Settings](#settings)
 - [Resizing from the keyboard](#resizing-from-the-keyboard)
 - [All keys](#all-keys)
 - [Speed and caching](#speed-and-caching)
@@ -192,7 +193,7 @@ in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 
 | Mode | Enter with | Keys |
 |---|---|---|
-| service (sticky) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `Z` zoom pane, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `z` zen, `f` focus mode, `F` focus & zen settings, `-`/`=` smaller/larger, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor, Esc out |
+| service (sticky) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `Z` zoom pane, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `z` zen, `f` focus mode, `F` focus & zen settings, `.` all settings, `-`/`=` smaller/larger, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor, Esc out |
 | tmux (one key, off) | `ctrl-b` once switched on | `%` `"` split, `x` close pane, `z` zoom, `c` `n` `p` tabs, `&` close tab, `,` `$` rename, `(` `)` spaces, `o` next agent, `s` pick a space, `h j k l` go, `1`–`9`, `[` vim mode |
 | vim (normal mode for the window) | service `[` | `h j k l` pane, `H J K L` swap, `gt`/`gT` or `w`/`b` next/previous tab, `3gt` tab 3, `}`/`{` next/previous space, `3gs` space 3, `ctrl-d`/`ctrl-u` half page, `ctrl-f`/`ctrl-b` page, `ctrl-e`/`ctrl-y` line, `gg`/`G` top/bottom of the scrollback, `/` search, `s`/`v` split, `o` zoom, `dd` close pane, `dt` close tab, `t` new tab, `r` rename, `u` undo close, `zz` zen, `:` palette, `i`/`a`/`q`/Esc back to the terminal |
 | move (sticky) | service `m` | `h j k l` go, `H J K L` swap, `z` zoom, `s`/`v` split, `x` close, `n`/`p` tabs, `t` tab mode, `q`/Enter done |
@@ -220,15 +221,15 @@ entry keys into `keys.json` (and keeps them there, even after a reinstall); the 
 
 ## Zen mode
 
-`cmd-shift-z` (or service `z`, vim `zz`, main menu **Zen mode**). The tab you're in, alone and centered in a
-rounded frame; sidebar, tab bar, panels and status bar are gone. It uses your theme's own background, or an
-almost black one if you choose **Dark** in the settings. A slim bar above it shows the tab and space, with
-**Pane only** / **Whole tab** (zoom the focused pane, also `cmd-shift-enter`), **Narrower** / **Wider**, **⚙**
-(settings) and **Exit**. Drag the empty space at its edges to resize it with the mouse, or service `r` then
-`-` / `+`. The size is kept. `cmd-shift-z` again goes back.
+`cmd-shift-z` (or service `z`, vim `zz`, main menu **Zen mode**). The terminal you're in, alone in a floating
+window over everything, on a backdrop that covers the rest. Both are windows over your layout, so zen wears
+whatever theme is showing.
 
-Zen is its own layout (`ks-zen`, `ks-zen-dark`), so entering or leaving it closes floating review windows. While
-in zen, closing a tab is Herdr's own close (no 30 s undo) and the session recorder pauses.
+- **Backdrop:** opaque (default) or translucent, where the sidebar and panels show through like glass and the
+  tab area behind zen stays solid so the terminal doesn't show twice. Theme color or dark. Set in the settings.
+- **The window:** drag its title bar to move it, its corners to resize it; **Narrower** / **Wider**, **⚙** and
+  **Exit** in its bar. Clicking the backdrop brings it back in front. Its size is remembered.
+- `cmd-shift-z` again (or Exit) closes it. Switching layouts closes it too.
 
 ## Focus mode
 
@@ -237,8 +238,24 @@ it: My PRs, spaces, agents, the sidebar's header and footer, the tab bar, the si
 headers of panes that don't have the keyboard. Herdr gives mods no way to dim a terminal's own text, so the text
 inside inactive panes keeps its brightness.
 
-**Focus & zen settings** (main menu, service `F`, or zen's ⚙): focus on or off, how visible dimmed parts stay
-(− / + in 5% steps, or 20 / 35 / 50 / 70%; it changes live), and zen's backdrop (your theme or dark).
+The amount is set in the [settings](#settings) (− / + in 5% steps, or 20 / 35 / 50 / 70%; it changes live).
+
+## Settings
+
+Every ks setting in one panel, like Herdr's Settings: the **⚙** at the right of the tab bar, the main menu's
+**herdr-ks settings…**, `cmd-shift-,`, or service `.`. Changes apply at once.
+
+| Section | What you can change |
+|---|---|
+| Focus mode | On / off, how visible dimmed parts stay |
+| Zen mode | Open it, backdrop opaque or translucent (and how much), theme color or dark, size |
+| Keys & modes | Every mode with its key, the shortcuts, and the key modes editor |
+| Tabs & closing | Ask before closing a tab / a pane (never, while an agent works, always), how long a close can be undone (10–120 s) |
+| Claude sessions | Show the last session's card after a reboot; forget every remembered session |
+| Pull requests | My PRs shown or hidden, its notifications on or off |
+| Panels | Hide idle main checkouts |
+| Storage | Clear the GitHub cache |
+| About | The guide |
 
 ## Resizing from the keyboard
 
@@ -271,6 +288,7 @@ Only while the `ks` layout shows.
 | `ctrl-;` | Service mode (configurable) |
 | `cmd-shift-z` | Zen mode |
 | `cmd-shift-f` | Focus mode |
+| `cmd-shift-,` | herdr-ks settings |
 | `cmd-k` | Key modes editor (configurable) |
 
 Herdr's own keys still apply (`cmd-t` new tab, `cmd-d` split, `cmd-1`…`9` tabs, `cmd-alt-arrows` panes, …).
@@ -286,7 +304,7 @@ takes milliseconds against 1–2 s per `gh` call. Delete the folder to start ove
 | What | Where |
 |---|---|
 | Layout, mods, keys | `~/.config/herdr-app/` (`layouts/ks.json`, `mods/ks-*`, `keys.json` section `layout:ks`) |
-| Choices, pending comments, session records, pending closes, key modes | Herdr's shared state, `~/.config/herdr-app/shared.json` |
+| Settings, choices, pending comments, session records, pending closes, key modes | Herdr's shared state, `~/.config/herdr-app/shared.json` |
 | GitHub cache | `~/.config/herdr-app/data/ks-cache/` |
 | This repo | install with `scripts/install.sh [--switch]`, copy back live edits with `scripts/pull.sh` |
 

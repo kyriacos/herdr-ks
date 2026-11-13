@@ -11,6 +11,7 @@ import { parseDiff, wrapTokens, colsFor } from "./lib/diff.js";
 import { WORKTREE, readBranch, readCommits, readCommitFiles, treeRows } from "./lib/branch.js";
 import * as comments from "./lib/comments.js";
 import { dimmed } from "./lib/focus.js";
+import { pref } from "./lib/prefs.js";
 
 // ---------- stored choices (this mod's localStorage) ----------
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -279,7 +280,7 @@ export default class Changes extends View {
     if (key() !== context) return;
     // A main checkout nobody is working in (on main/master, nothing uncommitted) isn't shown, unless it's all
     // there is, or it's the folder you're in yourself (following focus). Files and PRs read this list too.
-    const loc = location(), idle = (x) => ["main", "master"].includes(x.branch) && !x.files.length;
+    const loc = location(), idle = (x) => pref("hideIdleMain") && ["main", "master"].includes(x.branch) && !x.files.length;
     const kept = sections.filter((x, i) => !idle(x) || (i === 0 && loc.mode !== "agent"));
     if (kept.length) sections = kept;
     if (this.scope !== "working") for (const s of sections) {
