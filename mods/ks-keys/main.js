@@ -11,7 +11,7 @@
 // - { editor: true }: the editor (a dialog).
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
-import { props, run, theme, openOverlay, closeOverlay, nextCommand, shared, setShared, spaces, focused, hc, exec, appHome, settings, notify, layout } from "herdr";
+import { props, run, theme, openOverlay, closeOverlay, nextCommand, shared, setShared, spaces, focused, hc, exec, appHome, settings, notify, layout, panes } from "herdr";
 import * as km from "./keymap.js";
 
 const OPEN = "ks-keys.open"; // the mode popup's overlay id, so a second entry key replaces it
@@ -39,6 +39,43 @@ function findNode(node, id) {
 // `resize id=<node> by=<px>`: a layout block (sidebar, panel, my-prs) bigger or smaller.
 // id=auto (vertical): in zen the window's height, else My PRs' height.
 // id=wide (horizontal): in zen the window's width, else the side panel when it shows, else the sidebar.
+// --- resizing the pane you're in ---
+// Herdr has no pane-resize command, but layout.resize takes a pane's id: its weight against its siblings in the tab's
+// split tree (read from Herdr's document over hc connect).
+async function tabTree(tabId) {
+  const req = JSON.stringify({ id: 1, method: "doc.get", params: { name: "herdr-app" } });
+  const r = await exec("sh", ["-c", 'H=$(command -v hc || echo "$HOME/.local/bin/hc"); printf "%s\\n" "$1" | "$H" connect', "sh", req], { timeout: 5000 }).catch(() => null);
+  let doc = null;
+  for (const line of (r?.stdout ?? "").split("\n")) { try { const j = JSON.parse(line); if (j.id === 1) { doc = j; break; } } catch {} }
+  for (const sp of doc?.result?.value?.spaces ?? []) for (const t of sp.tabs ?? []) if (t.id === tabId) return t.root;
+  return null;
+}
+function pathTo(node, id, acc = []) {
+  if (node?.id === id) return [...acc, node];
+  for (const c of node?.children ?? []) { const p = pathTo(c, id, [...acc, node]); if (p) return p; }
+  return null;
+}
+// The pane's share of its nearest split (`axis`: "row" for width, "column" for height, null for either) grows by
+// `delta` (0.05 = 5% of the split), its siblings giving or taking in proportion; `reset` evens the split out.
+// False when the pane isn't in such a split (a lone pane), so the caller can resize something else.
+async function resizePane(paneId, delta, axis = null, reset = false) {
+  const p = paneId && panes().find((x) => x.pane === paneId);
+  if (!p) return false;
+  const root = await tabTree(p.tab), path = root && pathTo(root, paneId);
+  if (!path) return false;
+  for (let i = path.length - 2; i >= 0; i--) {
+    const parent = path[i], child = path[i + 1], kids = parent.children ?? [];
+    if (kids.length < 2 || (axis && parent.type !== axis)) continue;
+    if (reset) { for (const c of kids) run("layout.resize", { id: c.id, weight: 1 }); return true; }
+    const ws = kids.map((c) => c.size?.weight ?? 1), total = ws.reduce((a, b) => a + b, 0), at = kids.indexOf(child);
+    const share = ws[at] / total, next = Math.max(0.1, Math.min(0.9, share + delta));
+    // Weights keep their total: the pane gets `next` of it, the others share the rest as before.
+    kids.forEach((c, j) => run("layout.resize", { id: c.id, weight: Math.round((j === at ? next * total : (ws[j] * (1 - next)) / (1 - share)) * 1000) / 1000 }));
+    return true;
+  }
+  return false;
+}
+
 // The width a block has in the ks layout file (its default), or null.
 async function defaultPx(id) {
   const r = await exec("cat", [`${appHome()}/layouts/ks.json`]).catch(() => null);
@@ -46,21 +83,37 @@ async function defaultPx(id) {
 }
 
 // resize id=size: smaller / larger as a whole; reset=true back to the default (and centered, for zen). In zen it's the
-// zen window; otherwise the side panel when it shows, else the sidebar.
-async function resizeSize(by, reset) {
-  if (shared("ks-zen.state")?.win) return run(reset ? "ks-zen.reset" : by > 0 ? "ks-zen.grow" : "ks-zen.shrink");
+// zen window; otherwise the pane you're in when the tab is split (= evens the split), else the side panel when it
+// shows, else the sidebar.
+// "resize focus=size|wide|tall by=±1" and "resize focus=size reset=true": the - + < > v ^ = keys. They act on what
+// you're in: the zen window when it's open; else the pane you're in, along its nearest split (wide: a side-by-side
+// split, tall: a stacked one, size: either); else, for a lone pane, the pane grows by shrinking the side panel (or the
+// sidebar when the panel is hidden). = puts it back: zen to its default size, centered; a split even; the panel to
+// the layout's width. Returns what to show in the strip.
+async function resizeFocused(kind, dir, reset, pane) {
+  if (shared("ks-zen.state")?.win) {
+    if (reset) return run("ks-zen.reset"), "Zen: default size, centered";
+    const cmd = { size: dir > 0 ? "grow" : "shrink", wide: dir > 0 ? "wider" : "narrower", tall: dir > 0 ? "taller" : "shorter" }[kind];
+    return run(`ks-zen.${cmd}`), `Zen ${cmd}`;
+  }
+  const axis = kind === "wide" ? "row" : kind === "tall" ? "column" : null;
+  if (await resizePane(pane, dir * 0.04, axis, reset)) return reset ? "Split evened out" : `Pane ${dir > 0 ? "larger" : "smaller"}`;
+  if (kind === "tall") return "No split above or below to resize";
   const root = layout(), panel = findNode(root, "panel"), id = panel && !panel.hidden ? "panel" : "sidebar";
-  if (reset) { const px = await defaultPx(id); if (px) run("layout.resize", { id, px }); return; }
-  resize(id, by);
+  if (reset) { const px = await defaultPx(id); if (px) run("layout.resize", { id, px }); return `${id === "panel" ? "Panel" : "Sidebar"}: default width`; }
+  resize(id, -dir * 32);
+  return `Pane ${dir > 0 ? "wider" : "narrower"} (${id} ${dir > 0 ? "narrower" : "wider"})`;
 }
 
-function resize(id, by) {
+async function resize(id, by, pane = null) {
   const root = layout(), zen = shared("ks-zen.state")?.win;
   if (id === "auto") {
     if (zen) return run(by > 0 ? "ks-zen.taller" : "ks-zen.shorter");
+    if (await resizePane(pane, by > 0 ? 0.05 : -0.05, "column")) return;
     id = "my-prs";
   } else if (id === "wide") {
     if (zen) return run(by > 0 ? "ks-zen.wider" : "ks-zen.narrower");
+    if (await resizePane(pane, by > 0 ? 0.05 : -0.05, "row")) return;
     const panel = findNode(root, "panel");
     id = panel && !panel.hidden ? "panel" : "sidebar";
   }
@@ -170,19 +223,25 @@ export default class Keys extends View {
     this.leaving = true;
     closeOverlay(props().overlay);
     if (!refocus) return;
+    // Outside zen, closing the window already gives the keyboard back to the focused pane: no second focus change.
     const zt = zenTerminal();
     if (zt) run("pane.focus", { terminal: zt });
-    else if (this.pane) run("pane.focus", { pane: this.pane });
   }
 
   // Leaving on a key: the strip keeps the keyboard until that key is released, so neither it (Esc, i, q) nor its
   // release reaches the terminal behind. A fallback closes it anyway if the release is missed.
+  // Claude Code asks terminals for key releases (Kitty keyboard protocol), and a released Esc reads like an Esc: so
+  // the strip closes only after the release was handled here, a moment later, never while the key is down.
   leaveOnRelease(cx, refocus = true) {
     if (this.leaving) return;
     this.leaving = true; this.releaseWanted = true; this.refocus = refocus;
-    cx.timer.after(400, () => { if (this.releaseWanted) { this.releaseWanted = false; this.leave(this.refocus); } });
+    cx.timer.after(1500, () => { if (this.releaseWanted) { this.releaseWanted = false; this.leave(this.refocus); } });
   }
-  keyUp() { if (this.releaseWanted) { this.releaseWanted = false; this.leave(this.refocus); } }
+  keyUp(cx) {
+    if (!this.releaseWanted) return;
+    this.releaseWanted = false;
+    cx.timer.after(60, () => this.leave(this.refocus));
+  }
 
   // Runs a binding: its `count` action when a count was typed (# = the count), else `do`, repeated count times.
   act(b, cx, count = null) {
@@ -217,8 +276,11 @@ export default class Keys extends View {
         const t = focused()?.terminal;
         if (t) hc(["keys", t, ...a.send]);
       } else if (a.command === "ks-keys.editor") { openEditor(); return; }
-      else if (a.command === "resize" && a.args.id === "size") resizeSize(a.args.by ?? 32, Boolean(a.args.reset));
-      else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24);
+      else if (a.command === "resize" && a.args.focus) {
+        resizeFocused(a.args.focus, Math.sign(a.args.by ?? 1) || 1, Boolean(a.args.reset), this.pane)
+          .then((msg) => { if (msg && !this.leaving) { this.flash = msg; cx.notify(); } }).catch(() => {});
+      }
+      else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24, this.pane);
       else if (a.command === "pane.go") { run("pane.go", a.args); const g = focused(); if (g?.pane) { this.pane = g.pane; this.terminal = g.terminal ?? null; } }
       else if (a.command === "tab.shift") {
         const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;
@@ -283,17 +345,29 @@ export default class Keys extends View {
       .child(div().flex_1().truncate().text_size(11.5).text_color(b.do.startsWith("mode:") ? t.accent : t.foreground).child(b.label));
     return v_flex().id("mode-wrap").track_focus(this.handle).size_full().justify_end()
       .on_key_down((e, cx) => { cx.stop_propagation(); this.key(e, cx); })
-      .on_key_up((_e, cx) => { cx.stop_propagation(); this.keyUp(); })
+      .on_key_up((_e, cx) => { cx.stop_propagation(); this.keyUp(cx); })
       // A press on the strip's background would drag the window: it stays put.
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .child(this.panel(t, m, list, cell));
   }
 
+  // What - + < > v ^ = act on right now, in words, for the strip's header (modes that have those keys).
+  resizeTarget() {
+    if (shared("ks-zen.state")?.win) return "the zen window";
+    const me = panes().find((p) => p.pane === this.pane);
+    if (me && panes().filter((p) => p.tab === me.tab).length > 1) return "this pane, in its split";
+    const panel = findNode(layout(), "panel");
+    return `this pane, against the ${panel && !panel.hidden ? "side panel" : "sidebar"}`;
+  }
+
   panel(t, m, list, cell) {
+    const resizes = m.bindings.some((b) => /^resize focus=/.test(b.do));
     return v_flex().id("mode").w_full().max_h_full().p(PAD).gap(8).bg(t.popover).rounded(10).border_1().border_color(t.border).shadow_lg()
       .child(h_flex().gap(8).items_center()
         .child(div().px(7).h(20).flex().items_center().rounded(5).bg(t.accent).text_color(t.solid_foreground ?? t.background).text_size(11).font_semibold().child(m.name.toUpperCase()))
         .child(div().text_size(11.5).text_color(t.muted).child(m.sticky ? `sticky: keys repeat until esc${m.counts ? " · counts: 3j, 2gt" : ""}` : "one key"))
+        .when(resizes, (el) => el.child(div().px(6).h(20).flex().items_center().rounded(5).bg(t.hover).text_size(11).text_color(t.foreground)
+          .child(`- + < > v ^ = resize ${this.resizeTarget()}`)))
         .child(div().flex_1())
         .when(Boolean(this.flash), (el) => el.child(div().text_size(11.5).text_color(t.accent).child(this.flash))))
       .child(div().id("keys").flex_1().min_h(0).overflow_y_scroll()

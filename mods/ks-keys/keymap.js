@@ -16,6 +16,9 @@
 //   "leave"                        leave the mode (back to the terminal)
 //   "send:ctrl+b"                  press keys in the focused terminal (hc keys spelling)
 //   "tab.shift by=1"               move the shown tab one place right (-1: left)
+//   "resize focus=wide by=1"       what you're in (zen window, split pane, else the pane against the side panel)
+//                                  bigger: focus=size both ways, wide sideways, tall up and down; reset=true back
+//                                  to its default (zen centered, a split even)
 //   "resize id=panel by=24"        a layout block bigger (negative: smaller), px; id=auto: zen width, else the
 //                                  side panel when it shows, else the sidebar
 import { exec, appHome, shared, setShared } from "herdr";
@@ -25,7 +28,7 @@ export const KEY = "ks-keys.config";
 // Commands that open a dialog, a picker or a search: a sticky mode leaves before them, so they get the keyboard.
 export const EXITS = new Set(["tab.rename", "space.rename", "app.palette", "mod.open", "terminal.search", "ks-keys.editor",
   "ks-zen.settings", "ks-tabs.close", "ks-tabs.close-space", "space.new", "app.help"]);
-export const VERSION = 9;
+export const VERSION = 10;
 
 const go = [
   { key: "h", label: "Go left", do: "pane.go direction=left" },
@@ -78,9 +81,13 @@ export const DEFAULTS = {
         { key: "F", label: "Focus & zen settings", do: "ks-zen.settings" },
         { key: ".", label: "herdr-ks settings", do: "mod.open name=ks-settings" },
         { key: "r", label: "Resize mode (sticky)", do: "mode:resize" },
-        { key: "-", label: "Smaller (zen / panel)", do: "resize id=size by=-32" },
-        { key: "+", label: "Larger (zen / panel)", do: "resize id=size by=32" },
-        { key: "=", label: "Default size, centered", do: "resize id=size reset=true" },
+        { key: "-", label: "Smaller (what you're in)", do: "resize focus=size by=-1" },
+        { key: "+", label: "Larger (what you're in)", do: "resize focus=size by=1" },
+        { key: "=", label: "Default size (zen centered, split even)", do: "resize focus=size reset=true" },
+        { key: "<", label: "Narrower (what you're in)", do: "resize focus=wide by=-1" },
+        { key: ">", label: "Wider (what you're in)", do: "resize focus=wide by=1" },
+        { key: "v", label: "Shorter (what you're in)", do: "resize focus=tall by=-1" },
+        { key: "^", label: "Taller (what you're in)", do: "resize focus=tall by=1" },
         { key: "[", label: "Vim mode (normal)", do: "mode:vim" },
         { key: "m", label: "Move mode (sticky)", do: "mode:move" },
         { key: "t", label: "Tab mode (sticky)", do: "mode:tabs" },
@@ -170,13 +177,13 @@ export const DEFAULTS = {
     resize: {
       name: "resize", entry: "", sticky: true, counts: true, off: false,
       bindings: [
-        { key: "-", label: "Smaller (zen / panel)", do: "resize id=size by=-32" },
-        { key: "+", label: "Larger (zen / panel)", do: "resize id=size by=32" },
-        { key: "=", label: "Default size, centered", do: "resize id=size reset=true" },
-        { key: "<", label: "Narrower (zen / panel)", do: "resize id=wide by=-32" },
-        { key: ">", label: "Wider (zen / panel)", do: "resize id=wide by=32" },
-        { key: "v", label: "Shorter (zen / My PRs)", do: "resize id=auto by=-32" },
-        { key: "^", label: "Taller (zen / My PRs)", do: "resize id=auto by=32" },
+        { key: "-", label: "Smaller (what you're in)", do: "resize focus=size by=-1" },
+        { key: "+", label: "Larger (what you're in)", do: "resize focus=size by=1" },
+        { key: "=", label: "Default size (zen centered, split even)", do: "resize focus=size reset=true" },
+        { key: "<", label: "Narrower (what you're in)", do: "resize focus=wide by=-1" },
+        { key: ">", label: "Wider (what you're in)", do: "resize focus=wide by=1" },
+        { key: "v", label: "Shorter (what you're in)", do: "resize focus=tall by=-1" },
+        { key: "^", label: "Taller (what you're in)", do: "resize focus=tall by=1" },
         { key: "[", label: "Sidebar narrower", do: "resize id=sidebar by=-24" },
         { key: "]", label: "Sidebar wider", do: "resize id=sidebar by=24" },
         { key: "h", label: "Sidebar narrower", do: "resize id=sidebar by=-24" },
@@ -263,11 +270,11 @@ function upgrade(old) {
     if (!mine) continue;
     mine.bindings = mine.bindings.filter((b) => !(["-", "=", "+", "_"].includes(b.key) && /^resize /.test(b.do)));
   }
-  // Version 9: - smaller, + larger, = default size and centered (axes moved to < > v ^ in resize mode).
-  if ((old.version ?? 0) < 9) for (const id of ["service", "resize"]) {
+  // Version 10: - + < > v ^ = all act on what you're in (zen, the split pane, else the pane against the panel).
+  if ((old.version ?? 0) < 10) for (const id of ["service", "resize"]) {
     const mine = c.modes[id];
     if (!mine) continue;
-    mine.bindings = mine.bindings.filter((b) => !(["-", "=", "+", "_"].includes(b.key) && /^resize /.test(b.do)));
+    mine.bindings = mine.bindings.filter((b) => !(["-", "=", "+", "_", "<", ">", "v", "^"].includes(b.key) && /^resize /.test(b.do)));
   }
   for (const [id, m] of Object.entries(DEFAULTS.modes)) {
     if (!c.modes[id]) { c.modes[id] = clone(m); continue; }
