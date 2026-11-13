@@ -4,6 +4,7 @@
 // Mods can't import from each other: this file is copied as-is into both, and scripts/sync.sh
 // refuses to install copies that differ.
 import { spaces, panes, agents, terminals, run, openOverlay, closeOverlay, shared, setShared } from "herdr";
+import * as closing from "./lib/closing.js";
 
 // One choice for tabs (the tab menu sets it) and one for panes (the terminal menu), each under the
 // name of the mod whose menu sets it. In shared state, so it outlives a restart and both mods see it.
@@ -13,7 +14,9 @@ export const MODES = [
   ["agents", "While an agent works"],
   ["always", "Always"],
 ];
-export const confirmMode = (kind) => (MODES.some(([m]) => m === shared(KEYS[kind])) ? shared(KEYS[kind]) : "agents");
+// ks: closing a tab asks every time unless chosen otherwise (and can be undone for 30 s, lib/closing.js).
+const DEFAULT = { tab: "always", pane: "agents" };
+export const confirmMode = (kind) => (MODES.some(([m]) => m === shared(KEYS[kind])) ? shared(KEYS[kind]) : DEFAULT[kind]);
 export const setConfirmMode = (kind, mode) => setShared(KEYS[kind], mode);
 
 // A tab's program: its agent's, else its first pane's.
@@ -49,8 +52,12 @@ const OPEN = "ks-confirm.open";
 // with neither, the dialog says nothing runs in it.
 function closeAsking({ kind, agents, title, ends, more, command }) {
   const mode = confirmMode(kind);
-  if (mode === "never") return run(command.name, command.args);
+  // ks: a tab isn't closed at once but put away for 30 s with Undo (lib/closing.js); its space too when it's the last.
+  const soft = command.name === "tab.close" ? { kind: "tab", id: command.args.id } : null;
+  const now = () => soft ? closing.closeTab(soft.id) : run(command.name, command.args);
+  if (mode === "never") return now();
   if (mode === "agents" && agents.length === 0) {
+    if (soft) return now();
     const { confirmed, ...args } = command.args;
     return run(command.name, args);
   }
@@ -59,8 +66,9 @@ function closeAsking({ kind, agents, title, ends, more, command }) {
     : agents.length === 1 ? `${names} is still running in it. Closing ends it.`
     : `${agents.length} agents are still running in it (${names}). Closing ends them.`;
   if (shared(OPEN)) closeOverlay(shared(OPEN));
+  const detail = [why, more, soft ? "You can undo for 30 s." : ""].filter(Boolean).join(" ") || "Nothing runs in it.";
   setShared(OPEN, openOverlay({ mod: "ks-confirm", kind: "dialog", width: 400, height: 170,
-    props: { title, detail: [why, more].filter(Boolean).join(" ") || "Nothing runs in it.", command } }));
+    props: { title, detail, command, soft } }));
 }
 
 export function closeTab(id) {
@@ -73,7 +81,7 @@ export function closeTab(id) {
     agents: busy(a => a.tab === id),
     title: tab.named ? `Close tab "${fit(name)}"?` : `Close tab ${fit(name)}?`,
     ends: panes().some(p => p.tab === id && p.terminal) ? "Its terminals end." : "",
-    more: space.tabs.length === 1 ? "It's the space's last tab, so the space closes too." : "",
+    more: space.tabs.filter(c => !closing.hiddenTab(c.id)).length === 1 ? "It's the space's last tab, so the space closes too." : "",
     command: { name: "tab.close", args: { id, confirmed: true } },
   });
 }

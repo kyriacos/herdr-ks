@@ -7,6 +7,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, props, closeOverlay, theme, shared, setShared } from "herdr";
+import * as closing from "./lib/closing.js";
 
 export default class Confirm extends View {
   init(_props, cx) {
@@ -34,7 +35,11 @@ export default class Confirm extends View {
   press() {
     const p = props();
     closeOverlay(p.overlay);
-    if (this.at === "yes") run(p.command.name, p.command.args ?? {});
+    if (this.at !== "yes") return;
+    // ks: tabs and spaces close with 30 s to undo (lib/closing.js).
+    if (p.soft?.kind === "space") closing.closeSpace(p.soft.id);
+    else if (p.soft?.kind === "tab") closing.closeTab(p.soft.id);
+    else run(p.command.name, p.command.args ?? {});
   }
 
   render(cx) {

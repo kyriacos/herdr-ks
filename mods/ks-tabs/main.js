@@ -3,6 +3,7 @@ import { h_flex } from "gpui-base";
 import { spaces, run, openOverlay, theme, window, shared, setShared, layout, settings, focused, props, nextCommand, agents, panes, terminals, hc, exec, appHome } from "herdr";
 import { closeTab, closePane, tabName, tabProgram } from "./close.js";
 import * as sessions from "./lib/sessions.js";
+import * as closing from "./lib/closing.js";
 import { menuView, shortcut } from "./menu.js";
 
 function find(node, id) {
@@ -26,6 +27,9 @@ export default class Tabs extends View {
     }
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
     this.recordSessions(cx);
+    // ks: close for real what has waited 30 s (lib/closing.js); redraw the Undo chip's countdown meanwhile.
+    closing.finish();
+    cx.timer.every(1000, (cx) => { if (closing.pending().length) { closing.finish(); cx.notify(); } });
     // cmd-w: the shown tab, or `close:<id>` for another one. cmd-shift-w (`close-pane`): the focused pane,
     // here and not in ks-pane, as the tab bar has one copy and every pane header would get it.
     cx.spawn(async (cx) => {
@@ -34,6 +38,10 @@ export default class Tabs extends View {
         if (command === "close") closeTab(focused()?.tab ?? spaces().find(s => s.active)?.tabs.find(c => c.active)?.id);
         else if (command.startsWith("close:")) closeTab(command.slice("close:".length));
         else if (command === "close-pane" && focused()?.pane) closePane(focused().pane);
+        // ks: undo a close (⌘⇧T: the latest; the toast: `undo:<key>`), lib/closing.js.
+        else if (command.startsWith("soft-close:")) closing.closeTab(command.slice("soft-close:".length));
+        else if (command === "undo") closing.undo(null);
+        else if (command.startsWith("undo:")) closing.undo(command.slice("undo:".length));
         // Local change: panel:files / panel:changes (cmd-shift-e / cmd-shift-g) toggle the side panel like its buttons.
         else if (command.startsWith("panel:")) {
           const id = command.slice("panel:".length), root = layout(), panel = find(root, "panel"), body = find(root, "panel-body");
@@ -74,10 +82,22 @@ export default class Tabs extends View {
         const info = seen.get(pids[a.address])?.info;
         if (!info) continue;
         const old = before[a.address] ?? {}, pane = ps.find((p) => p.terminal === a.address)?.pane ?? old.pane ?? null;
-        const rec = { sessionId: info.sessionId, cwd: info.cwd, title: info.title ?? null, pane, tab: a.tab ?? old.tab ?? null };
+        const rec = { sessionId: info.sessionId, cwd: info.cwd, title: info.title ?? null, pane, tab: a.tab ?? old.tab ?? null, carded: old.carded ?? null };
         const same = ["sessionId", "cwd", "title", "pane", "tab"].every((k) => rec[k] === old[k]);
         // `at` (last seen running) is refreshed at most every 10 minutes, so a sweep doesn't write for nothing.
         if (!same || Date.now() - (old.at ?? 0) > 600000) { next[a.address] = { ...rec, at: Date.now() }; changed = true; }
+      }
+      // A terminal that came back after a reboot (made after its session last ran) and shows a shell: draw the
+      // session's card in it once, with resume on Enter.
+      const alive = new Set(live.map((a) => a.address));
+      for (const [addr, rec] of Object.entries(next)) {
+        if (alive.has(addr) || !rec.sessionId) continue;
+        const r = await hc(["get", addr]).catch(() => null);
+        let info = null; try { info = JSON.parse(r.stdout); } catch {}
+        if (!info || info.state !== "live" || !(info.created_ms > (rec.at ?? 0)) || rec.carded === info.created_ms) continue;
+        if (!/(^|\/)-?(zsh|bash|fish|sh|dash|ksh)$/.test(info.foreground?.argv?.[0] ?? "")) continue;
+        next[addr] = { ...rec, carded: info.created_ms }; changed = true;
+        sessions.showCard(addr, rec);
       }
       // Forget terminals that are gone (their tab closed) once a week has passed, and only once Herdr knows them.
       const known = new Set((terminals() ?? []).map((t) => t.address));
@@ -140,7 +160,7 @@ export default class Tabs extends View {
     if (props()?.menu) return this.renderMenu();
     const t = theme();
     const space = spaces().find(p => p.active);
-    const shown = space?.tabs ?? [];
+    const shown = (space?.tabs ?? []).filter(c => !closing.hiddenTab(c.id));
     const stop = (_e, cx) => cx.stop_propagation();
     const button = (id, label, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", stop).on_click(action).child(label);
@@ -193,6 +213,16 @@ export default class Tabs extends View {
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.map(item)))
+      .when(closing.pending().length > 0, el => {
+        const list = closing.pending(), last = list[list.length - 1], left = Math.max(0, Math.ceil((last.until - Date.now()) / 1000));
+        return el.child(h_flex().id("undo-close").flex_none().h(24).px(8).gap(6).items_center().rounded(6)
+          .bg(t.accent + "1f").text_size(11.5).text_color(t.accent).hover(s => s.bg(t.accent + "3a"))
+          .tooltip(list.length > 1 ? `${list.length} closing: ${list.map(e => `${e.kind} ${e.name}`).join(", ")}. ⌘⇧T undoes the latest.` : "⌘⇧T")
+          .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); closing.undo(last.key); })
+          .child(div().font_semibold().child("↶ Undo"))
+          .child(div().max_w(160).truncate().child(`${last.kind} ${last.name}`))
+          .child(div().text_color(t.dim).child(`${left}s`)));
+      })
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))

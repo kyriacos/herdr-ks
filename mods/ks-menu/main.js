@@ -8,6 +8,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, keys, terminals, spaces, panes, exec, shared, setShared } from "herdr";
+import * as closing from "./lib/closing.js";
 
 const OPEN = "ks-menu.open";
 
@@ -125,6 +126,9 @@ export default class Menu extends View {
     closeOverlay(props()?.overlay);
     // Local change: Roundup's worktree dialog (any repo, any folder) instead of Herdr's.
     if (it[1] === "worktree") openOverlay({ mod: "ks-worktree", kind: "dialog", ...(it[2].action === "open" ? { width: 560, height: 480 } : it[2].action === "new" ? { width: 480, height: 340 } : { width: 440, height: 260 }), props: it[2] });
+    // ks: closing a space or tab asks, then waits 30 s with Undo (lib/closing.js).
+    else if (it[1] === "space.close") closing.askSpace(it[2].id);
+    else if (it[1] === "tab.close") closing.ask({ kind: "tab", id: it[2].id, title: "Close tab?", detail: "Its terminals end." });
     else run(it[1], it[2]);
   }
 

@@ -145,11 +145,23 @@ after each refresh, so a PR window opens instantly. Delete the folder to start o
 **Resume after a reboot.** A reboot (or logout) brings each terminal back as a plain shell in its last
 folder; Herdr never re-runs Claude. So the tab bar records, every 20 s, which Claude Code session each agent
 terminal runs (its id, the folder Claude was started in, and its title: your `/rename`, else Claude's own title,
-else the first prompt), kept in Herdr's shared state so it survives the restart. When a terminal's agent is
-gone and it shows a shell, its **tab** gets a **↻ Resume** chip (hover: which session, how long ago) and its
-**pane header** a **↻ Resume <title> · 3h ago** button, both typing `cd <folder> && claude --resume <id>`
-into that shell. On hover the header also has **Pick…** (Claude's own list of that folder's sessions) and
-**✕** (forget it). Records of closed tabs go after a week.
+else the first prompt), kept in Herdr's shared state so it survives the restart. Then:
+
+- **Inside the tab:** a terminal that came back after a reboot shows a card of its last session once: title,
+  folder, branch, when it ran, the first and last prompts, Claude's last reply and the files it edited. **Enter**
+  resumes it, **p** picks another session there, any other key keeps the shell.
+- **On the tab:** a **↻ Resume** chip (hover: which session, how long ago).
+- **In the pane header:** **↻ Resume** runs `claude --resume <id>` in the session's folder; clicking the title
+  shows the card again; on hover **Pick…** (Claude's own list of that folder's sessions) and **✕** (forget it).
+
+They also show after you quit Claude yourself (✕ dismisses). Records of closed tabs go after a week.
+
+**Closing with undo.** Closing a tab or a space asks first (the tab menu's "Ask before closing a tab" still
+offers Never / While an agent works), then isn't closed for 30 s: its tabs are put away (still running), it
+disappears from the tab bar and the sidebar, and a toast and a **↶ Undo** chip in the tab bar (with a countdown)
+bring it back as it was; **⌘⇧T** undoes the latest. Closing a space's last tab closes the space the same way.
+After 30 s it closes for real (a close due while Herdr was quit happens at the next start). Scripts can use
+`herdr-app do ks-tabs.soft-close:<tab id>` and `ks-tabs.undo`.
 
 ## Set up
 
@@ -206,7 +218,8 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | My PRs in the sidebar: your open PRs with CI, review and merge state, foldable, hideable | `mods/ks-myprs/` (new), layout `my-prs` block |
 | PR window: details, checks, reviews, its worktree / space / agent, message the agent | `mods/ks-prcard/` (new) |
 | Corner resizing of floating review windows (a full-app surface follows the drag, then the window reopens at the new size) | `mods/ks-resize/` (new), `mods/ks-review/main.js` |
-| Resume Claude sessions after a reboot: recorded per terminal, ↻ Resume in the tab and the pane header | `mods/ks-tabs/main.js`, `mods/ks-tabs/session_of.py`, `mods/ks-pane/main.js`, `shared/sessions.js` |
+| Resume Claude sessions after a reboot: recorded per terminal, a card of the last session inside the terminal, ↻ Resume in the tab and the pane header | `mods/ks-tabs/main.js`, `session_of.py`, `last_session.py`, `mods/ks-pane/main.js`, `shared/sessions.js` |
+| Closing tabs and spaces asks, then waits 30 s with Undo (toast, tab bar chip, ⌘⇧T) | `shared/closing.js`, `mods/ks-tabs/` (`close.js`, `main.js`), `mods/ks-pane/close.js`, `mods/ks-confirm/`, `mods/ks-menu/`, `mods/ks-spaces/` |
 
 ## Keys (only while this layout shows)
 
@@ -217,7 +230,8 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | cmd-shift-g | Toggle Changes panel |
 | cmd-shift-u | Toggle PRs panel |
 | cmd-shift-m | Show / hide My PRs in the sidebar |
-| cmd-w / cmd-shift-w | Close tab / pane (upstream) |
+| cmd-w / cmd-shift-w | Close tab / pane (a tab asks, then can be undone for 30 s) |
+| cmd-shift-t | Undo the last close (tab or space) |
 
 ## Upstream updates
 

@@ -10,6 +10,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, HoverCard } from "gpui-base";
 import { place, alpha, badge, gitWhere, changesTip, rebuilt as isRebuilt } from "./space-text.js";
 import { spaces, machines, panes, terminals, agents, run, openOverlay, exec, hc, theme, settings, shared, setShared, watchFolder, window, layout } from "herdr";
+import * as closing from "./lib/closing.js";
 import { parseStatus, parseRevParse } from "./git-parse.js";
 import { docValue, quicklook, fingerprint } from "./pane-map.js";
 
@@ -437,7 +438,8 @@ export default class Spaces extends View {
   // space, or, when no space is there (Herdr makes each worktree its own space),
   // where the first of them was.
   ordered() {
-    const sp = spaces(), ps = panes();
+    // ks: a space being closed (30 s to undo, lib/closing.js) isn't listed.
+    const every = spaces(), sp = every.filter((s) => !closing.hiddenSpace(s.id)), ps = panes();
     // Answered: git spoke for its place, or it has no place to ask about.
     const answered = (w) => !JSON.parse(where(w, ps))[1] || where(w, ps) in this.git;
     const late = (since) => Date.now() - since > WAIT;
@@ -445,7 +447,7 @@ export default class Spaces extends View {
     const ready = (w) => this.shown.has(w.id)
       || (this.first.has(w.id) ? firstReady : answered(w) || late(this.born[w.id] ??= Date.now()));
     for (const w of sp) if (!this.shown.has(w.id) && ready(w)) this.shown.add(w.id);
-    const list = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null }));
+    const list = sp.map((w) => ({ w, i: every.indexOf(w), g: this.git[where(w, ps)] ?? null }));
     const mains = new Set(list.filter((r) => r.g && !r.g.linked).map((r) => r.g.repo));
     const trees = {}; // repo -> how many worktree spaces it has
     for (const r of list) if (r.g?.linked) trees[r.g.repo] = (trees[r.g.repo] ?? 0) + 1;

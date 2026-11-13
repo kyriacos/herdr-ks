@@ -11,6 +11,7 @@
       "args": {
         "id": "my-prs"
       }
-    }
+    },
+    "cmd-shift-t": "ks-tabs.undo"
   }
 }

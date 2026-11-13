@@ -7,7 +7,7 @@
 // title, pane, tab, at (last seen running, ms) }. Shared state is saved to disk, so it survives the restart; it
 // changes only when a session, title or place changes, not on every sweep. Source of truth: shared/sessions.js;
 // scripts/install.sh copies it into each mod's lib/.
-import { shared, setShared, agents, hc, notify } from "herdr";
+import { shared, setShared, agents, hc, notify, appHome } from "herdr";
 
 export const KEY = "ks.sessions";
 export const all = () => shared(KEY) ?? {};
@@ -32,6 +32,14 @@ export async function resume(address, rec, pick = false) {
   const cmd = `cd ${quote(rec.cwd)} && claude --resume${pick ? "" : " " + rec.sessionId}`;
   const r = await hc(["send", address, cmd]).catch((e) => ({ code: 1, stderr: String(e), stdout: "" }));
   if (r.code !== 0) notify({ title: "Couldn't resume the session", body: (r.stderr || r.stdout || "").trim(), level: "error" });
+}
+
+// Draws the session as a card inside the terminal (ks-tabs/last_session.py: title, folder, prompts, last reply,
+// files edited), waiting for Enter to resume it there.
+export async function showCard(address, rec) {
+  const script = `${appHome()}/mods/ks-tabs/last_session.py`;
+  const since = Math.round((Date.now() - (rec.at ?? Date.now())) / 1000);
+  await hc(["send", address, `clear; python3 -I ${quote(script)} ${rec.sessionId} ${quote(rec.cwd)} ${since}`]).catch(() => null);
 }
 
 export function forget(address) {

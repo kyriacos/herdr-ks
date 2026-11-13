@@ -108,7 +108,11 @@ export default class Pane extends View {
         .bg(t.accent + "22").text_size(11).text_color(t.accent).hover((s) => s.bg(t.accent + "40"))
         .tooltip(`claude --resume ${rec.sessionId}\nin ${folder(rec.cwd, home())}`)
         .on_click((_e, cx) => { cx.stop_propagation(); sessions.resume(p.terminal, rec); })
-        .child(div().font_semibold().child("↻ Resume"))
+        .child(div().font_semibold().child("↻ Resume")))
+      // The title: the session's card inside the terminal (prompts, last reply, files), Enter resumes there.
+      .child(h_flex().id(`ph-card-${p.pane}`).flex_none().h(20).px(6).gap(6).items_center().rounded(5).text_size(11)
+        .text_color(t.foreground).hover((s) => s.bg(t.hover)).tooltip("Show what this session was, in the terminal")
+        .on_click((_e, cx) => { cx.stop_propagation(); sessions.showCard(p.terminal, rec); })
         .child(div().max_w(240).truncate().child(sessions.label(rec)))
         .child(div().text_color(t.dim).child(sessions.ago(rec.at ?? Date.now()))))
       .when(this.hovered, (el) => el
