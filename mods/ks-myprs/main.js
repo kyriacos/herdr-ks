@@ -10,7 +10,7 @@ import * as cache from "./lib/cache.js";
 import { fetchPr, prKey } from "./lib/github.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
-import { takeFocus, listKey } from "./lib/panelkeys.js";
+import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 
 const BLOCK = "my-prs", HEAD = 34, ROW = 50;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
@@ -51,7 +51,7 @@ export default class MyPrs extends View {
     this.collapsed = load("collapsed", false);
     // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o opens the PR, r refresh, h/l/Esc leave.
     this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.cursor = 0; this.pageRows = 6;
-    takeFocus(this, cx);
+    takeFocus(this, cx, "ks-myprs"); watchFocus(this, cx, "ks-myprs");
     // Stale while revalidate: the last list at once (no toasts for it), then a fresh one.
     cx.spawn(async (cx) => {
       const hit = await cache.get("myprs");
@@ -148,7 +148,7 @@ export default class MyPrs extends View {
     const merge = { ready: ["ready", t.ansi2], blocked: ["blocked", t.muted], approval: ["needs approval", t.muted], behind: ["behind", t.blocked], conflicts: ["conflicts", t.ansi1], unstable: ["unstable", t.blocked], draft: ["draft", t.dim], checking: ["…", t.dim] }[s.merge];
     const mark = s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? t.blocked : s.urgent === 2 ? t.ansi2 : t.dim;
     return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 4).mx(6).mb(4).px(8).py(4).gap(3).rounded(7).cursor_pointer()
-      .when(this.handle?.is_focused() && this.prs[this.cursor] === pr, (e) => e.bg(t.selected ?? t.hover))
+      .when(focusedNow(this, "ks-myprs") && this.prs[this.cursor] === pr, (e) => e.bg(t.selected ?? t.hover))
       .border_l_2().border_color(mark).hover((st) => st.bg(t.hover)).on_click(() => this.openCard(pr))
       .child(h_flex().gap(5).items_center().text_size(11.5)
         .child(div().flex_none().text_color(t.dim).child(`${repo}#${pr.number}`))

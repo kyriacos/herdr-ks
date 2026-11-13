@@ -35,7 +35,7 @@ import { listNote, footerLines, linkTip, statusColor, changeColors, gitReason, n
 // A copy of ks-preview's: how it opens and which pane already shows a file. sync.sh
 // checks that the two copies match.
 import { FLOAT, openTab, timerOf, floatSpec, newToken, isOpen, unanswered, placed, floatShows } from "./open-file.js";
-import { leave } from "./lib/panelkeys.js";
+import { leave, watchFocus, focusedNow, gotFocus } from "./lib/panelkeys.js";
 import { dimmed } from "./lib/focus.js";
 
 const NAME = "ks-files";
@@ -100,12 +100,13 @@ export default class Files extends View {
       // list it (a folder's hold normally reads it again before this).
       if (this.index && (this.index.dirty || this.index.stale) && outdated(this.index, Date.now())) this.searchAgain(cx);
     });
+    watchFocus(this, cx, "ks-files", () => this.typing);
     // Commands (keys.json: "ks-files.<command>"). "focus" also comes from Herdr: pane.go
     // moved onto this panel (mod.json "focusable"), or a popup over it closed.
     cx.spawn(async (cx) => {
       for (;;) {
         const c = await nextCommand();
-        if (c === "focus") this.handle.focus();
+        if (c === "focus") gotFocus(this, cx, "ks-files");
         else if (c === "search") { this.closePreview(); this.input.focus(); }
         else if (c.startsWith("view:")) this.setView(c.slice(5), cx);
         else if (c.startsWith("source:")) this.setSource(c.slice(7), cx);
@@ -949,7 +950,8 @@ export default class Files extends View {
     const t = theme();
     // The panel's width in the mod's pixels, for the rows' +N −N and the branch row's bar.
     if (this.measuredWidth) this.width = this.measuredWidth / this.zoom();
-    let root = v_flex().id(NAME).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+    // ks: an accent border while the panel (or its search box) has the keyboard.
+    let root = v_flex().id(NAME).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focusedNow(this, "ks-files", () => this.typing) ? t.accent : t.border).text_color(t.foreground).text_size(13)
       .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       .on_size_change((size, cx) => { if (Math.abs(size.width - (this.measuredWidth ?? 0)) > 4) { this.measuredWidth = size.width; cx.notify(); } })
       .child(this.header(t));

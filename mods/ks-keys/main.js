@@ -173,6 +173,7 @@ async function openMode(id, keep = null) {
 }
 // The open strip's mode and pane, for ks-zen's "raise" (shared "ks-keys.live").
 const LIVE = "ks-keys.live";
+const PANEL = "ks.panelFocus"; // the side panel pane.go moved to while the strip was open (shared/panelkeys.js)
 const zenTerminal = () => shared("ks-zen.state")?.win ? shared("ks-zen.state").terminal : null;
 
 const openEditor = () => openOverlay({ mod: "ks-keys", kind: "dialog", width: 860, height: 640, props: { editor: true } });
@@ -260,6 +261,9 @@ export default class Keys extends View {
   leave(refocus = true) {
     this.leaving = true;
     closeOverlay(props().overlay);
+    // You moved onto a side panel while the strip had the keyboard: the panel gets it now.
+    const panel = shared(PANEL)?.mod;
+    if (panel) { if (shared(OPEN) === props().overlay) setShared(OPEN, null); run(`${panel}.focus`); }
     if (!refocus) return;
     // Closing the window gives the keyboard back to what had it: the pane, or in zen the zen window. No pane.focus:
     // in zen it would switch to the terminal's tab instead of zen.
@@ -318,7 +322,7 @@ export default class Keys extends View {
           .then((msg) => { if (msg && !this.leaving) { this.flash = msg; this.shown = true; cx.notify(); } }).catch(() => {});
       }
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24, this.pane);
-      else if (a.command === "pane.go") { run("pane.go", a.args); const g = focused(); if (g?.pane) { this.pane = g.pane; this.terminal = g.terminal ?? null; } }
+      else if (a.command === "pane.go") { setShared(PANEL, null); run("pane.go", a.args); const g = focused(); if (g?.pane) { this.pane = g.pane; this.terminal = g.terminal ?? null; } }
       else if (a.command === "tab.shift") {
         const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;
         if (i >= 0) run("tab.move", { id: sp.tabs[i].id, index: Math.max(1, Math.min(sp.tabs.length, i + 1 + (a.args.by ?? 1))) });

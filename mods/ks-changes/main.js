@@ -12,7 +12,7 @@ import { WORKTREE, readBranch, readCommits, readCommitFiles, treeRows } from "./
 import * as comments from "./lib/comments.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
-import { takeFocus, listKey } from "./lib/panelkeys.js";
+import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 
 // ---------- stored choices (this mod's localStorage) ----------
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -186,7 +186,7 @@ export default class Changes extends View {
     cx.timer.every(10000, (cx) => this.refresh(cx));
     // Vim keys (lib/panelkeys.js): pane.go hands this panel the keyboard.
     this.diffScroll = VirtualListScrollHandle.new(); this.diffTop = 0;
-    takeFocus(this, cx);
+    takeFocus(this, cx, "ks-changes"); watchFocus(this, cx, "ks-changes");
   }
 
   // j/k over the files (each opens its diff), or over the commits when picking one; l / Tab into the diff, where
@@ -680,9 +680,9 @@ export default class Changes extends View {
       (range) => this.rows.slice(range.start, range.end).map((row, j) => {
         const el = this.diffRow(row, t, colors, cols);
         // ks: the diff's line cursor while the keyboard is in the diff (vim keys).
-        return this.inDiff && range.start + j === this.diffTop && this.handle.is_focused() ? el.border_l_2().border_color(t.accent).bg(t.accent + "26") : el;
+        return this.inDiff && range.start + j === this.diffTop && focusedNow(this, "ks-changes") ? el.border_l_2().border_color(t.accent).bg(t.accent + "26") : el;
       })).size_full().track_scroll(this.diffScroll);
-    return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(this.handle.is_focused() ? t.accent : t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
+    return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focusedNow(this, "ks-changes") ? t.accent : t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {
         if (this.typing) { if (e.key === "escape") { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); } return; }
         if (this.vimKey(e, cx)) { cx.stop_propagation(); cx.notify(); }

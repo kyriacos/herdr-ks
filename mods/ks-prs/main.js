@@ -7,7 +7,7 @@ import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
 import { spaces, panes, focused, exec, shared, theme, run, notify } from "herdr";
 import * as cache from "./lib/cache.js";
 import { dimmed } from "./lib/focus.js";
-import { takeFocus, listKey } from "./lib/panelkeys.js";
+import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 
 const FIELDS = "number,title,state,url,baseRefName,headRefName,isDraft,reviewDecision,additions,deletions,changedFiles,statusCheckRollup,author";
 const base = (p) => p.replace(/\/+$/, "").split("/").pop();
@@ -45,7 +45,7 @@ export default class Prs extends View {
     this.prs = []; this.without = []; this.loading = false; this.error = null; this.key = null;
     // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o review, g o / O on GitHub, r refresh, h/l/Esc leave.
     this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.cursor = 0; this.pageRows = 4;
-    takeFocus(this, cx);
+    takeFocus(this, cx, "ks-prs"); watchFocus(this, cx, "ks-prs");
     this.refresh(cx);
     cx.timer.every(60000, (cx) => this.refresh(cx, true)); // GitHub: once a minute is plenty
   }
@@ -108,7 +108,7 @@ export default class Prs extends View {
     const button = (id, label, act, primary) => div().id(id).flex_none().h(24).px(9).flex().items_center().rounded(6).cursor_pointer().text_size(11)
       .bg(primary ? t.solid : t.background).text_color(primary ? t.solid_foreground : t.foreground).border_1().border_color(primary ? t.solid : t.border)
       .hover((s) => s.opacity(0.85)).on_click(act).child(label);
-    const at = this.handle?.is_focused() && this.prs[this.cursor] === pr;
+    const at = focusedNow(this, "ks-prs") && this.prs[this.cursor] === pr;
     return v_flex().id(`pr-${pr.url}`).flex_none().mx(8).mt(8).p(10).gap(5).rounded(8).border_1().border_color(at ? t.accent : t.border).bg(t.background)
       .child(h_flex().gap(6).items_start()
         .child(div().flex_none().text_size(12).text_color(t.dim).child(`#${pr.number}`))
@@ -133,7 +133,7 @@ export default class Prs extends View {
   renderInner(cx) {
     this.refresh(cx); // follows the session's worktrees as they change
     const t = theme();
-    return v_flex().id("prs").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(this.handle.is_focused() ? t.accent : t.border).text_color(t.foreground).text_size(13)
+    return v_flex().id("prs").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focusedNow(this, "ks-prs") ? t.accent : t.border).text_color(t.foreground).text_size(13)
       .track_focus(this.handle)
       .on_key_down((e, cx) => {
         const before = this.cursor, prs = this.prs;
