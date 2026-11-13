@@ -93,16 +93,18 @@ function closeZen() {
 
 const toggleZen = () => (zenOpen() ? closeZen() : openZen());
 
-// Narrower / wider: the zen window grows or shrinks around its middle, and the share is remembered.
-async function widen(step) {
+// Narrower / wider (dw) and shorter / taller (dh), as shares of the app window: the zen window changes around its
+// middle, and its width share is remembered.
+async function resizeZen(dw, dh) {
   const st = zen();
   if (!st?.win) return;
-  const { w, h } = await windowSize(), r = st.rect, dx = Math.round(w * step), dy = Math.round(h * step);
-  const width = Math.max(420, Math.min(w, r.width + dx * 2)), height = Math.max(300, Math.min(h, r.height + dy * 2));
+  const { w, h } = await windowSize(), r = st.rect;
+  const width = Math.max(420, Math.min(w, r.width + Math.round(w * dw) * 2)), height = Math.max(300, Math.min(h, r.height + Math.round(h * dh) * 2));
   const rect = { width, height, x: Math.max(0, Math.round(r.x + (r.width - width) / 2)), y: Math.max(0, Math.round(r.y + (r.height - height) / 2)) };
-  setShared(PREFS, { ...prefs(), share: Math.round((width / w) * 100) / 100 });
+  if (dw) setShared(PREFS, { ...prefs(), share: Math.round((width / w) * 100) / 100 });
   showZen(st.terminal, rect);
 }
+const widen = (step) => resizeZen(step, 0);
 
 function toggleFocus() {
   const on = !focusOn();
@@ -131,6 +133,8 @@ export default class Zen extends View {
         else if (c === "focus") toggleFocus();
         else if (c === "wider") await widen(0.03);
         else if (c === "narrower") await widen(-0.03);
+        else if (c === "taller") await resizeZen(0, 0.03);
+        else if (c === "shorter") await resizeZen(0, -0.03);
         else if (c === "settings") openSettings();
         else if (c.startsWith("focus-level:")) setFocus({ level: Math.max(0.1, Math.min(0.9, Number(c.slice(12)) || 0.35)) });
         cx.notify();

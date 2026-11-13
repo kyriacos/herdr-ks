@@ -36,31 +36,49 @@ function findNode(node, id) {
   return null;
 }
 
-// `resize id=<node> by=<px>`: a layout block (sidebar, panel, my-prs) bigger or smaller. id=auto: in zen the tab's
-// width, else the side panel when it shows, else the sidebar.
+// `resize id=<node> by=<px>`: a layout block (sidebar, panel, my-prs) bigger or smaller.
+// id=auto (vertical): in zen the window's height, else My PRs' height.
+// id=wide (horizontal): in zen the window's width, else the side panel when it shows, else the sidebar.
 function resize(id, by) {
-  const root = layout();
+  const root = layout(), zen = shared("ks-zen.state")?.win;
   if (id === "auto") {
-    if (shared("ks-zen.state")?.win) return run(by > 0 ? "ks-zen.wider" : "ks-zen.narrower");
+    if (zen) return run(by > 0 ? "ks-zen.taller" : "ks-zen.shorter");
+    id = "my-prs";
+  } else if (id === "wide") {
+    if (zen) return run(by > 0 ? "ks-zen.wider" : "ks-zen.narrower");
     const panel = findNode(root, "panel");
     id = panel && !panel.hidden ? "panel" : "sidebar";
   }
   const n = findNode(root, id);
   if (!n || n.hidden || n.size?.px == null) return;
-  run("layout.resize", { id, px: Math.round(Math.max(n.min ?? 120, Math.min(n.max ?? 1400, n.size.px + by))) });
+  run("layout.resize", { id, px: Math.round(Math.max(n.min ?? 40, Math.min(n.max ?? 1400, n.size.px + by))) });
+}
+
+// Commands that act on a pane or a terminal: while the strip holds the keyboard no pane has it, so they get the
+// pane you were in (followed as you move) explicitly.
+const PANE_ARG = new Set(["pane.zoom", "pane.split", "pane.swap", "pane.close"]);
+const TERMINAL_ARG = new Set(["terminal.scroll"]);
+
+// The strip is sized for the largest mode (modes switch inside it, it isn't reopened) and draws its own panel at
+// the bottom of a frameless popup, so a short mode is a short panel.
+function stripHeight(c, room) {
+  const rows = Math.max(...Object.values(c.modes).filter((m) => !m.off).map((m) =>
+    Math.ceil(shownBindings(m).filter((b) => !b.do.startsWith("mode:") || km.usable(c, b.do.slice(5).trim())).length / COLS)));
+  return Math.min(room, PAD * 2 + 26 + 8 + rows * ROW + 8 + 18 + 6);
 }
 
 async function openMode(id) {
   const c = km.config(), m = c.modes[id];
   if (!m || m.off) return;
+  // The pane you're in, before the strip takes the keyboard.
+  const f = focused();
   if (shared(OPEN)) closeOverlay(shared(OPEN));
-  const shown = shownBindings(m).filter((b) => !b.do.startsWith("mode:") || km.usable(c, b.do.slice(5).trim())).length;
   const zoom = settings().zoom || 1, win = await windowSize();
-  // Header, the rows of keys, the footer line, padding; at most what the window has room for.
   const room = win ? Math.floor(win.h / zoom) - 90 : 700;
-  const height = Math.min(room, PAD * 2 + 26 + 8 + Math.ceil(shown / COLS) * ROW + 8 + 18 + 6);
+  const height = stripHeight(c, room);
   const at = win ? { x: Math.round(win.w / 2 - (W * zoom) / 2), y: Math.max(0, Math.round(win.h - height * zoom - 40)) } : undefined;
-  setShared(OPEN, openOverlay({ mod: "ks-keys", kind: "popup", width: W, height, ...(at ? { at } : {}), props: { mode: id } }));
+  setShared(OPEN, openOverlay({ mod: "ks-keys", kind: "popup", frame: "none", width: W, height, ...(at ? { at } : {}),
+    props: { mode: id, pane: f?.pane ?? null, terminal: f?.terminal ?? null } }));
 }
 
 const openEditor = () => openOverlay({ mod: "ks-keys", kind: "dialog", width: 860, height: 640, props: { editor: true } });
@@ -102,6 +120,8 @@ export default class Keys extends View {
 
   initMode(p, cx) {
     this.mode = p.mode;
+    this.pane = p.pane ?? null;         // the pane you were in (pane commands get it explicitly)
+    this.terminal = p.terminal ?? null;
     this.flash = null;
     this.seq = [];    // the keys of a sequence typed so far ("g" of "g t")
     this.count = "";  // digits typed before a key (counts modes)
@@ -123,11 +143,18 @@ export default class Keys extends View {
     const a = km.parse(count && b.count ? b.count : b.do, count);
     if (a.leave) return this.leave();
     // Another mode: reopened at that mode's size.
+    // Another mode: switched here, in the same strip (reopening it lost the keyboard).
     if (a.mode) {
-      if (km.usable(km.config(), a.mode)) openMode(a.mode);
-      else { this.flash = `${a.mode} mode is off`; cx.notify(); }
+      if (km.usable(km.config(), a.mode)) { this.mode = a.mode; this.seq = []; this.count = ""; this.flash = null; }
+      else this.flash = `${a.mode} mode is off`;
+      cx.notify();
       return;
     }
+    // The pane you're in now: Herdr's focus when it says (it moves with pane.go), else the one you entered from.
+    const f = focused();
+    if (f?.pane) { this.pane = f.pane; this.terminal = f.terminal ?? this.terminal; }
+    if (PANE_ARG.has(a.command) && this.pane && a.args.pane === undefined) a.args.pane = this.pane;
+    if (TERMINAL_ARG.has(a.command) && this.terminal && a.args.terminal === undefined) a.args.terminal = this.terminal;
     // A one-shot mode closes before running; a sticky one before a command that opens something to type into
     // (rename, palette, a confirm), so that gets the keyboard.
     const exits = !m.sticky || b.exit || km.EXITS.has(a.command);
@@ -139,6 +166,7 @@ export default class Keys extends View {
         if (t) hc(["keys", t, ...a.send]);
       } else if (a.command === "ks-keys.editor") { openEditor(); return; }
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24);
+      else if (a.command === "pane.go") { run("pane.go", a.args); const g = focused(); if (g?.pane) { this.pane = g.pane; this.terminal = g.terminal ?? null; } }
       else if (a.command === "tab.shift") {
         const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;
         if (i >= 0) run("tab.move", { id: sp.tabs[i].id, index: Math.max(1, Math.min(sp.tabs.length, i + 1 + (a.args.by ?? 1))) });
@@ -194,8 +222,13 @@ export default class Keys extends View {
       .on_click((_e, cx) => this.act(b, cx))
       .child(div().min_w(34).h(18).px(5).flex().items_center().justify_center().rounded(4).bg(t.accent + "26").text_color(t.accent).text_size(11.5).font_semibold().child(keyLabel(b.key)))
       .child(div().flex_1().truncate().text_size(11.5).text_color(b.do.startsWith("mode:") ? t.accent : t.foreground).child(b.label));
-    return v_flex().id("mode").track_focus(this.handle).size_full().p(PAD).gap(8).bg(t.popover)
+    return v_flex().id("mode-wrap").track_focus(this.handle).size_full().justify_end()
       .on_key_down((e, cx) => { cx.stop_propagation(); this.key(e, cx); })
+      .child(this.panel(t, m, list, cell));
+  }
+
+  panel(t, m, list, cell) {
+    return v_flex().id("mode").w_full().max_h_full().p(PAD).gap(8).bg(t.popover).rounded(10).border_1().border_color(t.border).shadow_lg()
       .child(h_flex().gap(8).items_center()
         .child(div().px(7).h(20).flex().items_center().rounded(5).bg(t.accent).text_color(t.solid_foreground ?? t.background).text_size(11).font_semibold().child(m.name.toUpperCase()))
         .child(div().text_size(11.5).text_color(t.muted).child(m.sticky ? `sticky: keys repeat until esc${m.counts ? " · counts: 3j, 2gt" : ""}` : "one key"))
