@@ -193,7 +193,7 @@ in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 
 | Mode | Enter with | Keys |
 |---|---|---|
-| service (sticky) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `Z` zoom pane, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `z` zen, `f` focus mode, `F` focus & zen settings, `.` all settings, `-`/`=` shorter/taller, `_`/`+` narrower/wider, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor, Esc out |
+| service (sticky) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `z` zoom pane, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `Z` zen, `f` focus mode, `F` focus & zen settings, `.` all settings, `-`/`=` shorter/taller, `_`/`+` narrower/wider, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor, Esc out |
 | tmux (one key, off) | `ctrl-b` once switched on | `%` `"` split, `x` close pane, `z` zoom, `c` `n` `p` tabs, `&` close tab, `,` `$` rename, `(` `)` spaces, `o` next agent, `s` pick a space, `h j k l` go, `1`–`9`, `[` vim mode |
 | vim (normal mode for the window) | service `[` | `h j k l` pane, `H J K L` swap, `gt`/`gT` or `w`/`b` next/previous tab, `3gt` tab 3, `}`/`{` next/previous space, `3gs` space 3, `ctrl-d`/`ctrl-u` half page, `ctrl-f`/`ctrl-b` page, `ctrl-e`/`ctrl-y` line, `gg`/`G` top/bottom of the scrollback, `/` search, `s`/`v` split, `o` zoom, `dd` close pane, `dt` close tab, `t` new tab, `r` rename, `u` undo close, `zz` zen, `:` palette, `i`/`a`/`q`/Esc back to the terminal |
 | move (sticky) | service `m` | `h j k l` go, `H J K L` swap, `z` zoom, `s`/`v` split, `x` close, `n`/`p` tabs, `t` tab mode, `q`/Enter done |
@@ -221,7 +221,7 @@ entry keys into `keys.json` (and keeps them there, even after a reinstall); the 
 
 ## Zen mode
 
-`cmd-shift-z` (or service `z`, vim `zz`, main menu **Zen mode**). The terminal you're in, alone in a floating
+`cmd-shift-z` (or service `Z`, vim `zz`, main menu **Zen mode**). The terminal you're in, alone in a floating
 window over everything, on a backdrop that covers the rest. Both are windows over your layout, so zen wears
 whatever theme is showing.
 

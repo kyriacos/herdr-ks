@@ -105,7 +105,7 @@ export default class Settings extends View {
       case "zen": {
         const z = zenPrefs();
         return v_flex().child(heading("Zen mode"))
-          .child(row("Zen", "The terminal you're in, alone in a floating window over everything. ⌘⇧Z, service z, vim zz.",
+          .child(row("Zen", "The terminal you're in, alone in a floating window over everything. ⌘⇧Z, service Z, vim zz.",
             btn("zen-now", "Open zen now", () => { this.close(); run("ks-zen.toggle"); })))
           .child(row(`Backdrop: ${z.opacity >= 1 ? "opaque" : `translucent, ${Math.round(z.opacity * 100)}%`}`, "Translucent shows the sidebar and panels through glass; the tab area behind zen stays solid.",
             btn("op-opaque", "Opaque", () => setZen({ opacity: 1 }), z.opacity >= 1),

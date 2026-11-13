@@ -1,6 +1,6 @@
 // ks-zen: zen mode, focus mode, and their settings.
 //
-// Zen (cmd-shift-z, service z, vim zz): the terminal you're in, alone in a floating window over everything, on a
+// Zen (cmd-shift-z, service Z, vim zz): the terminal you're in, alone in a floating window over everything, on a
 // glass backdrop that covers the rest of the window. Both are windows over the layout you're in, so they wear the
 // theme that's showing; nothing switches. The zen window has a title bar to drag it by, corner grips to resize it
 // (ks-resize, as the review windows), Narrower / Wider, ⚙ settings and Exit. Clicking the backdrop brings the zen

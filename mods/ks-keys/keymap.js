@@ -25,7 +25,7 @@ export const KEY = "ks-keys.config";
 // Commands that open a dialog, a picker or a search: a sticky mode leaves before them, so they get the keyboard.
 export const EXITS = new Set(["tab.rename", "space.rename", "app.palette", "mod.open", "terminal.search", "ks-keys.editor",
   "ks-zen.settings", "ks-tabs.close", "ks-tabs.close-space", "space.new", "app.help"]);
-export const VERSION = 7;
+export const VERSION = 8;
 
 const go = [
   { key: "h", label: "Go left", do: "pane.go direction=left" },
@@ -58,7 +58,7 @@ export const DEFAULTS = {
         { key: "%", label: "Split right", do: "pane.split direction=right" },
         { key: "\"", label: "Split down", do: "pane.split direction=down" },
         { key: "x", label: "Close pane", do: "ks-tabs.close-pane" },
-        { key: "Z", label: "Zoom pane", do: "pane.zoom" },
+        { key: "z", label: "Zoom pane", do: "pane.zoom" },
         { key: "c", label: "New tab", do: "tab.new" },
         { key: "n", label: "Next tab", do: "tab.next" },
         { key: "p", label: "Previous tab", do: "tab.prev" },
@@ -72,7 +72,7 @@ export const DEFAULTS = {
         { key: "/", label: "Search terminal", do: "terminal.search" },
         { key: ":", label: "Command palette", do: "app.palette" },
         { key: "u", label: "Undo close", do: "ks-tabs.undo" },
-        { key: "z", label: "Zen mode", do: "ks-zen.toggle" },
+        { key: "Z", label: "Zen mode", do: "ks-zen.toggle" },
         { key: "f", label: "Focus mode", do: "ks-zen.focus" },
         ...go, ...swap, ...tabNumbers,
         { key: "F", label: "Focus & zen settings", do: "ks-zen.settings" },
@@ -243,12 +243,17 @@ export const config = () => {
 function upgrade(old) {
   const c = clone(old);
   if ((old.version ?? 0) < 2 && c.modes.tmux && !c.modes.service) { c.modes.service = { ...c.modes.tmux, name: "service" }; delete c.modes.tmux; }
-  // Version 5: service mode stays on until Esc, Z zooms and z is zen (when those keys are still the old defaults).
+  // Version 5: service mode stays on until Esc (it also swapped z / Z, undone in version 8).
   if ((old.version ?? 0) < 5 && c.modes.service) {
     const sv = c.modes.service;
     sv.sticky = true;
     const z = sv.bindings.find((b) => b.key === "z"), Z = sv.bindings.find((b) => b.key === "Z");
     if (z?.do === "pane.zoom" && Z?.do === "ks-zen.toggle") { z.key = "Z"; Z.key = "z"; }
+  }
+  // Version 8: z zooms the pane again and Z is zen (version 5 had them the other way round), when unchanged.
+  if ((old.version ?? 0) < 8 && c.modes.service) {
+    const sv = c.modes.service, z = sv.bindings.find((b) => b.key === "z"), Z = sv.bindings.find((b) => b.key === "Z");
+    if (z?.do === "ks-zen.toggle" && Z?.do === "pane.zoom") { z.key = "Z"; Z.key = "z"; }
   }
   // Version 7: - / = resize vertically, _ / + horizontally (they were one "smaller / larger").
   if ((old.version ?? 0) < 7) for (const id of ["service", "resize"]) {
