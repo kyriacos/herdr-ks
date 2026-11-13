@@ -28,7 +28,7 @@ export const KEY = "ks-keys.config";
 // Commands that open a dialog, a picker or a search: a sticky mode leaves before them, so they get the keyboard.
 export const EXITS = new Set(["tab.rename", "space.rename", "app.palette", "mod.open", "terminal.search", "ks-keys.editor",
   "ks-zen.settings", "ks-tabs.close", "ks-tabs.close-space", "space.new", "app.help"]);
-export const VERSION = 11;
+export const VERSION = 12;
 
 const go = [
   { key: "h", label: "Go left", do: "pane.go direction=left" },
@@ -45,6 +45,37 @@ const swap = [
   { key: "J", label: "Swap down", do: "pane.swap direction=down" },
   { key: "K", label: "Swap up", do: "pane.swap direction=up" },
   { key: "L", label: "Swap right", do: "pane.swap direction=right" },
+];
+// Vim's ctrl-w window commands: one key after ctrl-w (5 ctrl-w + : counts after the prefix), in the window mode and,
+// as ctrl-w sequences, in vim's normal mode.
+const windowKeys = [
+  ...go,
+  { key: "ctrl-h", label: "Go left", do: "pane.go direction=left" },
+  { key: "ctrl-j", label: "Go down", do: "pane.go direction=down" },
+  { key: "ctrl-k", label: "Go up", do: "pane.go direction=up" },
+  { key: "ctrl-l", label: "Go right", do: "pane.go direction=right" },
+  ...swap,
+  { key: "s", label: "Split down", do: "pane.split direction=down" },
+  { key: "ctrl-s", label: "Split down", do: "pane.split direction=down" },
+  { key: "v", label: "Split right", do: "pane.split direction=right" },
+  { key: "ctrl-v", label: "Split right", do: "pane.split direction=right" },
+  { key: "n", label: "New pane (split down)", do: "pane.split direction=down" },
+  { key: "c", label: "Close pane", do: "ks-tabs.close-pane" },
+  { key: "q", label: "Close pane", do: "ks-tabs.close-pane" },
+  { key: "o", label: "Zoom pane (only)", do: "pane.zoom" },
+  { key: "ctrl-o", label: "Zoom pane (only)", do: "pane.zoom" },
+  { key: "+", label: "Taller (what you're in)", do: "resize focus=tall by=1" },
+  { key: "-", label: "Shorter (what you're in)", do: "resize focus=tall by=-1" },
+  { key: ">", label: "Wider (what you're in)", do: "resize focus=wide by=1" },
+  { key: "<", label: "Narrower (what you're in)", do: "resize focus=wide by=-1" },
+  { key: "=", label: "Default size (split even, zen centered)", do: "resize focus=size reset=true" },
+  { key: "T", label: "New tab", do: "tab.new" },
+  { key: "g t", label: "Next tab", do: "tab.next" },
+  { key: "g T", label: "Previous tab", do: "tab.prev" },
+  { key: "z", label: "Zen mode", do: "ks-zen.toggle" },
+  { key: "f", label: "Focus mode", do: "ks-zen.focus" },
+  { key: "u", label: "Undo close", do: "ks-tabs.undo" },
+  { key: ":", label: "Command palette", do: "app.palette" },
 ];
 const tabNumbers = Array.from({ length: 9 }, (_, i) => ({ key: String(i + 1), label: `Tab ${i + 1}`, do: `tab.select index=${i + 1}` }));
 
@@ -117,7 +148,18 @@ export const DEFAULTS = {
         ...go, ...tabNumbers,
       ],
     },
-    // A normal mode for the window: motions, counts and sequences, until i / Esc.
+    // Vim's ctrl-w: one window command, then back to the terminal. Switched on with "Vim keys" (it takes ctrl-w,
+    // a shell's delete-word: ctrl-w twice still sends it, and alt-backspace deletes a word too).
+    window: {
+      name: "window (ctrl-w)", entry: "ctrl-w", sticky: false, counts: true, off: true,
+      bindings: [
+        ...windowKeys,
+        { key: "N", label: "Vim normal mode", do: "mode:vim" },
+        { key: "escape", label: "Cancel", do: "leave" },
+      ],
+    },
+    // A normal mode for the window: motions, counts and sequences, until i / Esc. "Vim keys" gives it its own key,
+    // ctrl-\ (as neovim's ctrl-\ ctrl-n leaves a terminal for normal mode).
     vim: {
       name: "vim", entry: "", sticky: true, counts: true, off: false,
       bindings: [
@@ -152,6 +194,7 @@ export const DEFAULTS = {
         { key: "u", label: "Undo close", do: "ks-tabs.undo" },
         { key: "z z", label: "Zen mode", do: "ks-zen.toggle" },
         { key: ":", label: "Command palette", do: "app.palette" },
+        ...windowKeys.filter((b) => !b.key.includes(" ")).map((b) => ({ ...b, key: `ctrl-w ${b.key}` })),
         { key: "i", label: "Back to the terminal", do: "leave" },
         { key: "a", label: "Back to the terminal", do: "leave" },
         { key: "q", label: "Back to the terminal", do: "leave" },
@@ -289,6 +332,16 @@ function upgrade(old) {
   // Zen is a window now, not a layout: its key sections go.
   c.sections = [...new Set([...(c.sections ?? []).filter((x) => !/^layout:ks-zen/.test(x)), ...DEFAULTS.sections])];
   c.version = VERSION;
+  return c;
+}
+// "Vim keys": ctrl-w window commands anywhere, and ctrl-\\ into vim's normal mode. On when both are reachable.
+export const VIM_ENTRY = "ctrl-\\";
+export const vimKeys = (c = config()) => usable(c, "window") && Boolean(c.modes.vim?.entry) && usable(c, "vim");
+export function setVimKeys(c, on) {
+  if (c.modes.window) c.modes.window.off = !on;
+  if (c.modes.vim) { c.modes.vim.off = false; c.modes.vim.entry = on ? (c.modes.vim.entry || VIM_ENTRY) : ""; }
+  // Another mode on the same key gives it up.
+  if (on) for (const [id, m] of Object.entries(c.modes)) if ((id !== "window" && m.entry === c.modes.window?.entry) || (id !== "vim" && m.entry === c.modes.vim?.entry)) m.entry = "";
   return c;
 }
 export const save = (c) => setShared(KEY, { ...c, version: VERSION });

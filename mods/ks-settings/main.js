@@ -121,7 +121,10 @@ export default class Settings extends View {
         const list = modes ? Object.entries(modes).map(([mid, m]) => [mid, m.name, m.off ? "off" : m.entry || "from another mode", m.sticky ? "sticky" : "one key"])
           : [["service", "service", "ctrl-;", "sticky"], ["vim", "vim", "service [", "sticky"], ["tmux", "tmux", "off (ctrl-b)", "one key"], ["move", "move", "service m", "sticky"], ["resize", "resize", "service r", "sticky"], ["tabs", "tabs", "service t", "sticky"], ["spaces", "spaces", "service S", "sticky"]];
         const fixed = [["⌘⇧Z", "Zen mode"], ["⌘⇧F", "Focus mode"], ["⌘⇧T", "Undo the last close"], ["⌘⇧N", "New space + worktree"], ["⌘⇧E / ⌘⇧G / ⌘⇧U", "Files / Changes / PRs panel"], ["⌘⇧M", "Show / hide My PRs"], ["⌘K", "Key modes editor"], ["⌘⇧,", "These settings"]];
+        const vimOn = Boolean(modes?.window && !modes.window.off && modes.vim?.entry && !modes.vim.off);
         return v_flex().child(heading("Keys & modes"))
+          .child(row("Vim keys", "Vim's ctrl-w window commands anywhere: h j k l go, H J K L swap, s v split, o zoom, c close, + - < > = resize what you're in, z zen. ctrl-\\ enters vim's normal mode (i or esc leaves). Takes ctrl-w from the shell: press it twice to delete a word, or use alt-backspace.",
+            btn("vim-on", "On", () => run("ks-keys.vim:on"), vimOn), btn("vim-off", "Off", () => run("ks-keys.vim:off"), !vimOn)))
           .child(row("Key modes", "Press a mode's key and a strip shows its keys. Switch modes on or off, change their keys and every binding in the editor.",
             btn("keys-edit", "Open the key modes editor", () => { this.close(); run("ks-keys.editor"); })))
           .child(v_flex().pb(16).gap(2).children(list.map(([mid, name, entry, kind]) => h_flex().h(24).gap(12).text_size(12)

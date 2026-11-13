@@ -159,6 +159,9 @@ export default class Pane extends View {
       .px(10)
       .gap(8)
       .items_center()
+      // The pane is rounded 10 with a 1 px border; the header sits inside it, so its top corners round 9 (square,
+      // its background showed past the curve, more so when focus mode fades it).
+      .rounded_t(9)
       .bg(t.background)
       .border_b(1)
       .border_color(t.border)

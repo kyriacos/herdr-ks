@@ -189,13 +189,25 @@ in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 - Pressing a mode's entry key again sends it on to the terminal.
 - Any mode can be switched **off**: its key, and every key that leads to it, go away.
 
+**Vim keys** (Settings → Keys & modes, or the switch at the top of the editor's mode list) make the vim bindings
+work anywhere, not only from service mode:
+
+- `ctrl-w` then one window command, as in vim: `h j k l` (or `ctrl-h` …) go, `H J K L` swap, `s`/`v` split,
+  `n` new pane, `c`/`q` close, `o` zoom, `+`/`-` taller/shorter, `>`/`<` wider/narrower, `=` default size (all on
+  what you're in), `T` new tab, `gt`/`gT` tabs, `z` zen, `f` focus mode, `u` undo close, `:` palette, `N` vim
+  normal mode. A count after the prefix repeats it (`ctrl-w 5 +`).
+- `ctrl-\` enters vim's normal mode directly (as neovim's `ctrl-\ ctrl-n`); there `ctrl-w …` works too.
+- It takes `ctrl-w` from the shell and Claude (delete a word): press `ctrl-w` twice to send it, or use
+  `alt-backspace`. Both keys can be changed in the editor.
+
 **Shipped modes:**
 
 | Mode | Enter with | Keys |
 |---|---|---|
 | service (sticky) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `z` zoom pane, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `Z` zen, `f` focus mode, `F` focus & zen settings, `.` all settings, `-`/`=` narrower/wider and `_`/`+` shorter/taller (what you're in), `0` default size, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor, Esc out |
 | tmux (one key, off) | `ctrl-b` once switched on | `%` `"` split, `x` close pane, `z` zoom, `c` `n` `p` tabs, `&` close tab, `,` `$` rename, `(` `)` spaces, `o` next agent, `s` pick a space, `h j k l` go, `1`–`9`, `[` vim mode |
-| vim (normal mode for the window) | service `[` | `h j k l` pane, `H J K L` swap, `gt`/`gT` or `w`/`b` next/previous tab, `3gt` tab 3, `}`/`{` next/previous space, `3gs` space 3, `ctrl-d`/`ctrl-u` half page, `ctrl-f`/`ctrl-b` page, `ctrl-e`/`ctrl-y` line, `gg`/`G` top/bottom of the scrollback, `/` search, `s`/`v` split, `o` zoom, `dd` close pane, `dt` close tab, `t` new tab, `r` rename, `u` undo close, `zz` zen, `:` palette, `i`/`a`/`q`/Esc back to the terminal |
+| window (one key, vim keys) | `ctrl-w` | see **Vim keys** above |
+| vim (normal mode for the window) | service `[`, `ctrl-\` with vim keys | `h j k l` pane, `H J K L` swap, `gt`/`gT` or `w`/`b` next/previous tab, `3gt` tab 3, `}`/`{` next/previous space, `3gs` space 3, `ctrl-d`/`ctrl-u` half page, `ctrl-f`/`ctrl-b` page, `ctrl-e`/`ctrl-y` line, `gg`/`G` top/bottom of the scrollback, `/` search, `s`/`v` split, `o` zoom, `dd` close pane, `dt` close tab, `t` new tab, `r` rename, `u` undo close, `zz` zen, `:` palette, `ctrl-w …` window commands, `i`/`a`/`q`/Esc back to the terminal |
 | move (sticky) | service `m` | `h j k l` go, `H J K L` swap, `z` zoom, `s`/`v` split, `x` close, `n`/`p` tabs, `t` tab mode, `q`/Enter done |
 | resize (sticky) | service `r` | see [Resizing from the keyboard](#resizing-from-the-keyboard) |
 | tabs (sticky) | service `t` | `h`/`l` previous/next, `H`/`L` move the tab, `1`–`9`, `c` new, `x` close, `r` rename, `u` undo |

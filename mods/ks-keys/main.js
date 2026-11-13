@@ -200,6 +200,13 @@ export default class Keys extends View {
         // ks-zen reopened its window over the strip: the strip comes back on top, same mode and pane.
         else if (command === "raise") { const live = shared(LIVE); if (shared(OPEN) && live?.mode) openMode(live.mode, live); }
         else if (command === "editor") openEditor();
+        // "Vim keys" on or off (the settings panel's switch): ctrl-w window commands, ctrl-\\ vim normal mode.
+        else if (command === "vim:on" || command === "vim:off") {
+          const on = command === "vim:on";
+          km.save(km.setVimKeys(km.config(), on));
+          sync();
+          notify({ title: on ? "Vim keys on" : "Vim keys off", body: on ? "ctrl-w then h j k l s v o c + - < > = (ctrl-w twice: delete a word). ctrl-\\: vim normal mode, i or esc to leave." : "ctrl-w and ctrl-\\ go to the terminal again.", level: "info", timeout: 5000 });
+        }
         cx.notify();
       }
     });
@@ -470,6 +477,11 @@ export default class Keys extends View {
     const field = (state, w) => Input.new(state).w(w).h(30).px(8).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(12);
     const label = (text) => div().text_size(11).text_color(t.dim).child(text);
     const modesList = v_flex().w(190).gap(2).pr(10).border_r(1).border_color(t.border)
+      .child(h_flex().id("vimkeys").h(30).px(8).mb(8).gap(6).items_center().rounded(7).border_1()
+        .border_color(km.vimKeys(cfg) ? t.accent : t.input).text_size(12).text_color(km.vimKeys(cfg) ? t.accent : t.muted).cursor_pointer()
+        .tooltip("ctrl-w window commands anywhere (h j k l, s v, o, c, + - < > =), ctrl-\\ into vim's normal mode")
+        .on_click((_e, cx) => { this.applyMode(); km.setVimKeys(cfg, !km.vimKeys(cfg)); this.pick(this.sel, false); this.dirty = true; cx.notify(); })
+        .child(km.vimKeys(cfg) ? "■ Vim keys" : "□ Vim keys"))
       .child(div().pb(6).text_size(11).text_color(t.dim).child("Modes"))
       .children(Object.entries(cfg.modes).map(([id, x]) => h_flex().id(`m-${id}`).h(30).px(8).gap(6).items_center().rounded(6)
         .bg(id === this.sel ? t.selected : t.popover).hover((s) => s.bg(t.hover))
