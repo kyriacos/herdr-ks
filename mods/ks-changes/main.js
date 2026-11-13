@@ -4,7 +4,7 @@
 // - matching repos: sibling repos (same parent folder as the main checkout) with a checkout on the
 //   same branch show as extra sections, each with its own commit, so backend + web work side by side.
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
+import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
 import { spaces, panes, focused, exec, hc, watchFolder, theme, settings, home, appHome, run, shared, setShared, openOverlay } from "herdr";
 import { langOf, colorsFor } from "./lib/highlight.js";
 import { parseDiff, wrapTokens, colsFor } from "./lib/diff.js";
@@ -12,6 +12,7 @@ import { WORKTREE, readBranch, readCommits, readCommitFiles, treeRows } from "./
 import * as comments from "./lib/comments.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
+import { takeFocus, listKey } from "./lib/panelkeys.js";
 
 // ---------- stored choices (this mod's localStorage) ----------
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -183,6 +184,82 @@ export default class Changes extends View {
     this.input.on("blur", (_e, cx) => { this.typing = false; cx.notify(); });
     this.refresh(cx);
     cx.timer.every(10000, (cx) => this.refresh(cx));
+    // Vim keys (lib/panelkeys.js): pane.go hands this panel the keyboard.
+    this.diffScroll = VirtualListScrollHandle.new(); this.diffTop = 0;
+    takeFocus(this, cx);
+  }
+
+  // j/k over the files (each opens its diff), or over the commits when picking one; l / Tab into the diff, where
+  // j/k gg G ctrl-d/u/f/b/e/y }/{ H/L move a line cursor, J/K next/previous file, h / Esc back to the list; Enter/o reviews the file in a tab, e expands it in a window, O opens the file; 1 2 3 the scopes,
+  // t tree, w wrap, c the commit message, R review the branch, Backspace back to the commits; h/l/Esc leave.
+  vimKey(e, cx) {
+    const k = e.key, m = e.modifiers ?? {};
+    if (m.platform || m.alt) return false;
+    const rows = this.rows, page = 15, shift = Boolean(m.shift);
+    // In the diff (l / Tab from the list): a line cursor that moves as in vim.
+    const diffTo = (i) => { this.diffTop = Math.max(0, Math.min(rows.length - 1, i)); this.diffScroll.scroll_to_item(this.diffTop); return true; };
+    const hunk = (dir) => {
+      const hunks = rows.map((r, i) => (r.kind === "@" ? i : -1)).filter((i) => i >= 0);
+      const i = dir > 0 ? hunks.find((h) => h > this.diffTop) : [...hunks].reverse().find((h) => h < this.diffTop);
+      return i === undefined ? true : diffTo(i);
+    };
+    if (m.control) {
+      if (!this.inDiff && rows.length) this.inDiff = true; // ctrl-d / u / e / y always move the diff
+      if (k === "d") return diffTo(this.diffTop + page);
+      if (k === "u") return diffTo(this.diffTop - page);
+      if (k === "f") return diffTo(this.diffTop + page * 2);
+      if (k === "b") return diffTo(this.diffTop - page * 2);
+      if (k === "e") return diffTo(this.diffTop + 1);
+      if (k === "y") return diffTo(this.diffTop - 1);
+      return false;
+    }
+    if (this.inDiff) {
+      if (k === "g" && !shift) { if (this.__g) { this.__g = false; return diffTo(0); } this.__g = true; return true; }
+      this.__g = false;
+      if ((k === "j" && !shift) || k === "down") return diffTo(this.diffTop + 1);
+      if ((k === "k" && !shift) || k === "up") return diffTo(this.diffTop - 1);
+      if (k === "G") return diffTo(rows.length - 1);
+      if (k === "}" || k === "]") return hunk(1);
+      if (k === "{" || k === "[") return hunk(-1);
+      if (k === "H") return diffTo(this.diffTop - 30);
+      if (k === "L") return diffTo(this.diffTop + 30);
+      if ((k === "h" && !shift) || k === "escape" || k === "tab" || k === "left") { this.inDiff = false; return true; }
+      if (k === "J" || k === "K") { this.inDiff = false; return this.vimKey({ key: k === "J" ? "j" : "k", modifiers: {} }, cx); }
+      if (k === "w") { this.setWrap(!this.wrap, cx); return true; }
+      if (k === "enter" || k === "o") { const it = this.sections.find((x) => x.root === this.open?.root); if (it) this.openReview(it, this.open.path); return true; }
+      if (k === "e") { const it = this.sections.find((x) => x.root === this.open?.root); if (it) this.expand(it, this.open.path); return true; }
+      return /^[a-z]$/i.test(k); // other letters do nothing here, and don't reach anything else
+    }
+    if ((k === "l" && !shift) || k === "tab" || k === "right") {
+      if (rows.length && this.open) { this.inDiff = true; this.diffTop = Math.min(this.diffTop, rows.length - 1); this.diffScroll.scroll_to_item(this.diffTop); return true; }
+      if (k === "tab") return false;
+    }
+    if (k === "}" || k === "{") return hunk(k === "}" ? 1 : -1);
+    if (k === "1" || k === "2" || k === "3") { this.setScope(["working", "branch", "commits"][Number(k) - 1], cx); this.cursor = 0; return true; }
+    if (k === "t") { this.setTree(!this.tree, cx); return true; }
+    if (k === "w") { this.setWrap(!this.wrap, cx); return true; }
+    if (k === "c") { this.input.focus(); return true; }
+    if (k === "R") { this.openBranchReview(); return true; }
+    if (k === "backspace" && this.picked) { this.leaveCommit(cx); this.cursor = 0; return true; }
+    if (this.scope === "commits" && !this.picked) {
+      const commits = this.sections.flatMap((s) => s.commitList ?? []);
+      return listKey(this, e, commits.length, (i) => { this.openCommit(commits[i], cx); this.cursor = 0; });
+    }
+    const all = this.sections.filter((s) => !this.folded.has(s.root)).flatMap((s) => this.filesOf(s).map((f) => ({ s, f })));
+    const cur = all.findIndex(({ s, f }) => this.open && s.root === this.open.root && f.path === this.open.path);
+    this.cursor = cur >= 0 ? cur : (this.cursor ?? 0);
+    const before = this.cursor;
+    const taken = listKey(this, e, all.length, (i) => this.openReview(all[i].s, all[i].f.path), (key) => {
+      const it = all[this.cursor];
+      if (key === "e" && it) { this.expand(it.s, it.f.path); return true; }
+      if (key === "O" && it) { this.openFile(it.s, it.f.path); return true; }
+      return false;
+    });
+    if (taken && this.cursor !== before && all[this.cursor]) {
+      const { s, f } = all[this.cursor];
+      if (!(this.open && this.open.root === s.root && this.open.path === f.path)) { this.pick(s, f.path, cx); this.diffTop = 0; this.diffScroll.scroll_to_item(0, "top"); }
+    }
+    return taken;
   }
 
   watch(root, cx) {
@@ -600,9 +677,16 @@ export default class Changes extends View {
     const cols = this.wrap && this.diffPx ? colsFor(this.diffPx, 11, 34 + 12 + 10) : null;
     const sizes = cols ? this.rows.map((r) => (r.kind && r.kind !== "@" ? 20 * wrapTokens(r, cols).length : 20)) : 20;
     const list = v_virtual_list(`changes-diff-${this.wrap ? "w" : "n"}`, this.rows.length, sizes, (i) => String(i),
-      (range) => this.rows.slice(range.start, range.end).map((row) => this.diffRow(row, t, colors, cols))).size_full();
-    return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
-      .on_key_down((e, cx) => { if (e.key === "escape" && this.typing) { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); } })
+      (range) => this.rows.slice(range.start, range.end).map((row, j) => {
+        const el = this.diffRow(row, t, colors, cols);
+        // ks: the diff's line cursor while the keyboard is in the diff (vim keys).
+        return this.inDiff && range.start + j === this.diffTop && this.handle.is_focused() ? el.border_l_2().border_color(t.accent).bg(t.accent + "26") : el;
+      })).size_full().track_scroll(this.diffScroll);
+    return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(this.handle.is_focused() ? t.accent : t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
+      .on_key_down((e, cx) => {
+        if (this.typing) { if (e.key === "escape") { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); } return; }
+        if (this.vimKey(e, cx)) { cx.stop_propagation(); cx.notify(); }
+      })
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().font_semibold().child("Changes"))
         .child(div().px(5).py(1).rounded(4).border_1().border_color(t.border).text_size(10).text_color(t.muted).child(`${files.length} files${multi ? ` · ${secs.length} repos` : ""}`))

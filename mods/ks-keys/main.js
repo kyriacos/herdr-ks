@@ -169,7 +169,7 @@ async function openMode(id, keep = null) {
   // A window, not a popup: Herdr closes popups on Esc itself, and that Esc could then reach the terminal behind
   // (Claude takes it as "interrupt" and redraws). A window leaves every key to this mod.
   setShared(OPEN, openOverlay({ mod: "ks-keys", kind: "window", key: "ks-keys-mode", frame: "none", width: W, height, ...(at ? { at } : {}),
-    props: { mode: id, pane: f?.pane ?? null, terminal: f?.terminal ?? null, window: floating, flash: keep?.flash ?? null } }));
+    props: { mode: id, pane: f?.pane ?? null, terminal: f?.terminal ?? null, window: floating, flash: keep?.flash ?? null, shown: Boolean(keep) } }));
 }
 // The open strip's mode and pane, for ks-zen's "raise" (shared "ks-keys.live").
 const LIVE = "ks-keys.live";
@@ -200,6 +200,8 @@ export default class Keys extends View {
         // ks-zen reopened its window over the strip: the strip comes back on top, same mode and pane.
         else if (command === "raise") { const live = shared(LIVE); if (shared(OPEN) && live?.mode) openMode(live.mode, live); }
         else if (command === "editor") openEditor();
+        // How long the strip waits before it shows (ms), from the settings panel.
+        else if (command.startsWith("delay:")) { const c = km.config(); c.delay = Math.max(0, Number(command.slice(6)) || 0); km.save(c); }
         // "Vim keys" on or off (the settings panel's switch): ctrl-w window commands, ctrl-\\ vim normal mode.
         else if (command === "vim:on" || command === "vim:off") {
           const on = command === "vim:on";
@@ -230,10 +232,21 @@ export default class Keys extends View {
     this.seq = [];    // the keys of a sequence typed so far ("g" of "g t")
     this.count = "";  // digits typed before a key (counts modes)
     this.leaving = false;
+    // Which-key style: the strip catches keys at once but shows only once you pause for the delay (shared config,
+    // default 1 s); every key typed meanwhile starts the wait again, so a combo never shows it. A message shows it.
+    this.shown = Boolean(p.flash) || Boolean(p.shown) || (km.config().delay ?? 1000) <= 0;
+    this.showGen = 0;
+    this.deferShow(cx);
     this.handle = cx.focus_handle();
     this.handle.focus();
     cx.timer.after(200, () => this.handle.focus());
     this.publish();
+  }
+
+  deferShow(cx) {
+    if (this.shown) return;
+    const gen = ++this.showGen, delay = km.config().delay ?? 1000;
+    cx.timer.after(delay, () => { if (!this.leaving && gen === this.showGen) { this.shown = true; cx.notify(); } });
   }
 
   publish() { setShared(LIVE, { mode: this.mode, pane: this.pane, terminal: this.terminal, window: this.window, flash: this.flash }); }
@@ -276,7 +289,7 @@ export default class Keys extends View {
     // Another mode: switched here, in the same strip (reopening it lost the keyboard).
     if (a.mode) {
       if (km.usable(km.config(), a.mode)) { this.mode = a.mode; this.seq = []; this.count = ""; this.flash = null; this.publish(); }
-      else this.flash = `${a.mode} mode is off`;
+      else { this.flash = `${a.mode} mode is off`; this.shown = true; }
       cx.notify();
       return;
     }
@@ -288,7 +301,7 @@ export default class Keys extends View {
     // In zen there's one terminal, in a window: pane commands would act on the tab under it (and move the keyboard
     // to the same terminal there, at another size). They do nothing here.
     if (zenTerminal() && (PANE_ARG.has(a.command) || a.command === "pane.go")) {
-      this.flash = "Not in zen (one terminal)"; cx.notify(); return;
+      this.flash = "Not in zen (one terminal)"; this.shown = true; cx.notify(); return;
     }
     // A one-shot mode closes before running; a sticky one before a command that opens something to type into
     // (rename, palette, a confirm), so that gets the keyboard.
@@ -302,7 +315,7 @@ export default class Keys extends View {
       } else if (a.command === "ks-keys.editor") { openEditor(); return; }
       else if (a.command === "resize" && a.args.focus) {
         resizeFocused(a.args.focus, Math.sign(a.args.by ?? 1) || 1, Boolean(a.args.reset), this.pane, this.window)
-          .then((msg) => { if (msg && !this.leaving) { this.flash = msg; cx.notify(); } }).catch(() => {});
+          .then((msg) => { if (msg && !this.leaving) { this.flash = msg; this.shown = true; cx.notify(); } }).catch(() => {});
       }
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24, this.pane);
       else if (a.command === "pane.go") { run("pane.go", a.args); const g = focused(); if (g?.pane) { this.pane = g.pane; this.terminal = g.terminal ?? null; } }
@@ -320,6 +333,7 @@ export default class Keys extends View {
   }
 
   key(e, cx) {
+    this.deferShow(cx);
     if (this.leaving) return; // on the way out: nothing more goes anywhere
     const m = km.config().modes[this.mode];
     if (!m) return this.leaveOnRelease(cx);
@@ -374,7 +388,7 @@ export default class Keys extends View {
       .on_key_up((_e, cx) => { cx.stop_propagation(); this.keyUp(cx); })
       // A press on the strip's background would drag the window: it stays put.
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .child(this.panel(t, m, list, cell));
+      .when(this.shown, (el) => el.child(this.panel(t, m, list, cell)));
   }
 
   // What - + < > v ^ = act on right now, in words, for the strip's header (modes that have those keys).

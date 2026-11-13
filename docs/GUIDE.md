@@ -200,6 +200,25 @@ work anywhere, not only from service mode:
 - It takes `ctrl-w` from the shell and Claude (delete a word): press `ctrl-w` twice to send it, or use
   `alt-backspace`. Both keys can be changed in the editor.
 
+**The strip waits.** The keys work as soon as you enter a mode, but the strip only appears after a 1 s pause, and
+each key starts the wait again, so a combo you know never shows it. Change it in Settings → Keys & modes
+(at once, 0,5 s, 1 s, 1,5 s, 2,5 s).
+
+**Panels with vim keys.** `h`/`l` (service, vim normal mode) or `ctrl-w h`/`ctrl-w l` move the keyboard into the side
+panels; a focused panel gets an accent border. In every panel: `j`/`k` move, `gg`/`G` first/last, `ctrl-d`/`ctrl-u`
+half a page, Enter/`o` open, `h`/`l` leave towards that side, Esc back to the terminal.
+
+- **Changes:** `j`/`k` walk the files and show each diff. `l` or Tab moves into the diff, which has a line cursor:
+  `j`/`k`, `gg`/`G`, `ctrl-d`/`ctrl-u`/`ctrl-f`/`ctrl-b`/`ctrl-e`/`ctrl-y`, `}`/`{` next/previous hunk, `H`/`L`
+  30 lines, `J`/`K` next/previous file, `h`/Esc back to the list. Also Enter/`o` review the file in a tab, `e` in
+  a window, `O` the file itself, `1`/`2`/`3` uncommitted/branch/commits, `t` tree, `w` wrap, `c` the commit
+  message, `R` review the branch, Backspace back to the commits.
+- **Files:** `j k h l` as the arrows (`l` opens a folder, `h` closes it or goes to its parent), `gg`/`G`, `o` open,
+  `/` search.
+- **PRs:** Enter/`o` review, `O` on GitHub, `R` review all, `r` refresh. **My PRs:** Enter/`o` the PR window,
+  `r` refresh, Space fold.
+- **Review tabs and windows** already had vim keys (see Reviewing).
+
 **Shipped modes:**
 
 | Mode | Enter with | Keys |

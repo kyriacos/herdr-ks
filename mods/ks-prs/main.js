@@ -3,10 +3,11 @@
 // terminal's repo. Each PR: title, branch -> base, draft and review state, CI checks, size; Review opens its diff
 // against its base in ks-review, Open shows it on GitHub. Uses `gh` (GitHub CLI, logged in).
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex, Scrollbar } from "gpui-base";
+import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
 import { spaces, panes, focused, exec, shared, theme, run, notify } from "herdr";
 import * as cache from "./lib/cache.js";
 import { dimmed } from "./lib/focus.js";
+import { takeFocus, listKey } from "./lib/panelkeys.js";
 
 const FIELDS = "number,title,state,url,baseRefName,headRefName,isDraft,reviewDecision,additions,deletions,changedFiles,statusCheckRollup,author";
 const base = (p) => p.replace(/\/+$/, "").split("/").pop();
@@ -42,6 +43,9 @@ function sessionRoots() {
 export default class Prs extends View {
   init(_props, cx) {
     this.prs = []; this.without = []; this.loading = false; this.error = null; this.key = null;
+    // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o review, g o / O on GitHub, r refresh, h/l/Esc leave.
+    this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.cursor = 0; this.pageRows = 4;
+    takeFocus(this, cx);
     this.refresh(cx);
     cx.timer.every(60000, (cx) => this.refresh(cx, true)); // GitHub: once a minute is plenty
   }
@@ -104,7 +108,8 @@ export default class Prs extends View {
     const button = (id, label, act, primary) => div().id(id).flex_none().h(24).px(9).flex().items_center().rounded(6).cursor_pointer().text_size(11)
       .bg(primary ? t.solid : t.background).text_color(primary ? t.solid_foreground : t.foreground).border_1().border_color(primary ? t.solid : t.border)
       .hover((s) => s.opacity(0.85)).on_click(act).child(label);
-    return v_flex().id(`pr-${pr.url}`).flex_none().mx(8).mt(8).p(10).gap(5).rounded(8).border_1().border_color(t.border).bg(t.background)
+    const at = this.handle?.is_focused() && this.prs[this.cursor] === pr;
+    return v_flex().id(`pr-${pr.url}`).flex_none().mx(8).mt(8).p(10).gap(5).rounded(8).border_1().border_color(at ? t.accent : t.border).bg(t.background)
       .child(h_flex().gap(6).items_start()
         .child(div().flex_none().text_size(12).text_color(t.dim).child(`#${pr.number}`))
         .child(div().flex_1().min_w(0).text_size(12.5).font_semibold().child(pr.title)))
@@ -128,7 +133,19 @@ export default class Prs extends View {
   renderInner(cx) {
     this.refresh(cx); // follows the session's worktrees as they change
     const t = theme();
-    return v_flex().id("prs").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+    return v_flex().id("prs").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(this.handle.is_focused() ? t.accent : t.border).text_color(t.foreground).text_size(13)
+      .track_focus(this.handle)
+      .on_key_down((e, cx) => {
+        const before = this.cursor, prs = this.prs;
+        if (!listKey(this, e, prs.length, (i) => this.review([prs[i]]), (k) => {
+          if (k === "r") { this.refresh(cx, true); return true; }
+          if (k === "O" && prs[this.cursor]) { this.openUrl(prs[this.cursor].url); return true; }
+          if (k === "R" && prs.length) { this.review(prs); return true; }
+          return false;
+        })) return;
+        if (this.cursor !== before) this.scroll.scroll_to_item(this.cursor + (this.error ? 1 : 0));
+        cx.stop_propagation(); cx.notify();
+      })
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().font_semibold().child("Pull requests"))
         .child(div().px(5).py(1).rounded(4).border_1().border_color(t.border).text_size(10).text_color(t.muted).child(`${this.prs.length} open`))
@@ -138,7 +155,7 @@ export default class Prs extends View {
         .when(this.prs.length > 1, (e) => e.child(div().id("prs-review-all").h(24).px(8).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground)
           .text_size(11).cursor_pointer().on_click(() => this.review(this.prs)).child("Review all"))))
       .child(div().flex_1().min_h(0).relative()
-        .child(v_flex().id("prs-list").absolute().inset_0().overflow_y_scroll().pb(10)
+        .child(v_flex().id("prs-list").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).pb(10)
           .when(Boolean(this.error), (e) => e.child(div().p(12).text_size(12).text_color(t.ansi1).child(this.error)))
           .when(!this.error && this.loading && !this.prs.length, (e) => e.child(div().p(12).text_size(12).text_color(t.dim).child("Looking for pull requests…")))
           .when(!this.error && !this.loading && !this.prs.length, (e) => e.child(div().p(12).text_size(12).text_color(t.dim).child("No open pull requests for this session's worktrees")))

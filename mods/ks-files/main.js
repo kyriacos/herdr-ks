@@ -35,6 +35,7 @@ import { listNote, footerLines, linkTip, statusColor, changeColors, gitReason, n
 // A copy of ks-preview's: how it opens and which pane already shows a file. sync.sh
 // checks that the two copies match.
 import { FLOAT, openTab, timerOf, floatSpec, newToken, isOpen, unanswered, placed, floatShows } from "./open-file.js";
+import { leave } from "./lib/panelkeys.js";
 import { dimmed } from "./lib/focus.js";
 
 const NAME = "ks-files";
@@ -702,7 +703,19 @@ export default class Files extends View {
   }
 
   key(e, cx) {
-    const k = e.key, rows = this.shown, cur = rows.find((r) => r.rel === this.cursor);
+    const rows = this.shown, cur = rows.find((r) => r.rel === this.cursor);
+    // ks: vim keys, as the arrows (lib/panelkeys.js has the same set for the other panels): j k h l, gg G,
+    // ctrl-d / ctrl-u half a page, o open; Esc with nothing to close, or h at the top level, leaves the panel.
+    let k = e.key;
+    const vm = e.modifiers ?? {}, typingNow = this.typing || this.kmenu;
+    if (!typingNow && vm.control && !vm.platform && !vm.alt && (k === "d" || k === "u")) { this.move(rows, k === "d" ? 10 : -10, cx); cx.stop_propagation(); cx.notify(); return; }
+    if (!typingNow && !vm.control && !vm.platform && !vm.alt) {
+      if (k === "g" && !vm.shift) { if (this.__g) { this.__g = false; k = "home"; } else { this.__g = true; cx.stop_propagation(); return; } }
+      else { this.__g = false; k = { j: "down", k: "up", l: "right", G: "end", o: "enter" }[k] ?? k; }
+      if (e.key === "h" && !vm.shift) k = this.file ? "left" : (cur && (cur.dir && cur.open || dirOf(cur.rel)) ? "left" : "leave");
+      if (k === "escape" && !this.file && !this.query && !isOpen(shared(FLOAT))) k = "leave";
+      if (k === "leave") { leave("left"); cx.stop_propagation(); return; }
+    }
     if (e.modifiers?.platform || e.modifiers?.control || e.modifiers?.alt) return;
     if (this.kmenu) {
       const km = this.kmenu, next = menuKey(km.at, km.items.length, k, e.modifiers?.shift);

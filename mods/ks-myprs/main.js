@@ -4,12 +4,13 @@
 // The header folds the section to one line (the block shrinks); × hides it; cmd-shift-m shows / hides it
 // (layout.toggle my-prs). A toast when a PR's CI turns red or green, or a review lands. Refreshes every minute.
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex, Scrollbar } from "gpui-base";
+import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
 import { exec, theme, run, notify, openOverlay } from "herdr";
 import * as cache from "./lib/cache.js";
 import { fetchPr, prKey } from "./lib/github.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
+import { takeFocus, listKey } from "./lib/panelkeys.js";
 
 const BLOCK = "my-prs", HEAD = 34, ROW = 50;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
@@ -48,6 +49,9 @@ export default class MyPrs extends View {
   init(_props, cx) {
     this.prs = []; this.error = null; this.loading = false; this.loaded = false; this.last = {};
     this.collapsed = load("collapsed", false);
+    // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o opens the PR, r refresh, h/l/Esc leave.
+    this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.cursor = 0; this.pageRows = 6;
+    takeFocus(this, cx);
     // Stale while revalidate: the last list at once (no toasts for it), then a fresh one.
     cx.spawn(async (cx) => {
       const hit = await cache.get("myprs");
@@ -144,6 +148,7 @@ export default class MyPrs extends View {
     const merge = { ready: ["ready", t.ansi2], blocked: ["blocked", t.muted], approval: ["needs approval", t.muted], behind: ["behind", t.blocked], conflicts: ["conflicts", t.ansi1], unstable: ["unstable", t.blocked], draft: ["draft", t.dim], checking: ["…", t.dim] }[s.merge];
     const mark = s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? t.blocked : s.urgent === 2 ? t.ansi2 : t.dim;
     return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 4).mx(6).mb(4).px(8).py(4).gap(3).rounded(7).cursor_pointer()
+      .when(this.handle?.is_focused() && this.prs[this.cursor] === pr, (e) => e.bg(t.selected ?? t.hover))
       .border_l_2().border_color(mark).hover((st) => st.bg(t.hover)).on_click(() => this.openCard(pr))
       .child(h_flex().gap(5).items_center().text_size(11.5)
         .child(div().flex_none().text_color(t.dim).child(`${repo}#${pr.number}`))
@@ -163,7 +168,17 @@ export default class MyPrs extends View {
     const icon = (id, label, act) => div().id(id).flex_none().size(20).flex().items_center().justify_center().rounded(5).cursor_pointer()
       .text_size(11).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label);
-    return v_flex().id("myprs").size_full().min_h(0).bg(t.chrome).text_color(t.foreground)
+    return v_flex().id("myprs").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).track_focus(this.handle)
+      .on_key_down((e, cx) => {
+        const before = this.cursor;
+        if (!listKey(this, e, prs.length, (i) => this.openCard(prs[i]), (k) => {
+          if (k === "r") { this.refresh(cx); return true; }
+          if (k === "space") { this.toggle(cx); return true; }
+          return false;
+        })) return;
+        if (this.cursor !== before) this.scroll.scroll_to_item(this.cursor);
+        cx.stop_propagation(); cx.notify();
+      })
       .child(h_flex().id("myprs-head").h(HEAD).flex_none().px(12).gap(6).items_center().cursor_pointer()
         .on_click((_e, cx) => this.toggle(cx))
         .child(div().w(10).flex_none().text_size(10).text_color(t.dim).child(this.collapsed ? "▸" : "▾"))
@@ -175,7 +190,7 @@ export default class MyPrs extends View {
         .child(icon("myprs-refresh", this.loading ? "…" : "↻", (cx) => this.refresh(cx)))
         .child(icon("myprs-hide", "×", () => run("layout.hide", { id: BLOCK }))))
       .when(!this.collapsed, (e) => e.child(div().flex_1().min_h(0).relative()
-        .child(v_flex().id("myprs-list").absolute().inset_0().overflow_y_scroll()
+        .child(v_flex().id("myprs-list").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll)
           .when(Boolean(this.error), (e) => e.child(div().px(14).py(4).text_size(11).text_color(t.ansi1).child(this.error)))
           .when(!this.error && this.loaded && !prs.length, (e) => e.child(div().px(14).py(4).text_size(11).text_color(t.dim).child("No open pull requests")))
           .children(prs.map((pr) => this.row(pr, t))))

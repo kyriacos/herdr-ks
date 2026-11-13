@@ -1,4 +1,5 @@
 {
   "place": "none",
-  "title": "PRs"
+  "title": "PRs",
+  "focusable": true
 }

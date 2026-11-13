@@ -28,7 +28,7 @@ export const KEY = "ks-keys.config";
 // Commands that open a dialog, a picker or a search: a sticky mode leaves before them, so they get the keyboard.
 export const EXITS = new Set(["tab.rename", "space.rename", "app.palette", "mod.open", "terminal.search", "ks-keys.editor",
   "ks-zen.settings", "ks-tabs.close", "ks-tabs.close-space", "space.new", "app.help"]);
-export const VERSION = 12;
+export const VERSION = 14;
 
 const go = [
   { key: "h", label: "Go left", do: "pane.go direction=left" },
@@ -83,6 +83,7 @@ export const DEFAULTS = {
   version: VERSION,
   sections: ["layout:ks"],
   editor: "cmd-k",
+  delay: 1000, // ms before the key strip shows (it catches keys at once)
   modes: {
     // Service mode: entered with ctrl-;, its keys work until Esc (a key that opens something to type into, such as
     // rename or the palette, leaves it first).
@@ -329,6 +330,8 @@ function upgrade(old) {
     const taken = new Set(mine.bindings.map((b) => tokens(b.key).join(" ")));
     for (const b of m.bindings) if (!taken.has(tokens(b.key).join(" "))) mine.bindings.push(clone(b));
   }
+  // Version 14: the strip waits 1 s (500 ms felt too short); an older default goes up, a chosen one stays.
+  if (c.delay === undefined || ((old.version ?? 0) < 14 && c.delay === 500)) c.delay = DEFAULTS.delay;
   // Zen is a window now, not a layout: its key sections go.
   c.sections = [...new Set([...(c.sections ?? []).filter((x) => !/^layout:ks-zen/.test(x)), ...DEFAULTS.sections])];
   c.version = VERSION;
