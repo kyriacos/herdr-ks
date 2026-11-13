@@ -12,7 +12,8 @@
 // keys, the context menu as a popup of this mod. See THIRD_PARTY_NOTICES.md.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, InputState, Input, Scrollbar, Popup, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
-import { spaces, panes, focused, readTextFile, watchFolder, theme, settings, window, props, notify, openOverlay, closeOverlay, shared, setShared, nextCommand, run, exec } from "herdr";
+import { spaces, panes, focused, readTextFile, watchFolder, theme, settings, window, props, notify, openOverlay, closeOverlay, shared, setShared, nextCommand, run, exec, agents, hc, appHome } from "herdr";
+import { candidates } from "./lib/branch.js";
 
 // ks: the worktree bar. Pins (space id -> root) live in this mod's localStorage; the session's worktrees come
 // from the Changes panel (shared "ks.session": space id -> [{ root, on }]).
@@ -70,6 +71,11 @@ export default class Files extends View {
     this.width = 368; this.measuredWidth = null; this.query = ""; this.hits = null; this.searchSeq = 0; this.shown = [];
     this.seenRequest = shared(REQUEST)?.n ?? 0;
     this.uid = newToken();
+    // ks: worktrees for the worktree bar besides the Changes panel's: where this space's Claude agents work, and
+    // every worktree of the repo shown (behind More…). Rechecked every 15 s.
+    this.agentRoots = {}; this.repoWorktrees = { root: null, list: [] }; this.showAllWt = false;
+    this.refreshWorktrees(cx);
+    cx.timer.every(15000, (cx) => this.refreshWorktrees(cx));
     // A floating window can outlive this copy's start (the mod reloaded); one gone with a restart,
     // a layout switch or a crash leaves FLOAT behind, as FLOAT is saved: askFloat tells them apart.
     if (shared(FLOAT)) this.askFloat(cx);
@@ -798,11 +804,46 @@ export default class Files extends View {
         : none);
   }
 
-  // ks: the session's worktrees as chips (Auto = follow the Changes panel / the focused terminal); each chip's
-  // repo and branch are read once in the background.
+  // ks: the session's worktrees as chips (Auto = follow the Changes panel / the focused terminal): the Changes
+  // panel's, plus where this space's agents work, plus More… for every other worktree of the repo; each chip's repo
+  // and branch are read once in the background.
   sessionWorktrees() {
     const space = activeSpace();
-    return ((space && shared("ks.session")?.[space]) || []).filter((w) => !w.on).map((w) => w.root);
+    const fromChanges = ((space && shared("ks.session")?.[space]) || []).filter((w) => !w.on).map((w) => w.root);
+    const fromAgents = (space && this.agentRoots?.[space]) || [];
+    const seen = new Set(), out = [];
+    for (const r of [...fromChanges, ...fromAgents]) if (r && !seen.has(r.toLowerCase())) { seen.add(r.toLowerCase()); out.push(r); }
+    return out;
+  }
+  // Where this space's Claude agents work (ks-changes/agent_where.py, as Follow agent), and the repo's worktrees.
+  refreshWorktrees(cx) {
+    const space = activeSpace();
+    cx.spawn(async (cx) => {
+      if (space) {
+        const roots = [];
+        for (const a of agents().filter((x) => x.space === space && /claude/i.test(x.app ?? ""))) {
+          const g = await hc(["get", a.address]).catch(() => null);
+          let pid = null; try { pid = JSON.parse(g?.stdout ?? "{}").foreground?.pid; } catch {}
+          if (!pid) continue;
+          const args = ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid)];
+          let w = await exec("python3", args).catch(() => null);
+          if (!w || w.code !== 0) w = await exec("/usr/bin/python3", args).catch(() => null);
+          try { roots.push(...(JSON.parse(w?.stdout ?? "{}").roots ?? [])); } catch {}
+        }
+        // An empty answer (an agent between programs, hc slow) keeps the last one.
+        if (roots.length || !this.agentRoots[space]) this.agentRoots = { ...this.agentRoots, [space]: roots };
+      }
+      const root = this.root;
+      if (root && this.repoWorktrees.root !== root) {
+        const all = await candidates([root], null).catch(() => []);
+        const top = await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: root }).catch(() => null);
+        const main = (top?.stdout ?? "").trim().replace(/\/\.git$/, "");
+        // Only this repo's worktrees (candidates also lists the repos next to it).
+        const mine = all.filter((c) => main && (c.root === main || c.root.toLowerCase().startsWith(main.toLowerCase()) || c.repo === main.split("/").pop()));
+        this.repoWorktrees = { root, list: mine.map((c) => c.root) };
+      }
+      cx.notify();
+    });
   }
   pickWorktree(root, cx) {
     const space = activeSpace();
@@ -812,8 +853,14 @@ export default class Files extends View {
   }
   worktreeBar(t, cx) {
     const roots = this.sessionWorktrees(), space = activeSpace(), pinned = space ? this.wtPins[space] ?? null : null;
-    if (roots.length < 2 && !pinned) return null;
-    for (const root of roots) if (!this.wtInfo[root]) {
+    // Looked up at once when the space or the folder shown changes, not only on the 15 s check; each space keeps its
+    // last answer meanwhile, so the bar doesn't come and go.
+    if (space && this.wtSpace !== space) { this.wtSpace = space; this.refreshWorktrees(cx); }
+    else if (this.root && this.repoWorktrees.root !== this.root && this.wtFor !== this.root) { this.wtFor = this.root; this.refreshWorktrees(cx); }
+    const known = new Set(roots.map((r) => r.toLowerCase()));
+    const others = (this.repoWorktrees?.list ?? []).filter((r) => !known.has(r.toLowerCase()) && r !== pinned);
+    if (roots.length < 2 && !pinned && !others.length) return null;
+    for (const root of [...roots, ...(this.showAllWt ? others : [])]) if (!this.wtInfo[root]) {
       this.wtInfo[root] = { loading: true };
       cx.spawn(async (cx) => {
         const br = await exec("git", ["branch", "--show-current"], { cwd: root }).catch(() => null);
@@ -832,7 +879,11 @@ export default class Files extends View {
     const list = pinned && !roots.includes(pinned) ? [...roots, pinned] : roots;
     return h_flex().id("rf-worktrees").flex_none().px(10).py(6).gap(6).items_center().border_b(1).border_color(t.border).overflow_x_scroll()
       .child(chip("rf-wt-auto", "Auto", "follows Changes", !pinned, (cx) => this.pickWorktree(null, cx)))
-      .children(list.map((root) => chip(`rf-wt-${root}`, name(root), this.wtInfo[root]?.branch ?? "", pinned === root, (cx) => this.pickWorktree(root, cx))));
+      .children(list.map((root) => chip(`rf-wt-${root}`, name(root), this.wtInfo[root]?.branch ?? "", pinned === root, (cx) => this.pickWorktree(root, cx))))
+      // Every other worktree of this repo, to switch to any of them.
+      .when(others.length > 0, (e) => e
+        .when(this.showAllWt, (e) => e.children(others.map((root) => chip(`rf-wt-${root}`, name(root), this.wtInfo[root]?.branch ?? "", false, (cx) => this.pickWorktree(root, cx)))))
+        .child(chip("rf-wt-more", this.showAllWt ? "Less" : `More… ${others.length}`, this.showAllWt ? "" : "worktrees", false, (cx) => { this.showAllWt = !this.showAllWt; cx.notify(); })));
   }
 
   header(t) {
