@@ -125,6 +125,7 @@ def main():
     nav_from = max(0, len([s for s in signals if s[2] == "nav"]) - RECENT)
     nav_seen = 0
     tops = {}
+    edited = set()
     for i, (path, base, kind) in enumerate(signals):
         if kind == "nav":
             nav_seen += 1
@@ -136,7 +137,13 @@ def main():
         top = tops[key]
         if top:
             last[top.lower()] = (i, top)
+            if kind == "edit":
+                edited.add(top.lower())
     seen = [top for _, top in sorted(last.values(), reverse=True)][:MAX_ROOTS]
+    # An agent started in a repo's main checkout that works in one of its worktrees: main is only where it was
+    # started (Claude Code keeps going back there), so it's left out unless the agent edited files in it.
+    worktree_repos = {repo_of(t) for t in seen if repo_of(t) != t.lower()}
+    seen = [t for t in seen if not (repo_of(t) == t.lower() and t.lower() in worktree_repos and t.lower() not in edited)]
     if not seen:
         top = top_of(cwd, None)
         if top:
