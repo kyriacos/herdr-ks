@@ -14,12 +14,12 @@ command -v rsync >/dev/null || { echo "needs rsync" >&2; exit 1; }
 
 # Mods can't import from each other: shared/ (highlighter, diff model, review comments) is copied into the
 # mods that use it before they're installed.
-for m in ks-changes ks-review ks-send ks-prcard ks-myprs ks-prs ks-tabs ks-pane ks-confirm ks-menu ks-spaces; do
+for m in ks-changes ks-review ks-send ks-prcard ks-myprs ks-prs ks-tabs ks-pane ks-confirm ks-menu ks-spaces ks-files ks-workspace-chrome ks-zen; do
   mkdir -p "$src/mods/$m/lib" && cp "$src"/shared/*.js "$src/mods/$m/lib/"
 done
 
 mkdir -p "$app/layouts" "$app/mods"
-cp "$src/layouts/$name".* "$app/layouts/"
+cp "$src/layouts/$name".* "$src/layouts/$name"-zen.json "$app/layouts/"
 
 for d in "$src"/mods/ks-*/; do
   rsync -a --delete --exclude gpui-kit.d.ts --exclude jsconfig.json "$d" "$app/mods/$(basename "$d")/"
@@ -30,9 +30,11 @@ keys="$app/keys.json"
 [ -f "$keys" ] || echo '{}' > "$keys"
 cp "$keys" "$keys.bak-$(date +%s)"
 # Entries ks-keys wrote (its entry keys, "ks-keys.*") are kept: they come from its editor, not from this repo.
-jq --slurpfile ours "$src/keys.json" --arg s "layout:$name" \
-  '. + {($s): (($ours[0][$s] // {}) + ((.[$s] // {}) | with_entries(select((.value | type) == "string" and (.value | startswith("ks-keys."))))))}' "$keys" > "$keys.tmp"
-mv "$keys.tmp" "$keys"
+for s in "layout:$name" "layout:$name-zen"; do
+  jq --slurpfile ours "$src/keys.json" --arg s "$s" \
+    '. + {($s): (($ours[0][$s] // {}) + ((.[$s] // {}) | with_entries(select((.value | type) == "string" and (.value | startswith("ks-keys."))))))}' "$keys" > "$keys.tmp"
+  mv "$keys.tmp" "$keys"
+done
 
 for d in "$app"/mods/ks-*/; do herdr-app check "$d"; done
 [ "${1:-}" = "--switch" ] && herdr-app do layout.switch "{\"name\":\"$name\"}" >/dev/null

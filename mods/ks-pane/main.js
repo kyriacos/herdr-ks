@@ -23,6 +23,7 @@ import { closePane, givenName, fallbackName, NAME_LABEL, NAMES } from "./close.j
 import { menuView, shortcut } from "./menu.js";
 import { folder, paneId, cutName } from "./header-text.js";
 import * as sessions from "./lib/sessions.js";
+import { focusOn, focusLevel } from "./lib/focus.js";
 
 function icon(p, size, color) {
   if (!p?.icon) return null;
@@ -163,6 +164,8 @@ export default class Pane extends View {
       .border_color(t.border)
       .text_size(12)
       .on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
+      // ks: focus mode dims the headers of the panes that don't have the keyboard (lib/focus.js).
+      .when(focusOn() && !p.focused && !this.hovered, (el) => el.opacity(focusLevel()))
       .on_click(() => run("pane.focus", { pane }))
       .when(Boolean(pic), (el) => el.child(pic))
       .child(div()

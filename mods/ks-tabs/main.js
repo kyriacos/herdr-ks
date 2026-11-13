@@ -5,6 +5,7 @@ import { closeTab, closePane, tabName, tabProgram } from "./close.js";
 import * as sessions from "./lib/sessions.js";
 import * as closing from "./lib/closing.js";
 import { menuView, shortcut } from "./menu.js";
+import { dimmed } from "./lib/focus.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -157,7 +158,10 @@ export default class Tabs extends View {
     localStorage.setItem("panels", JSON.stringify(this.panels));
   }
 
-  render() {
+  // ks: focus mode dims this until hovered (lib/focus.js).
+  render(cx) { return dimmed(this, this.renderInner(cx)); }
+
+  renderInner() {
     if (props()?.menu) return this.renderMenu();
     const t = theme();
     const space = spaces().find(p => p.active);

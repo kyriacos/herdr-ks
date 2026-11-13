@@ -214,6 +214,14 @@
       },
       "edge": "bottom",
       "align": "center"
+    },
+    {
+      "id": "ks-zen",
+      "content": {
+        "mod": "ks-zen"
+      },
+      "edge": "top",
+      "align": "end"
     }
   ]
 }

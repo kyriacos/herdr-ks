@@ -34,6 +34,7 @@ import { listNote, footerLines, linkTip, statusColor, changeColors, gitReason, n
 // A copy of ks-preview's: how it opens and which pane already shows a file. sync.sh
 // checks that the two copies match.
 import { FLOAT, openTab, timerOf, floatSpec, newToken, isOpen, unanswered, placed, floatShows } from "./open-file.js";
+import { dimmed } from "./lib/focus.js";
 
 const NAME = "ks-files";
 const ICON = (name) => `mods/${NAME}/${name}.svg`;
@@ -869,7 +870,10 @@ export default class Files extends View {
       .child(svg(ICON("branch")).size(13));
   }
 
-  render(cx) {
+  // ks: focus mode dims this until hovered (lib/focus.js).
+  render(cx) { return dimmed(this, this.renderInner(cx)); }
+
+  renderInner(cx) {
     if (this.menu) return this.renderMenu();
     this.sync(cx);
     const req = shared(REQUEST);

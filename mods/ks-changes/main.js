@@ -10,6 +10,7 @@ import { langOf, colorsFor } from "./lib/highlight.js";
 import { parseDiff, wrapTokens, colsFor } from "./lib/diff.js";
 import { WORKTREE, readBranch, readCommits, readCommitFiles, treeRows } from "./lib/branch.js";
 import * as comments from "./lib/comments.js";
+import { dimmed } from "./lib/focus.js";
 
 // ---------- stored choices (this mod's localStorage) ----------
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -535,7 +536,10 @@ export default class Changes extends View {
       .child(button("diff-open", "Open file", () => this.openFile(s, path)))];
   }
 
-  render(cx) {
+  // ks: focus mode dims this until hovered (lib/focus.js).
+  render(cx) { return dimmed(this, this.renderInner(cx)); }
+
+  renderInner(cx) {
     if (key() !== this.context) this.refresh(cx);
     const t = theme(), secs = this.sections, multi = secs.length > 1;
     const files = secs.flatMap((s) => this.filesOf(s));

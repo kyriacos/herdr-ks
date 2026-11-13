@@ -5,6 +5,7 @@ import { get, put, available, due, check, install, openNotes } from "./update.js
 import { menuView, menuHeight, DETAILS, MENU_OPEN } from "./menu.js";
 import { info } from "./info.js";
 import { pressOf, pressMoved, isClick, herdrVersion, subLine, MENU_WIDTH, nameRoom } from "./brand.js";
+import { dimmed } from "./lib/focus.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -162,7 +163,10 @@ export default class WorkspaceChrome extends View {
     return div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(t.muted).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(action).child(label);
   }
-  render() {
+  // ks: focus mode dims this until hovered (lib/focus.js).
+  render(cx) { return dimmed(this, this.renderInner(cx)); }
+
+  renderInner() {
     if (props()?.menu) return menuView(this);
     const t = theme();
     // One look at the layout and the window per draw: the rail, the padding and the name's room all come from it.

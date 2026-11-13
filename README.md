@@ -167,11 +167,15 @@ bring it back as it was; **⌘⇧T** undoes the latest. Closing a space's last t
 After 30 s it closes for real (a close due while Herdr was quit happens at the next start). Scripts can use
 `herdr-app do ks-tabs.soft-close:<tab id>` and `ks-tabs.undo`.
 
-**Key modes** (`ks-keys`, self-contained). Key chords as modes: `ctrl-;` enters service mode (`%` `"` split,
-`h j k l` go, `H J K L` swap, `z` zoom, `c` `n` `p` tabs, `x` close, …); a strip at the bottom shows the mode's keys
-and catches the next one. Sticky modes (move, tabs, spaces) repeat keys until Esc. A vim mode is shipped (off;
-give it `ctrl-w`). `cmd-k` (or `?`) opens the editor: add modes, set entry keys, make them sticky, edit every key
-and what it runs; entry keys are written into `keys.json` for you. Full list in the [guide](docs/GUIDE.md#key-modes).
+**Key modes** (`ks-keys`, self-contained). `ctrl-;` enters service mode (tmux style: `%` `"` split, `h j k l` go,
+`x` close, `z` zoom, …): a strip at the bottom shows its keys and takes one. `[` from there enters a vim normal mode
+for the window (motions, counts, `gt`/`3gt`, `gg`/`G`, `ctrl-d`/`ctrl-u` scrolling, `dd`), until `i` or Esc. Sticky
+move, tab and space modes too. `cmd-k` opens the editor: switch modes off, change entry keys, edit every key.
+See the [guide](docs/GUIDE.md#key-modes).
+
+**Zen mode** (`cmd-shift-z`): the tab alone, centered on an almost black backdrop, with a slim bar (pane only,
+narrower / wider, exit). **Focus mode** (`cmd-shift-f`): sidebar, tab bar, panel and inactive pane headers dim until
+hovered.
 
 ## Set up
 
@@ -230,7 +234,8 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | Corner resizing of floating review windows (a full-app surface follows the drag, then the window reopens at the new size) | `mods/ks-resize/` (new), `mods/ks-review/main.js` |
 | Resume Claude sessions after a reboot: recorded per terminal, a card of the last session inside the terminal, ↻ Resume in the tab and the pane header | `mods/ks-tabs/main.js`, `session_of.py`, `last_session.py`, `mods/ks-pane/main.js`, `shared/sessions.js` |
 | Closing tabs and spaces asks, then waits 30 s with Undo (toast, tab bar chip, ⌘⇧T) | `shared/closing.js`, `mods/ks-tabs/` (`close.js`, `main.js`), `mods/ks-pane/close.js`, `mods/ks-confirm/`, `mods/ks-menu/`, `mods/ks-spaces/` |
-| Key modes: tmux / vim / sticky modes with a which-key strip, an editor, and keys.json kept in step | `mods/ks-keys/` (new), layout `floating` |
+| Key modes: service (tmux style) / vim normal mode / sticky modes, counts and sequences, a which-key strip, an editor, and keys.json kept in step | `mods/ks-keys/` (new), layout `floating` |
+| Zen mode (own layout) and focus mode (dims the interface until hovered) | `mods/ks-zen/` (new), `layouts/ks-zen.json`, `shared/focus.js`, every layout mod's `render` |
 | PR window: Start a session & send (and Create worktree) when no agent is on the PR | `mods/ks-prcard/main.js` |
 
 ## Keys (only while this layout shows)
@@ -246,6 +251,8 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | cmd-shift-t | Undo the last close (tab or space) |
 | ctrl-; | Service key mode (configurable) |
 | cmd-k | Key modes editor (configurable) |
+| cmd-shift-z | Zen mode |
+| cmd-shift-f | Focus mode |
 
 ## Upstream updates
 

@@ -16,7 +16,9 @@ two repos (a backend and a frontend) at once, with you reviewing their work and 
 - [Pull requests: My PRs, the PR window, the PRs panel](#pull-requests)
 - [Resuming Claude sessions after a reboot](#resuming-claude-sessions-after-a-reboot)
 - [Closing with undo](#closing-with-undo)
-- [Key modes (tmux and vim style)](#key-modes)
+- [Key modes (service and vim)](#key-modes)
+- [Zen mode](#zen-mode)
+- [Focus mode](#focus-mode)
 - [All keys](#all-keys)
 - [Speed and caching](#speed-and-caching)
 - [Where things are kept](#where-things-are-kept)
@@ -171,41 +173,61 @@ put away, and it disappears from the tab bar and sidebar.
 
 ## Key modes
 
-Key chords as modes, in the `ks-keys` mod. A key enters a mode; a strip at the bottom of the window shows that
-mode's keys and catches the next one.
+Key chords as modes, in the self-contained `ks-keys` mod. Everything works as usual until you press a mode's key;
+then a strip at the bottom of the window shows that mode's keys and catches what you type next. It works the same
+in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 
-- **One-shot modes** (tmux, vim): one key and out.
-- **Sticky modes** (move, tabs, spaces): keys repeat until Esc, Enter or `q`, so `h h l` walks between panes.
-- Pressing the mode's entry key again sends it on to the terminal (`ctrl-b ctrl-b` sends `ctrl-b`, as in tmux).
-- Modes can switch to each other (`m`, `t`, `S` from tmux).
+- **One-shot** (service): one key and out.
+- **Sticky** (vim, move, tabs, spaces): keys repeat until Esc (or a "leave" key such as `i` or `q`).
+- **Counts** (vim, move): digits first repeat a key (`3l`) or fill it in (`3gt` goes to tab 3).
+- **Sequences**: a key can be several keys (`g t`, `d d`, `g g`); typing the start waits for the rest.
+- Pressing a mode's entry key again sends it on to the terminal.
+- Any mode can be switched **off**: its key, and every key that leads to it, go away.
 
 **Shipped modes:**
 
 | Mode | Enter with | Keys |
 |---|---|---|
-| tmux | `ctrl-b` | `%` split right, `"` split down, `x` close pane, `z` zoom, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` and arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `m` move mode, `t` tab mode, `S` space mode, `?` editor |
-| vim | off (set e.g. `ctrl-w`) | `h j k l` go, `H J K L` swap, `s`/`v` split down/right, `q`/`c` close, `o` zoom, `n` new tab, `t`/`T` next/previous tab, `m` move mode |
-| move (sticky) | from tmux `m` | `h j k l` go, `H J K L` swap, `z` zoom, `s`/`v` split, `x` close, `n`/`p` tabs, `t` tab mode |
-| tabs (sticky) | from tmux `t` | `h`/`l` previous/next, `H`/`L` move the tab, `1`–`9`, `c` new, `x` close, `r` rename, `u` undo |
-| spaces (sticky) | from tmux `S` | `j`/`k` next/previous, `1`–`9`, `n` new, `w` new + worktree, `r` rename, `x` close, `u` undo |
+| service (tmux style) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `z` zoom, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `Z` zen, `f` focus mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor |
+| vim (normal mode for the window) | service `[` | `h j k l` pane, `H J K L` swap, `gt`/`gT` or `w`/`b` next/previous tab, `3gt` tab 3, `}`/`{` next/previous space, `3gs` space 3, `ctrl-d`/`ctrl-u` half page, `ctrl-f`/`ctrl-b` page, `ctrl-e`/`ctrl-y` line, `gg`/`G` top/bottom of the scrollback, `/` search, `s`/`v` split, `o` zoom, `dd` close pane, `dt` close tab, `t` new tab, `r` rename, `u` undo close, `zz` zen, `:` palette, `i`/`a`/`q`/Esc back to the terminal |
+| move (sticky) | service `m` | `h j k l` go, `H J K L` swap, `z` zoom, `s`/`v` split, `x` close, `n`/`p` tabs, `t` tab mode, `q`/Enter done |
+| tabs (sticky) | service `t` | `h`/`l` previous/next, `H`/`L` move the tab, `1`–`9`, `c` new, `x` close, `r` rename, `u` undo |
+| spaces (sticky) | service `S` | `j`/`k` next/previous, `1`–`9`, `n` new, `w` new + worktree, `r` rename, `x` close, `u` undo |
 
-**The editor** (`cmd-k`, or `?` in tmux mode) changes all of it: add, rename or delete modes, set each mode's
-entry key (empty: reached only from another mode), make it sticky, and add, edit or remove keys. A key is a
-typed character (`%`, `H`) or a chord (`ctrl-x`, `left`). What a key does is written as text:
+**The editor** (`cmd-k`, `?` in service mode, or the main menu's **Key modes…**): add, rename, delete or switch off
+modes; set each one's entry key (empty: reached only from another mode); make it sticky or take counts; add, edit
+or remove keys. A key is a typed character (`%`, `H`), a chord (`ctrl-d`, `left`) or a sequence (`g t`). What it
+does is text:
 
 | Text | Does |
 |---|---|
 | `pane.split direction=right` | A Herdr command with arguments (`herdr-app commands` lists them all) |
 | `ks-tabs.undo` | A mod's command |
 | `mode:move` | Switch to another mode |
+| `leave` | Back to the terminal |
 | `send:ctrl+c` | Press keys in the focused terminal |
 | `tab.shift by=-1` | Move the shown tab left (1: right) |
 
-**Save** writes the entry keys into `keys.json` for the `ks` (and `ks-zen`) layouts; the rest is kept in
-Herdr's shared state. **Reset to defaults** brings the shipped modes back.
+A key can also have a **with a count** action, `#` being the count (`tab.select index=#`). **Save** writes the
+entry keys into `keys.json` (and keeps them there, even after a reinstall); the rest lives in Herdr's shared state.
+**Reset to defaults** brings the shipped modes back.
 
-Note: Claude Code uses `ctrl-b` itself (background tasks). In `ks` the prefix catches it first; press it
-twice to send it through, or pick another entry key (`ctrl-a`, `ctrl-space`) in the editor.
+## Zen mode
+
+`cmd-shift-z` (or service `Z`, vim `zz`, main menu **Zen mode**). The tab you're in, alone, centered and floating
+on an almost black backdrop; sidebar, tab bar, panels and status bar are gone. A slim bar above it shows the tab
+and space, with **Pane only** / **Whole tab** (zoom the focused pane, also `cmd-shift-enter`), **Narrower** /
+**Wider** (kept), and **Exit**. `cmd-shift-z` again goes back.
+
+Zen is its own layout (`ks-zen`), so entering or leaving it closes floating review windows. While in zen, closing
+a tab is Herdr's own close (no 30 s undo) and the session recorder pauses.
+
+## Focus mode
+
+`cmd-shift-f` (or service `f`, main menu **Focus mode**). The interface around your terminals dims: the sidebar's
+My PRs, spaces and footer (the agents list is Herdr's own and stays), the tab bar, the side panel and the headers of panes that don't have the keyboard,
+each until you point at it. Herdr gives mods no way to dim a terminal's own text, so inactive panes keep theirs.
+The level is set with `herdr-app do ks-zen.focus-level:0.35` (0.1 to 0.9).
 
 ## All keys
 
@@ -219,6 +241,8 @@ Only while the `ks` layout shows.
 | `cmd-w` / `cmd-shift-w` | Close tab (asks, 30 s undo) / close pane |
 | `cmd-shift-t` | Undo the last close |
 | `ctrl-;` | Service mode (configurable) |
+| `cmd-shift-z` | Zen mode |
+| `cmd-shift-f` | Focus mode |
 | `cmd-k` | Key modes editor (configurable) |
 
 Herdr's own keys still apply (`cmd-t` new tab, `cmd-d` split, `cmd-1`…`9` tabs, `cmd-alt-arrows` panes, …).

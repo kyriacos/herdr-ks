@@ -6,6 +6,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { spaces, panes, focused, exec, shared, theme, run, notify } from "herdr";
 import * as cache from "./lib/cache.js";
+import { dimmed } from "./lib/focus.js";
 
 const FIELDS = "number,title,state,url,baseRefName,headRefName,isDraft,reviewDecision,additions,deletions,changedFiles,statusCheckRollup,author";
 const base = (p) => p.replace(/\/+$/, "").split("/").pop();
@@ -121,7 +122,10 @@ export default class Prs extends View {
         .child(button(`review-${pr.url}`, "Review", () => this.review([pr]), true)));
   }
 
-  render(cx) {
+  // ks: focus mode dims this until hovered (lib/focus.js).
+  render(cx) { return dimmed(this, this.renderInner(cx)); }
+
+  renderInner(cx) {
     this.refresh(cx); // follows the session's worktrees as they change
     const t = theme();
     return v_flex().id("prs").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)

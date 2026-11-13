@@ -13,6 +13,7 @@ import { spaces, machines, panes, terminals, agents, run, openOverlay, exec, hc,
 import * as closing from "./lib/closing.js";
 import { parseStatus, parseRevParse } from "./git-parse.js";
 import { docValue, quicklook, fingerprint } from "./pane-map.js";
+import { dimmed } from "./lib/focus.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -851,7 +852,10 @@ export default class Spaces extends View {
       .child(div().absolute().right(RAIL_MARK).text_color(tone(t, w.status)).child(glyph(w.status))));
   }
 
-  render() {
+  // ks: focus mode dims this until hovered (lib/focus.js).
+  render(cx) { return dimmed(this, this.renderInner(cx)); }
+
+  renderInner() {
     const t = theme();
     const collapsed = narrow();
     // The menu closed after the badge was left (or before): the card may show again.

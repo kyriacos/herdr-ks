@@ -12,6 +12,12 @@
         "id": "my-prs"
       }
     },
-    "cmd-shift-t": "ks-tabs.undo"
+    "cmd-shift-t": "ks-tabs.undo",
+    "cmd-shift-z": "ks-zen.toggle",
+    "cmd-shift-f": "ks-zen.focus"
+  },
+  "layout:ks-zen": {
+    "cmd-shift-z": "ks-zen.toggle",
+    "cmd-shift-enter": "ks-zen.pane"
   }
 }

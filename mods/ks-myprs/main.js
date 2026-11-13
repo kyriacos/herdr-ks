@@ -8,6 +8,7 @@ import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { exec, theme, run, notify, openOverlay } from "herdr";
 import * as cache from "./lib/cache.js";
 import { fetchPr, prKey } from "./lib/github.js";
+import { dimmed } from "./lib/focus.js";
 
 const BLOCK = "my-prs", HEAD = 34, ROW = 50;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
@@ -151,7 +152,10 @@ export default class MyPrs extends View {
         .child(this.step(ci[0], ci[1], t)).child(this.step(review[0], review[1], t)).child(this.step(merge[0], merge[1], t)));
   }
 
-  render(cx) {
+  // ks: focus mode dims this until hovered (lib/focus.js).
+  render(cx) { return dimmed(this, this.renderInner(cx)); }
+
+  renderInner(cx) {
     const t = theme(), prs = this.prs;
     const fail = prs.filter((p) => p.s.ci === "fail" || p.s.review === "changes" || p.s.merge === "conflicts").length;
     const running = prs.filter((p) => p.s.ci === "running").length;
