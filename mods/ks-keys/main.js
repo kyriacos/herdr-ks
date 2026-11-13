@@ -77,7 +77,9 @@ async function openMode(id) {
   const room = win ? Math.floor(win.h / zoom) - 90 : 700;
   const height = stripHeight(c, room);
   const at = win ? { x: Math.round(win.w / 2 - (W * zoom) / 2), y: Math.max(0, Math.round(win.h - height * zoom - 40)) } : undefined;
-  setShared(OPEN, openOverlay({ mod: "ks-keys", kind: "popup", frame: "none", width: W, height, ...(at ? { at } : {}),
+  // A window, not a popup: Herdr closes popups on Esc itself, and that Esc could then reach the terminal behind
+  // (Claude takes it as "interrupt" and redraws). A window leaves every key to this mod.
+  setShared(OPEN, openOverlay({ mod: "ks-keys", kind: "window", key: "ks-keys-mode", frame: "none", width: W, height, ...(at ? { at } : {}),
     props: { mode: id, pane: f?.pane ?? null, terminal: f?.terminal ?? null } }));
 }
 
@@ -125,9 +127,17 @@ export default class Keys extends View {
     this.flash = null;
     this.seq = [];    // the keys of a sequence typed so far ("g" of "g t")
     this.count = "";  // digits typed before a key (counts modes)
+    this.leaving = false;
     this.handle = cx.focus_handle();
     this.handle.focus();
     cx.timer.after(200, () => this.handle.focus());
+    // Clicked away (the keyboard went elsewhere): the mode ends, as a popup would.
+    this.held = false;
+    cx.timer.every(300, () => {
+      if (this.leaving) return;
+      if (this.handle.is_focused()) this.held = true;
+      else if (this.held) this.leave();
+    });
   }
 
   async close() {
@@ -135,13 +145,22 @@ export default class Keys extends View {
     if (p.mode && shared(OPEN) === p.overlay) setShared(OPEN, null);
   }
 
-  leave() { closeOverlay(props().overlay); }
+  leave() { this.leaving = true; closeOverlay(props().overlay); }
+
+  // Leaving on a key: the strip keeps the keyboard until that key is released, so neither it (Esc, i, q) nor its
+  // release reaches the terminal behind. A fallback closes it anyway if the release is missed.
+  leaveOnRelease(cx) {
+    if (this.leaving) return;
+    this.leaving = true; this.releaseWanted = true;
+    cx.timer.after(400, () => { if (this.releaseWanted) this.leave(); });
+  }
+  keyUp() { if (this.releaseWanted) { this.releaseWanted = false; this.leave(); } }
 
   // Runs a binding: its `count` action when a count was typed (# = the count), else `do`, repeated count times.
   act(b, cx, count = null) {
     const m = km.config().modes[this.mode];
     const a = km.parse(count && b.count ? b.count : b.do, count);
-    if (a.leave) return this.leave();
+    if (a.leave) return this.leaveOnRelease(cx);
     // Another mode: reopened at that mode's size.
     // Another mode: switched here, in the same strip (reopening it lost the keyboard).
     if (a.mode) {
@@ -158,7 +177,7 @@ export default class Keys extends View {
     // A one-shot mode closes before running; a sticky one before a command that opens something to type into
     // (rename, palette, a confirm), so that gets the keyboard.
     const exits = !m.sticky || b.exit || km.EXITS.has(a.command);
-    if (exits) this.leave();
+    if (exits) this.leaveOnRelease(cx);
     const times = count && !b.count && !String(b.do).includes("#") ? Math.min(count, 50) : 1;
     for (let n = 0; n < times; n++) {
       if (a.send) {
@@ -176,17 +195,18 @@ export default class Keys extends View {
   }
 
   key(e, cx) {
+    if (this.leaving) return; // on the way out: nothing more goes anywhere
     const m = km.config().modes[this.mode];
-    if (!m) return this.leave();
+    if (!m) return this.leaveOnRelease(cx);
     if (km.isModifier(e)) return;
     if (e.keystroke === "escape") {
       // Esc first drops a half-typed sequence or count, then leaves.
       if (this.seq.length || this.count) { this.seq = []; this.count = ""; this.flash = null; cx.notify(); return; }
-      return this.leave();
+      return this.leaveOnRelease(cx);
     }
     // The mode's own entry key again: on to the terminal (pressed twice sends it).
     if (m.entry && e.keystroke === m.entry) {
-      this.leave();
+      this.leaveOnRelease(cx);
       const t = focused()?.terminal;
       if (t) hc(["keys", t, km.hcKey(m.entry)]);
       return;
@@ -208,7 +228,7 @@ export default class Keys extends View {
       return;
     }
     this.seq = []; this.count = "";
-    if (!m.sticky) return this.leave();
+    if (!m.sticky) return this.leaveOnRelease(cx);
     this.flash = `No key ${seq.join(" ")} here`;
     cx.notify();
   }
@@ -224,6 +244,9 @@ export default class Keys extends View {
       .child(div().flex_1().truncate().text_size(11.5).text_color(b.do.startsWith("mode:") ? t.accent : t.foreground).child(b.label));
     return v_flex().id("mode-wrap").track_focus(this.handle).size_full().justify_end()
       .on_key_down((e, cx) => { cx.stop_propagation(); this.key(e, cx); })
+      .on_key_up((_e, cx) => { cx.stop_propagation(); this.keyUp(); })
+      // A press on the strip's background would drag the window: it stays put.
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .child(this.panel(t, m, list, cell));
   }
 
