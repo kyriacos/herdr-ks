@@ -19,6 +19,7 @@ two repos (a backend and a frontend) at once, with you reviewing their work and 
 - [Key modes (service and vim)](#key-modes)
 - [Zen mode](#zen-mode)
 - [Focus mode](#focus-mode)
+- [Resizing from the keyboard](#resizing-from-the-keyboard)
 - [All keys](#all-keys)
 - [Speed and caching](#speed-and-caching)
 - [Where things are kept](#where-things-are-kept)
@@ -188,9 +189,10 @@ in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 
 | Mode | Enter with | Keys |
 |---|---|---|
-| service (tmux style) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `z` zoom, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `Z` zen, `f` focus mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor |
+| service (tmux style) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `z` zoom, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `Z` zen, `f` focus mode, `F` focus & zen settings, `-`/`=` smaller/larger, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor |
 | vim (normal mode for the window) | service `[` | `h j k l` pane, `H J K L` swap, `gt`/`gT` or `w`/`b` next/previous tab, `3gt` tab 3, `}`/`{` next/previous space, `3gs` space 3, `ctrl-d`/`ctrl-u` half page, `ctrl-f`/`ctrl-b` page, `ctrl-e`/`ctrl-y` line, `gg`/`G` top/bottom of the scrollback, `/` search, `s`/`v` split, `o` zoom, `dd` close pane, `dt` close tab, `t` new tab, `r` rename, `u` undo close, `zz` zen, `:` palette, `i`/`a`/`q`/Esc back to the terminal |
 | move (sticky) | service `m` | `h j k l` go, `H J K L` swap, `z` zoom, `s`/`v` split, `x` close, `n`/`p` tabs, `t` tab mode, `q`/Enter done |
+| resize (sticky) | service `r` | see [Resizing from the keyboard](#resizing-from-the-keyboard) |
 | tabs (sticky) | service `t` | `h`/`l` previous/next, `H`/`L` move the tab, `1`–`9`, `c` new, `x` close, `r` rename, `u` undo |
 | spaces (sticky) | service `S` | `j`/`k` next/previous, `1`–`9`, `n` new, `w` new + worktree, `r` rename, `x` close, `u` undo |
 
@@ -214,20 +216,42 @@ entry keys into `keys.json` (and keeps them there, even after a reinstall); the 
 
 ## Zen mode
 
-`cmd-shift-z` (or service `Z`, vim `zz`, main menu **Zen mode**). The tab you're in, alone, centered and floating
-on an almost black backdrop; sidebar, tab bar, panels and status bar are gone. A slim bar above it shows the tab
-and space, with **Pane only** / **Whole tab** (zoom the focused pane, also `cmd-shift-enter`), **Narrower** /
-**Wider** (kept), and **Exit**. `cmd-shift-z` again goes back.
+`cmd-shift-z` (or service `Z`, vim `zz`, main menu **Zen mode**). The tab you're in, alone and centered in a
+rounded frame; sidebar, tab bar, panels and status bar are gone. It uses your theme's own background, or an
+almost black one if you choose **Dark** in the settings. A slim bar above it shows the tab and space, with
+**Pane only** / **Whole tab** (zoom the focused pane, also `cmd-shift-enter`), **Narrower** / **Wider**, **⚙**
+(settings) and **Exit**. Drag the empty space at its edges to resize it with the mouse, or service `r` then
+`-` / `+`. The size is kept. `cmd-shift-z` again goes back.
 
-Zen is its own layout (`ks-zen`), so entering or leaving it closes floating review windows. While in zen, closing
-a tab is Herdr's own close (no 30 s undo) and the session recorder pauses.
+Zen is its own layout (`ks-zen`, `ks-zen-dark`), so entering or leaving it closes floating review windows. While
+in zen, closing a tab is Herdr's own close (no 30 s undo) and the session recorder pauses.
 
 ## Focus mode
 
-`cmd-shift-f` (or service `f`, main menu **Focus mode**). The interface around your terminals dims: the sidebar's
-My PRs, spaces and footer (the agents list is Herdr's own and stays), the tab bar, the side panel and the headers of panes that don't have the keyboard,
-each until you point at it. Herdr gives mods no way to dim a terminal's own text, so inactive panes keep theirs.
-The level is set with `herdr-app do ks-zen.focus-level:0.35` (0.1 to 0.9).
+`cmd-shift-f` (or service `f`, main menu **Focus mode**). Everything around your terminals dims until you point at
+it: My PRs, spaces, agents, the sidebar's header and footer, the tab bar, the side panel, the status bar, and the
+headers of panes that don't have the keyboard. Herdr gives mods no way to dim a terminal's own text, so the text
+inside inactive panes keeps its brightness.
+
+**Focus & zen settings** (main menu, service `F`, or zen's ⚙): focus on or off, how visible dimmed parts stay
+(− / + in 5% steps, or 20 / 35 / 50 / 70%; it changes live), and zen's backdrop (your theme or dark).
+
+## Resizing from the keyboard
+
+Service `-` / `=` makes the side panel (or, in zen, the tab) smaller or larger, one step. Service `r` enters the
+sticky **resize** mode, so you keep pressing:
+
+| Key | Does |
+|---|---|
+| `-` / `=` or `+` | Side panel smaller / larger (in zen: the tab narrower / wider) |
+| `[` / `]`, `h` / `l` | Sidebar narrower / wider |
+| `{` / `}` | Side panel narrower / wider |
+| `j` / `k` | My PRs taller / shorter |
+| `z` / `Z` | Zen narrower / wider |
+| counts | `5]` five steps at once |
+| `q`, Enter, Esc | Done |
+
+Panes inside a tab can only be resized with the mouse: Herdr has no command for it.
 
 ## All keys
 

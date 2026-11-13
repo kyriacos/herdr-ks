@@ -19,5 +19,9 @@
   "layout:ks-zen": {
     "cmd-shift-z": "ks-zen.toggle",
     "cmd-shift-enter": "ks-zen.pane"
+  },
+  "layout:ks-zen-dark": {
+    "cmd-shift-z": "ks-zen.toggle",
+    "cmd-shift-enter": "ks-zen.pane"
   }
 }

@@ -79,7 +79,7 @@
               },
               "min": 90,
               "content": {
-                "mod": "agents"
+                "mod": "ks-agents"
               }
             }
           ]
@@ -199,7 +199,7 @@
             "px": 28
           },
           "content": {
-            "mod": "workspace-status"
+            "mod": "ks-status"
           }
         }
       ]

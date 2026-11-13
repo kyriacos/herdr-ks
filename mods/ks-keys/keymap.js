@@ -14,10 +14,12 @@
 //   "leave"                        leave the mode (back to the terminal)
 //   "send:ctrl+b"                  press keys in the focused terminal (hc keys spelling)
 //   "tab.shift by=1"               move the shown tab one place right (-1: left)
+//   "resize id=panel by=24"        a layout block bigger (negative: smaller), px; id=auto: zen width, else the
+//                                  side panel when it shows, else the sidebar
 import { exec, appHome, shared, setShared } from "herdr";
 
 export const KEY = "ks-keys.config";
-export const VERSION = 3;
+export const VERSION = 4;
 
 const go = [
   { key: "h", label: "Go left", do: "pane.go direction=left" },
@@ -39,7 +41,7 @@ const tabNumbers = Array.from({ length: 9 }, (_, i) => ({ key: String(i + 1), la
 
 export const DEFAULTS = {
   version: VERSION,
-  sections: ["layout:ks", "layout:ks-zen"],
+  sections: ["layout:ks", "layout:ks-zen", "layout:ks-zen-dark"],
   editor: "cmd-k",
   modes: {
     // One key after the prefix, as tmux.
@@ -66,6 +68,10 @@ export const DEFAULTS = {
         { key: "Z", label: "Zen mode", do: "ks-zen.toggle" },
         { key: "f", label: "Focus mode", do: "ks-zen.focus" },
         ...go, ...swap, ...tabNumbers,
+        { key: "F", label: "Focus & zen settings", do: "ks-zen.settings" },
+        { key: "r", label: "Resize mode (sticky)", do: "mode:resize" },
+        { key: "-", label: "Smaller (panel / zen)", do: "resize id=auto by=-32" },
+        { key: "=", label: "Larger (panel / zen)", do: "resize id=auto by=32" },
         { key: "[", label: "Vim mode (normal)", do: "mode:vim" },
         { key: "m", label: "Move mode (sticky)", do: "mode:move" },
         { key: "t", label: "Tab mode (sticky)", do: "mode:tabs" },
@@ -128,6 +134,29 @@ export const DEFAULTS = {
         { key: "enter", label: "Done", do: "leave" },
       ],
     },
+    // Keep pressing: - / + the side panel (or the zen width), [ ] the sidebar, { } the panel, j k My PRs.
+    resize: {
+      name: "resize", entry: "", sticky: true, counts: true, off: false,
+      bindings: [
+        { key: "-", label: "Smaller (panel, or zen width)", do: "resize id=auto by=-32" },
+        { key: "=", label: "Larger (panel, or zen width)", do: "resize id=auto by=32" },
+        { key: "+", label: "Larger (panel, or zen width)", do: "resize id=auto by=32" },
+        { key: "[", label: "Sidebar narrower", do: "resize id=sidebar by=-24" },
+        { key: "]", label: "Sidebar wider", do: "resize id=sidebar by=24" },
+        { key: "h", label: "Sidebar narrower", do: "resize id=sidebar by=-24" },
+        { key: "l", label: "Sidebar wider", do: "resize id=sidebar by=24" },
+        { key: "{", label: "Panel narrower", do: "resize id=panel by=-32" },
+        { key: "}", label: "Panel wider", do: "resize id=panel by=32" },
+        { key: "H", label: "Panel wider", do: "resize id=panel by=32" },
+        { key: "L", label: "Panel narrower", do: "resize id=panel by=-32" },
+        { key: "j", label: "My PRs taller", do: "resize id=my-prs by=24" },
+        { key: "k", label: "My PRs shorter", do: "resize id=my-prs by=-24" },
+        { key: "z", label: "Zen narrower", do: "ks-zen.narrower" },
+        { key: "Z", label: "Zen wider", do: "ks-zen.wider" },
+        { key: "q", label: "Done", do: "leave" },
+        { key: "enter", label: "Done", do: "leave" },
+      ],
+    },
     tabs: {
       name: "tabs", entry: "", sticky: true, counts: false,
       bindings: [
@@ -173,8 +202,26 @@ const clone = (x) => JSON.parse(JSON.stringify(x));
 export const usable = (c, id) => Boolean(c.modes[id] && !c.modes[id].off);
 export const config = () => {
   const c = shared(KEY);
-  return c?.version === VERSION && c.modes ? c : clone(DEFAULTS);
+  if (!c?.modes) return clone(DEFAULTS);
+  return c.version === VERSION ? c : upgrade(c);
 };
+
+// A config saved by an older version keeps its changes and gains what's new: modes it doesn't have, and default
+// keys that none of its keys take. (The tmux mode of version 1 is the service mode now.)
+function upgrade(old) {
+  const c = clone(old);
+  if (c.modes.tmux && !c.modes.service) { c.modes.service = { ...c.modes.tmux, name: "service" }; delete c.modes.tmux; }
+  for (const [id, m] of Object.entries(DEFAULTS.modes)) {
+    if (!c.modes[id]) { c.modes[id] = clone(m); continue; }
+    const mine = c.modes[id];
+    for (const k of ["off", "counts"]) if (mine[k] === undefined) mine[k] = m[k];
+    const taken = new Set(mine.bindings.map((b) => tokens(b.key).join(" ")));
+    for (const b of m.bindings) if (!taken.has(tokens(b.key).join(" "))) mine.bindings.push(clone(b));
+  }
+  for (const sec of DEFAULTS.sections) if (!(c.sections ?? []).includes(sec)) c.sections = [...(c.sections ?? []), sec];
+  c.version = VERSION;
+  return c;
+}
 export const save = (c) => setShared(KEY, { ...c, version: VERSION });
 
 // A key event as one token of a binding: what it types (so "%" and "H" work on any keyboard layout) when no

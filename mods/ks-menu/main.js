@@ -79,6 +79,7 @@ function items(p, git) {
         ["Key modes…", "ks-keys.editor", {}],
         ["Zen mode", "ks-zen.toggle", {}],
         ["Focus mode", "ks-zen.focus", {}],
+        ["Focus & zen settings…", "ks-zen.settings", {}],
         ["Theme: graphite", "app.theme", { name: "graphite" }],
         ["Theme: ink", "app.theme", { name: "ink" }],
         ["Theme: moss", "app.theme", { name: "moss" }],

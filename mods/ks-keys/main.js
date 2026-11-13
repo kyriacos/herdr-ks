@@ -11,11 +11,13 @@
 // - { editor: true }: the editor (a dialog).
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
-import { props, run, theme, openOverlay, closeOverlay, nextCommand, shared, setShared, spaces, focused, hc, exec, appHome, settings, notify } from "herdr";
+import { props, run, theme, openOverlay, closeOverlay, nextCommand, shared, setShared, spaces, focused, hc, exec, appHome, settings, notify, layout } from "herdr";
 import * as km from "./keymap.js";
 
 const OPEN = "ks-keys.open"; // the mode popup's overlay id, so a second entry key replaces it
-const W = 820; // the popup's width, mod px (four columns of keys)
+// The popup: four columns of keys (CELL wide, GAP apart) inside PAD on each side.
+const COLS = 4, CELL = 198, GAP = 4, PAD = 12, ROW = 24;
+const W = COLS * CELL + (COLS - 1) * GAP + PAD * 2 + 4;
 
 async function windowSize() {
   const r = await exec("cat", [`${appHome()}/window.json`]).catch(() => null);
@@ -28,14 +30,36 @@ const shownBindings = (m) => m.bindings.filter((b) => !(ARROWS.has(b.key) && m.b
 const keyLabel = (k) => km.tokens(k).map(one).join(" ");
 const one = (k) => ({ left: "←", right: "→", up: "↑", down: "↓", enter: "⏎", escape: "esc", space: "␣" }[k] ?? k.replace(/^ctrl-/, "⌃").replace(/^cmd-/, "⌘").replace(/^alt-/, "⌥").replace(/^shift-/, "⇧"));
 
+function findNode(node, id) {
+  if (node?.id === id) return node;
+  for (const c of node?.children ?? []) { const f = findNode(c, id); if (f) return f; }
+  return null;
+}
+
+// `resize id=<node> by=<px>`: a layout block (sidebar, panel, my-prs) bigger or smaller. id=auto: in zen the tab's
+// width, else the side panel when it shows, else the sidebar.
+function resize(id, by) {
+  const root = layout();
+  if (id === "auto") {
+    if (root?.id === "zen-root") return run(by > 0 ? "ks-zen.wider" : "ks-zen.narrower");
+    const panel = findNode(root, "panel");
+    id = panel && !panel.hidden ? "panel" : "sidebar";
+  }
+  const n = findNode(root, id);
+  if (!n || n.hidden || n.size?.px == null) return;
+  run("layout.resize", { id, px: Math.round(Math.max(n.min ?? 120, Math.min(n.max ?? 1400, n.size.px + by))) });
+}
+
 async function openMode(id) {
   const c = km.config(), m = c.modes[id];
   if (!m || m.off) return;
   if (shared(OPEN)) closeOverlay(shared(OPEN));
-  const rows = Math.ceil(shownBindings(m).filter((b) => !b.do.startsWith("mode:") || km.usable(c, b.do.slice(5).trim())).length / 4);
-  const height = Math.min(520, 64 + rows * 24 + 30);
+  const shown = shownBindings(m).filter((b) => !b.do.startsWith("mode:") || km.usable(c, b.do.slice(5).trim())).length;
   const zoom = settings().zoom || 1, win = await windowSize();
-  const at = win ? { x: Math.round(win.w / 2 - (W * zoom) / 2), y: Math.round(win.h - height * zoom - 56) } : undefined;
+  // Header, the rows of keys, the footer line, padding; at most what the window has room for.
+  const room = win ? Math.floor(win.h / zoom) - 90 : 700;
+  const height = Math.min(room, PAD * 2 + 26 + 8 + Math.ceil(shown / COLS) * ROW + 8 + 18 + 6);
+  const at = win ? { x: Math.round(win.w / 2 - (W * zoom) / 2), y: Math.max(0, Math.round(win.h - height * zoom - 40)) } : undefined;
   setShared(OPEN, openOverlay({ mod: "ks-keys", kind: "popup", width: W, height, ...(at ? { at } : {}), props: { mode: id } }));
 }
 
@@ -112,6 +136,7 @@ export default class Keys extends View {
         const t = focused()?.terminal;
         if (t) hc(["keys", t, ...a.send]);
       } else if (a.command === "ks-keys.editor") { this.leave(); openEditor(); return; }
+      else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24);
       else if (a.command === "tab.shift") {
         const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;
         if (i >= 0) run("tab.move", { id: sp.tabs[i].id, index: Math.max(1, Math.min(sp.tabs.length, i + 1 + (a.args.by ?? 1))) });
@@ -163,18 +188,19 @@ export default class Keys extends View {
     if (!m) return div();
     const cfg = km.config();
     const list = shownBindings(m).filter((b) => !b.do.startsWith("mode:") || km.usable(cfg, b.do.slice(5).trim()));
-    const cell = (b, i) => h_flex().id(`b-${i}`).w(198).h(24).gap(8).items_center().px(6).rounded(5).hover((s) => s.bg(t.hover))
+    const cell = (b, i) => h_flex().id(`b-${i}`).w(CELL).h(ROW).flex_none().gap(8).items_center().px(6).rounded(5).hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => this.act(b, cx))
       .child(div().min_w(34).h(18).px(5).flex().items_center().justify_center().rounded(4).bg(t.accent + "26").text_color(t.accent).text_size(11.5).font_semibold().child(keyLabel(b.key)))
       .child(div().flex_1().truncate().text_size(11.5).text_color(b.do.startsWith("mode:") ? t.accent : t.foreground).child(b.label));
-    return v_flex().id("mode").track_focus(this.handle).size_full().p(10).gap(6).bg(t.popover)
+    return v_flex().id("mode").track_focus(this.handle).size_full().p(PAD).gap(8).bg(t.popover)
       .on_key_down((e, cx) => { cx.stop_propagation(); this.key(e, cx); })
       .child(h_flex().gap(8).items_center()
         .child(div().px(7).h(20).flex().items_center().rounded(5).bg(t.accent).text_color(t.solid_foreground ?? t.background).text_size(11).font_semibold().child(m.name.toUpperCase()))
         .child(div().text_size(11.5).text_color(t.muted).child(m.sticky ? `sticky: keys repeat until esc${m.counts ? " · counts: 3j, 2gt" : ""}` : "one key"))
         .child(div().flex_1())
         .when(Boolean(this.flash), (el) => el.child(div().text_size(11.5).text_color(t.accent).child(this.flash))))
-      .child(div().flex().flex_wrap().gap_x(4).children(list.map(cell)))
+      .child(div().id("keys").flex_1().min_h(0).overflow_y_scroll()
+        .child(div().w(COLS * CELL + (COLS - 1) * GAP).flex().flex_wrap().gap_x(GAP).children(list.map(cell))))
       .child(div().text_size(10.5).text_color(t.dim).child(`esc leave${m.entry ? ` · ${keyLabel(m.entry)} again: send it to the terminal` : ""} · ? or ${keyLabel(km.config().editor || "cmd-k")}: edit`));
   }
 

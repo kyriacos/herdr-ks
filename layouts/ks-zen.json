@@ -13,14 +13,12 @@
     14,
     12
   ],
-  "background": {
-    "gradient": [
-      "#020306",
-      "#0b0d14"
-    ],
-    "angle": 165
+  "background": "canvas",
+  "divider": {
+    "width": 1,
+    "color": "#00000000"
   },
-  "resizable": false,
+  "resizable": true,
   "children": [
     {
       "id": "zen-left",
@@ -37,7 +35,11 @@
       "size": {
         "weight": 80
       },
-      "resizable": false,
+      "divider": {
+        "width": 1,
+        "color": "#00000000"
+      },
+      "resizable": true,
       "children": [
         {
           "id": "zen-top",
@@ -65,11 +67,13 @@
           "size": {
             "weight": 94
           },
-          "radius": 14,
+          "radius": 12,
           "shadow": "lg",
+          "padding": 6,
+          "background": "chrome",
           "border": {
             "width": 1,
-            "color": "#ffffff22"
+            "color": "border"
           },
           "content": {
             "tab": "active",
