@@ -146,12 +146,15 @@ Switching layouts closes floating windows (a Herdr rule).
 
 A scratchpad in the side panel: **Notes** in the tab bar, or `cmd-shift-j`.
 
-- **This space** shows the notes written in the space you're in; **All** shows every note, grouped by space, with
-  closed spaces marked. Closing a space keeps its notes; a new space in the same folder picks them up again.
+- **This space** shows the notes written in the space you're in; **All** shows every note. Closing a space keeps
+  its notes (marked closed); a new space in the same folder picks them up again.
+- **Search** (`/`): every word must appear in the note or its space's name; Esc clears it.
+- In **All**: **Grouped** (`gs`) turns grouping by space on or off; the space chips narrow it to one space.
+- Every note shows which space it's in.
 - **+ New** (or `n`) starts a note in this space. It's saved as you type; the first line is its title. **Done** or
   Esc stops editing; a note left empty goes away.
 - **Delete** (or `x`) removes one, with **Undo** (or `u`) for a few seconds.
-- Keys in the panel: `j`/`k`, `gg`/`G`, Enter or `o` to edit, `a` This space / All, `h`/`l`/Esc to leave.
+- Keys in the panel: `j`/`k`, `gg`/`G`, Enter or `o` to edit, `a` This space / All, `/` search, `gs` grouping, `h`/`l`/Esc to leave.
 - Stored in `~/.config/herdr-app/data/ks-notes.json` (plain JSON, one entry per note with its space's name and folder).
 
 ## Pull requests
