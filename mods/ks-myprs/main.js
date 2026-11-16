@@ -2,11 +2,13 @@
 // where each one stands: CI (passing / failing / running), review (approved / changes requested / waiting) and
 // merge (ready / blocked / conflicts / behind). Ones that need you come first. Click a row to open it on GitHub.
 // The header folds the section to one line (the block shrinks); × hides it; cmd-shift-m shows / hides it
-// (layout.toggle my-prs). A toast when a PR's CI turns red or green, or a review lands. Refreshes every minute.
+// (layout.toggle my-prs). A toast when a PR's CI turns red or green, or a review lands. Refreshes every minute,
+// every 20 s while a PR's CI is running, 30 s after a failed look, and at once after the Mac wakes (see `due`).
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
 import { exec, theme, run, notify, openOverlay } from "herdr";
 import * as cache from "./lib/cache.js";
+import { summarize, orange } from "./lib/ci.js";
 import { fetchPr, prKey } from "./lib/github.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
@@ -20,27 +22,26 @@ const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", 
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
+// gh gets 20 s: a stuck call (network gone after sleep) must not hold up the next look.
 async function gh(args) {
-  let r = await exec("gh", args).catch(() => null);
-  if (!r || (r.code !== 0 && /not found|No such file/i.test(r.stderr ?? ""))) r = await exec("/opt/homebrew/bin/gh", args).catch(() => null);
+  const o = { timeout: 20000 };
+  let r = await exec("gh", args, o).catch(() => null);
+  if (!r || (r.code !== 0 && /not found|No such file/i.test(r.stderr ?? ""))) r = await exec("/opt/homebrew/bin/gh", args, o).catch(() => null);
   return r;
 }
+const ago = (ms) => (ms < 90000 ? "" : ms < 3600000 ? `${Math.round(ms / 60000)}m` : `${Math.round(ms / 3600000)}h`);
 
 // One PR's state: ci "pass" | "fail" | "running" | "none" (+ counts), review, merge, and how urgent it is.
 function stateOf(pr) {
+  // Each check decides (lib/ci.js), not the rollup's own state: GitHub can count a cancelled run as a failure.
   const roll = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup;
-  const counts = { pass: 0, fail: 0, running: 0 };
-  for (const c of roll?.contexts?.nodes ?? []) {
-    const s = (c.conclusion || c.state || "").toUpperCase(), st = (c.status || "").toUpperCase();
-    if (["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "ERROR", "STARTUP_FAILURE"].includes(s)) counts.fail++;
-    else if ((st && st !== "COMPLETED") || ["PENDING", "EXPECTED", ""].includes(s)) counts.running++;
-    else counts.pass++;
-  }
-  const ci = !roll ? "none" : counts.fail || ["FAILURE", "ERROR"].includes(roll.state) ? "fail" : counts.running || ["PENDING", "EXPECTED"].includes(roll.state) ? "running" : "pass";
+  const { ci, counts } = roll ? summarize(roll.contexts?.nodes) : { ci: "none", counts: { pass: 0, fail: 0, running: 0 } };
   const review = { APPROVED: "approved", CHANGES_REQUESTED: "changes", REVIEW_REQUIRED: "waiting" }[pr.reviewDecision] ?? "none";
   const merge = { CLEAN: "ready", HAS_HOOKS: "ready", BLOCKED: "blocked", BEHIND: "behind", DIRTY: "conflicts", UNSTABLE: "unstable", DRAFT: "draft" }[pr.mergeStateStatus] ?? "checking";
   // Blocked with no approval yet: what it waits for is a review.
-  const mergeShown = merge === "blocked" && (review === "none" || review === "waiting") ? "approval" : merge;
+  // Unstable is GitHub's word for checks not passing yet: while they run, that's waiting on CI, not a problem.
+  const mergeShown = merge === "blocked" && (review === "none" || review === "waiting") ? "approval"
+    : merge === "unstable" && ci === "running" ? "waitci" : merge;
   const urgent = ci === "fail" || review === "changes" || merge === "conflicts" ? 0 : ci === "running" ? 1 : merge === "ready" && !pr.isDraft ? 2 : 3;
   return { ci, counts, review, merge: mergeShown, urgent };
 }
@@ -61,30 +62,44 @@ export default class MyPrs extends View {
         this.cached = true; this.fit(); cx.notify();
       }
     });
+    this.doneAt = 0; this.startedAt = 0;
     this.refresh(cx);
-    cx.timer.every(60000, (cx) => this.refresh(cx));
+    // A tick every 10 s asks whether a look is due, rather than one timer a minute: the pace follows CI, and a tick
+    // after the Mac slept finds the last look long ago and looks at once. It also keeps the "3m" age current.
+    cx.timer.every(10000, (cx) => {
+      if (this.loading && Date.now() - this.startedAt > 45000) this.loading = false; // a look that never came back
+      if (!this.loading && Date.now() - this.doneAt >= this.due()) this.refresh(cx);
+      else cx.notify();
+    });
+  }
+
+  // How long after the last look the next one is due.
+  due() {
+    if (this.error) return 30000;
+    return this.prs.some((p) => p.s.ci === "running") ? 20000 : 60000;
   }
 
   refresh(cx) {
     if (this.loading) return;
-    this.loading = true; cx.notify();
+    this.loading = true; this.startedAt = Date.now(); cx.notify();
     cx.spawn(async (cx) => {
-      const r = await gh(["api", "graphql", "-f", `query=${QUERY}`]);
-      if (!r) this.error = "Couldn't run gh (GitHub CLI)";
-      else if (r.code !== 0) this.error = /auth|login/i.test(r.stderr ?? "") ? "gh isn't logged in: run `gh auth login`" : (r.stderr || "gh failed").trim().split("\n")[0];
-      else {
-        try {
-          const nodes = JSON.parse(r.stdout).data.search.nodes.filter((n) => n?.url);
-          const prs = nodes.map((pr) => ({ ...pr, s: stateOf(pr) }))
-            .sort((a, b) => a.s.urgent - b.s.urgent || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
-          if (this.cached && !this.loaded) this.loaded = true; // the cached list counts as the first look for toasts
-          this.announce(prs);
-          this.prs = prs; this.error = null; this.loaded = true;
-          cache.set("myprs", nodes);
-          this.prefetch(prs);
-        } catch (e) { this.error = "Couldn't read GitHub's answer"; }
-      }
-      this.loading = false; this.fit(); cx.notify();
+      try {
+        const r = await gh(["api", "graphql", "-f", `query=${QUERY}`]);
+        if (!r) this.error = "Couldn't run gh (GitHub CLI)";
+        else if (r.code !== 0) this.error = /auth|login/i.test(r.stderr ?? "") ? "gh isn't logged in: run `gh auth login`" : (r.stderr || "gh failed").trim().split("\n")[0];
+        else {
+          try {
+            const nodes = JSON.parse(r.stdout).data.search.nodes.filter((n) => n?.url);
+            const prs = nodes.map((pr) => ({ ...pr, s: stateOf(pr) }))
+              .sort((a, b) => a.s.urgent - b.s.urgent || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+            if (this.cached && !this.loaded) this.loaded = true; // the cached list counts as the first look for toasts
+            this.announce(prs);
+            this.prs = prs; this.error = null; this.loaded = true;
+            cache.set("myprs", nodes);
+            this.prefetch(prs);
+          } catch (e) { this.error = "Couldn't read GitHub's answer"; }
+        }
+      } finally { this.loading = false; this.doneAt = Date.now(); this.fit(); cx.notify(); }
     });
   }
 
@@ -143,10 +158,10 @@ export default class MyPrs extends View {
 
   row(pr, t) {
     const s = pr.s, repo = pr.repository.nameWithOwner.split("/").pop();
-    const ci = { pass: [`✓ CI`, t.ansi2], fail: [`✕ CI ${s.counts.fail}`, t.ansi1], running: [`◌ CI ${s.counts.running}`, t.blocked], none: ["no CI", t.dim] }[s.ci];
+    const ci = { pass: [`✓ CI`, t.ansi2], fail: [`✕ CI ${s.counts.fail}`, t.ansi1], running: [`◌ CI ${s.counts.running}`, orange(t)], none: ["no CI", t.dim] }[s.ci];
     const review = { approved: ["✓ approved", t.ansi2], changes: ["✕ changes", t.ansi1], waiting: ["review", t.muted], none: ["no review", t.dim] }[s.review];
-    const merge = { ready: ["ready", t.ansi2], blocked: ["blocked", t.muted], approval: ["needs approval", t.muted], behind: ["behind", t.blocked], conflicts: ["conflicts", t.ansi1], unstable: ["unstable", t.blocked], draft: ["draft", t.dim], checking: ["…", t.dim] }[s.merge];
-    const mark = s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? t.blocked : s.urgent === 2 ? t.ansi2 : t.dim;
+    const merge = { ready: ["ready", t.ansi2], blocked: ["blocked", t.muted], approval: ["needs approval", t.muted], behind: ["behind", orange(t)], conflicts: ["conflicts", t.ansi1], unstable: ["unstable", t.ansi1], waitci: ["waiting on CI", orange(t)], draft: ["draft", t.dim], checking: ["…", t.dim] }[s.merge];
+    const mark = s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? orange(t) : s.urgent === 2 ? t.ansi2 : t.dim;
     return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 4).mx(6).mb(4).px(8).py(4).gap(3).rounded(7).cursor_pointer()
       .when(focusedNow(this, "ks-myprs") && this.prs[this.cursor] === pr, (e) => e.bg(t.selected ?? t.hover))
       .border_l_2().border_color(mark).hover((st) => st.bg(t.hover)).on_click(() => this.openCard(pr))
@@ -185,8 +200,10 @@ export default class MyPrs extends View {
         .child(div().flex_none().text_size(12).text_color(t.muted).child("My PRs"))
         .child(div().flex_none().text_size(11).text_color(t.dim).child(this.loaded ? `${prs.length}` : this.loading ? "…" : ""))
         .when(fail > 0, (e) => e.child(div().flex_none().px(5).rounded(6).bg(t.ansi1).text_size(10).text_color(t.background).child(`${fail} need you`)))
-        .when(running > 0, (e) => e.child(div().flex_none().px(5).rounded(6).border_1().border_color(t.blocked).text_size(10).text_color(t.blocked).child(`${running} running`)))
+        .when(running > 0, (e) => e.child(div().flex_none().px(5).rounded(6).border_1().border_color(orange(t)).text_size(10).text_color(orange(t)).child(`${running} running`)))
         .child(div().flex_1())
+        // How old the list is, once that's more than a minute and a half (a look failing, or the Mac asleep).
+        .when(!this.loading && this.doneAt > 0 && Boolean(ago(Date.now() - this.doneAt)), (e) => e.child(div().flex_none().text_size(10.5).text_color(this.error ? t.ansi1 : t.dim).child(ago(Date.now() - this.doneAt))))
         .child(icon("myprs-refresh", this.loading ? "…" : "↻", (cx) => this.refresh(cx)))
         .child(icon("myprs-hide", "×", () => run("layout.hide", { id: BLOCK }))))
       .when(!this.collapsed, (e) => e.child(div().flex_1().min_h(0).relative()

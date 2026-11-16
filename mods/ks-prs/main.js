@@ -6,28 +6,25 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
 import { spaces, panes, focused, exec, shared, theme, run, notify } from "herdr";
 import * as cache from "./lib/cache.js";
+import { summarize, orange } from "./lib/ci.js";
 import { dimmed } from "./lib/focus.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 
 const FIELDS = "number,title,state,url,baseRefName,headRefName,isDraft,reviewDecision,additions,deletions,changedFiles,statusCheckRollup,author";
 const base = (p) => p.replace(/\/+$/, "").split("/").pop();
 
+// gh gets 20 s: a stuck call (network gone after sleep) must not hold up the next look.
 async function gh(args, cwd) {
-  let r = await exec("gh", args, { cwd }).catch(() => null);
-  if (!r || (r.code !== 0 && /not found|No such file/i.test(r.stderr ?? ""))) r = await exec("/opt/homebrew/bin/gh", args, { cwd }).catch(() => null);
+  const o = { cwd, timeout: 20000 };
+  let r = await exec("gh", args, o).catch(() => null);
+  if (!r || (r.code !== 0 && /not found|No such file/i.test(r.stderr ?? ""))) r = await exec("/opt/homebrew/bin/gh", args, o).catch(() => null);
   return r;
 }
 
-// CI from statusCheckRollup: { pass, fail, pending }.
+// CI from statusCheckRollup: { pass, fail, pending } (lib/ci.js decides what counts as failed).
 function checks(rollup) {
-  const out = { pass: 0, fail: 0, pending: 0 };
-  for (const c of rollup ?? []) {
-    const state = (c.conclusion || c.state || "").toUpperCase(), status = (c.status || "").toUpperCase();
-    if (["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "ERROR", "STARTUP_FAILURE"].includes(state)) out.fail++;
-    else if ((status && status !== "COMPLETED") || ["PENDING", "EXPECTED", ""].includes(state)) out.pending++;
-    else out.pass++;
-  }
-  return out;
+  const { counts } = summarize(rollup);
+  return { pass: counts.pass, fail: counts.fail, pending: counts.running };
 }
 
 // The worktrees to look at: what the Changes panel published for the shown space, else the focused terminal's.
@@ -46,45 +43,53 @@ export default class Prs extends View {
     // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o review, g o / O on GitHub, r refresh, h/l/Esc leave.
     this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.cursor = 0; this.pageRows = 4;
     takeFocus(this, cx, "ks-prs"); watchFocus(this, cx, "ks-prs");
+    this.doneAt = 0; this.startedAt = 0;
     this.refresh(cx);
-    cx.timer.every(60000, (cx) => this.refresh(cx, true)); // GitHub: once a minute is plenty
+    // GitHub once a minute, every 20 s while a PR's checks are running, 30 s after a failed look; a 10 s tick asks
+    // whether one is due, so a look also happens at once after the Mac wakes.
+    cx.timer.every(10000, (cx) => {
+      if (this.loading && Date.now() - this.startedAt > 60000) this.loading = false; // a look that never came back
+      const due = this.error ? 30000 : this.prs.some((p) => p.checks?.pending) ? 20000 : 60000;
+      if (!this.loading && Date.now() - this.doneAt >= due) this.refresh(cx, true);
+    });
   }
 
   refresh(cx, force = false) {
     const roots = sessionRoots(), key = JSON.stringify(roots.map((r) => r.root));
     if (this.loading || (!force && key === this.key)) return;
-    this.key = key; this.loading = true;
+    this.key = key; this.loading = true; this.startedAt = Date.now();
     cx.spawn(async (cx) => {
-      // Stale while revalidate: the last list for these worktrees at once, then a fresh one.
-      const hit = await cache.get(`prs:${key}`);
-      if (hit?.value && this.key === key) { this.prs = hit.value.prs ?? []; this.without = hit.value.without ?? []; cx.notify(); }
-      const prs = [], without = [], seen = new Set();
-      let error = null;
-      for (const { root } of roots) {
-        const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: root }).catch(() => null);
-        if (!top || top.code !== 0) continue;
-        const dir = top.stdout.trim();
-        const br = await exec("git", ["branch", "--show-current"], { cwd: dir }).catch(() => null);
-        const branch = br?.code === 0 ? br.stdout.trim() : "";
-        if (!branch) { without.push({ root: dir, branch: "detached" }); continue; }
-        const r = await gh(["pr", "view", branch, "--json", FIELDS], dir);
-        if (!r) { error = "Couldn't run gh (GitHub CLI)"; break; }
-        if (r.code !== 0) {
-          if (/auth|login/i.test(r.stderr ?? "")) { error = "gh isn't logged in: run `gh auth login`"; break; }
-          without.push({ root: dir, branch }); continue;
+      try {
+        // Stale while revalidate: the last list for these worktrees at once, then a fresh one.
+        const hit = await cache.get(`prs:${key}`);
+        if (hit?.value && this.key === key) { this.prs = hit.value.prs ?? []; this.without = hit.value.without ?? []; cx.notify(); }
+        const prs = [], without = [], seen = new Set();
+        let error = null;
+        for (const { root } of roots) {
+          const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: root }).catch(() => null);
+          if (!top || top.code !== 0) continue;
+          const dir = top.stdout.trim();
+          const br = await exec("git", ["branch", "--show-current"], { cwd: dir }).catch(() => null);
+          const branch = br?.code === 0 ? br.stdout.trim() : "";
+          if (!branch) { without.push({ root: dir, branch: "detached" }); continue; }
+          const r = await gh(["pr", "view", branch, "--json", FIELDS], dir);
+          if (!r) { error = "Couldn't run gh (GitHub CLI)"; break; }
+          if (r.code !== 0) {
+            if (/auth|login/i.test(r.stderr ?? "")) { error = "gh isn't logged in: run `gh auth login`"; break; }
+            without.push({ root: dir, branch }); continue;
+          }
+          try {
+            const pr = JSON.parse(r.stdout);
+            if (seen.has(pr.url)) continue;
+            seen.add(pr.url);
+            if (pr.state !== "OPEN") { without.push({ root: dir, branch, closed: pr.state.toLowerCase(), number: pr.number }); continue; }
+            const repo = (await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: dir })).stdout.trim().replace(/\/\.git$/, "");
+            prs.push({ ...pr, root: dir, repo: base(repo), checks: checks(pr.statusCheckRollup) });
+          } catch { without.push({ root: dir, branch }); }
         }
-        try {
-          const pr = JSON.parse(r.stdout);
-          if (seen.has(pr.url)) continue;
-          seen.add(pr.url);
-          if (pr.state !== "OPEN") { without.push({ root: dir, branch, closed: pr.state.toLowerCase(), number: pr.number }); continue; }
-          const repo = (await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: dir })).stdout.trim().replace(/\/\.git$/, "");
-          prs.push({ ...pr, root: dir, repo: base(repo), checks: checks(pr.statusCheckRollup) });
-        } catch { without.push({ root: dir, branch }); }
-      }
-      if (this.key === key) { this.prs = prs; this.without = without; this.error = error; }
-      if (!error) cache.set(`prs:${key}`, { prs, without });
-      this.loading = false; cx.notify();
+        if (this.key === key) { this.prs = prs; this.without = without; this.error = error; }
+        if (!error) cache.set(`prs:${key}`, { prs, without });
+      } finally { this.loading = false; this.doneAt = Date.now(); cx.notify(); }
     });
   }
 
@@ -104,7 +109,7 @@ export default class Prs extends View {
   card(pr, t) {
     const badge = (label, color) => div().flex_none().px(6).py(1).rounded(8).border_1().border_color(color).text_size(10).text_color(color).child(label);
     const review = { APPROVED: ["approved", t.ansi2], CHANGES_REQUESTED: ["changes requested", t.ansi1], REVIEW_REQUIRED: ["review required", t.muted] }[pr.reviewDecision];
-    const c = pr.checks, ci = c.fail ? [`${c.fail} failing`, t.ansi1] : c.pending ? [`${c.pending} running`, t.blocked] : c.pass ? ["checks pass", t.ansi2] : null;
+    const c = pr.checks, ci = c.fail ? [`${c.fail} failing`, t.ansi1] : c.pending ? [`${c.pending} running`, orange(t)] : c.pass ? ["checks pass", t.ansi2] : null;
     const button = (id, label, act, primary) => div().id(id).flex_none().h(24).px(9).flex().items_center().rounded(6).cursor_pointer().text_size(11)
       .bg(primary ? t.solid : t.background).text_color(primary ? t.solid_foreground : t.foreground).border_1().border_color(primary ? t.solid : t.border)
       .hover((s) => s.opacity(0.85)).on_click(act).child(label);

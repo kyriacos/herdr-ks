@@ -7,6 +7,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, Scrollbar } from "gpui-base";
 import { props, exec, hc, theme, run, notify, agents, spaces, panes, shared, settings, appHome, openOverlay, closeOverlay, nextCommand } from "herdr";
+import { checkKind, orange } from "./lib/ci.js";
 import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { candidates, git } from "./lib/branch.js";
 import * as cache from "./lib/cache.js";
@@ -231,15 +232,15 @@ export default class PrCard extends View {
       .child(div().flex_1().font_semibold().child(`${this.repo}#${this.number ?? ""}`)).child(button("x", "✕", () => this.close())))
       .child(div().p(14).text_color(this.error ? t.ansi1 : t.dim).child(this.error ?? "Loading…"));
 
-    const checks = (pr.statusCheckRollup ?? []).map((c) => {
-      const s = (c.conclusion || c.state || "").toUpperCase(), st = (c.status || "").toUpperCase();
-      const kind = ["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "ERROR", "STARTUP_FAILURE"].includes(s) ? "fail" : (st && st !== "COMPLETED") || ["PENDING", "EXPECTED", ""].includes(s) ? "running" : "pass";
-      return { name: c.name || c.context || "check", kind };
-    }).sort((a, b) => ({ fail: 0, running: 1, pass: 2 }[a.kind] - { fail: 0, running: 1, pass: 2 }[b.kind]));
+    const order = { fail: 0, running: 1, pass: 2, skip: 3 };
+    const checks = (pr.statusCheckRollup ?? []).map((c) => ({ name: c.name || c.context || "check", kind: checkKind(c) }))
+      .sort((a, b) => order[a.kind] - order[b.kind]);
     const reviews = (pr.latestReviews ?? []).map((r) => ({ who: r.author?.login ?? "?", state: r.state }));
     const asked = (pr.reviewRequests ?? []).map((r) => r.login || r.name || r.slug).filter(Boolean);
     const decision = { APPROVED: ["approved", t.ansi2], CHANGES_REQUESTED: ["changes requested", t.ansi1], REVIEW_REQUIRED: ["review required", t.muted] }[pr.reviewDecision];
-    const merge = { CLEAN: ["ready to merge", t.ansi2], BLOCKED: ["blocked", t.muted], BEHIND: ["behind base", t.blocked], DIRTY: ["conflicts", t.ansi1], UNSTABLE: ["unstable", t.blocked], DRAFT: ["draft", t.dim] }[pr.mergeStateStatus];
+    const running = checks.some((c) => c.kind === "running") && !checks.some((c) => c.kind === "fail");
+    const merge = { CLEAN: ["ready to merge", t.ansi2], BLOCKED: ["blocked", t.muted], BEHIND: ["behind base", orange(t)], DIRTY: ["conflicts", t.ansi1],
+      UNSTABLE: running ? ["waiting on CI", orange(t)] : ["unstable", t.ansi1], DRAFT: ["draft", t.dim] }[pr.mergeStateStatus];
     // Who works on this PR (an agent in one of its worktrees) and everyone else, kept apart so it's clear.
     const onPr = (this.places ?? []).flatMap((w) => w.agents.map((a) => ({ address: a.address, title: `${a.space_name} / ${a.title}`, where: w.root.split("/").pop() })));
     const here = new Set(onPr.map((a) => a.address));
@@ -277,8 +278,8 @@ export default class PrCard extends View {
       .child(section(`Checks · ${checks.length}`))
       .when(!checks.length, (e) => e.child(div().text_size(11.5).text_color(t.dim).child("No checks")))
       .children(checks.map((c) => h_flex().flex_none().gap(6).items_center().text_size(11.5)
-        .child(div().w(14).flex_none().text_color(c.kind === "fail" ? t.ansi1 : c.kind === "running" ? t.blocked : t.ansi2).child(c.kind === "fail" ? "✕" : c.kind === "running" ? "◌" : "✓"))
-        .child(div().flex_1().min_w(0).truncate().child(c.name))))
+        .child(div().w(14).flex_none().text_color({ fail: t.ansi1, running: orange(t), pass: t.ansi2, skip: t.dim }[c.kind]).child({ fail: "✕", running: "◌", pass: "✓", skip: "–" }[c.kind]))
+        .child(div().flex_1().min_w(0).truncate().text_color(c.kind === "skip" ? t.dim : t.foreground).child(c.name))))
       .child(section("Reviews"))
       .when(!reviews.length && !asked.length, (e) => e.child(div().text_size(11.5).text_color(t.dim).child("No reviews yet")))
       .children(reviews.map((r) => div().text_size(11.5).child(`${r.who}: ${r.state.toLowerCase().replace(/_/g, " ")}`)))
