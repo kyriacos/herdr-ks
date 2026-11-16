@@ -38,3 +38,11 @@ function hex(c) {
   const m = /^#?([0-9a-f]{6})/i.exec(String(c ?? ""));
   return m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : null;
 }
+
+// A status pill's colors: a soft fill and a lighter border in its own color, the text in it. Neutral tones (dim,
+// muted) stay a plain outline, so only states that mean something stand out. { bg, border, text }.
+export function pillColors(tone, t) {
+  if (tone === t.dim || tone === t.muted || !hex(tone)) return { bg: null, border: tone, text: tone };
+  const base = "#" + String(tone).replace(/^#/, "").slice(0, 6);
+  return { bg: base + "24", border: base + "66", text: base };
+}

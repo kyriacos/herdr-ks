@@ -8,7 +8,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
 import { exec, theme, run, notify, openOverlay } from "herdr";
 import * as cache from "./lib/cache.js";
-import { summarize, runningColor } from "./lib/ci.js";
+import { summarize, runningColor, pillColors } from "./lib/ci.js";
 import { fetchPr, prKey } from "./lib/github.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
@@ -153,7 +153,9 @@ export default class MyPrs extends View {
   }
 
   step(label, tone, t) {
-    return div().flex_none().px(5).rounded(6).border_1().border_color(tone).text_size(9.5).text_color(tone).whitespace_nowrap().child(label);
+    const c = pillColors(tone, t);
+    return div().flex_none().px(5).rounded(6).border_1().border_color(c.border).when(Boolean(c.bg), (e) => e.bg(c.bg))
+      .text_size(9.5).text_color(c.text).whitespace_nowrap().child(label);
   }
 
   row(pr, t) {
@@ -200,7 +202,7 @@ export default class MyPrs extends View {
         .child(div().flex_none().text_size(12).text_color(t.muted).child("My PRs"))
         .child(div().flex_none().text_size(11).text_color(t.dim).child(this.loaded ? `${prs.length}` : this.loading ? "…" : ""))
         .when(fail > 0, (e) => e.child(div().flex_none().px(5).rounded(6).bg(t.ansi1).text_size(10).text_color(t.background).child(`${fail} need you`)))
-        .when(running > 0, (e) => e.child(div().flex_none().px(5).rounded(6).border_1().border_color(runningColor(t)).text_size(10).text_color(runningColor(t)).child(`${running} running`)))
+        .when(running > 0, (e) => e.child(div().flex_none().px(5).rounded(6).border_1().border_color(pillColors(runningColor(t), t).border).bg(pillColors(runningColor(t), t).bg).text_size(10).text_color(runningColor(t)).child(`${running} running`)))
         .child(div().flex_1())
         // How old the list is, once that's more than a minute and a half (a look failing, or the Mac asleep).
         .when(!this.loading && this.doneAt > 0 && Boolean(ago(Date.now() - this.doneAt)), (e) => e.child(div().flex_none().text_size(10.5).text_color(this.error ? t.ansi1 : t.dim).child(ago(Date.now() - this.doneAt))))

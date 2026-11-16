@@ -6,7 +6,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
 import { spaces, panes, focused, exec, shared, theme, run, notify } from "herdr";
 import * as cache from "./lib/cache.js";
-import { summarize, runningColor } from "./lib/ci.js";
+import { summarize, runningColor, pillColors } from "./lib/ci.js";
 import { dimmed } from "./lib/focus.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 
@@ -107,7 +107,8 @@ export default class Prs extends View {
   }
 
   card(pr, t) {
-    const badge = (label, color) => div().flex_none().px(6).py(1).rounded(8).border_1().border_color(color).text_size(10).text_color(color).child(label);
+    const badge = (label, color) => { const c = pillColors(color, t);
+      return div().flex_none().px(6).py(1).rounded(8).border_1().border_color(c.border).when(Boolean(c.bg), (e) => e.bg(c.bg)).text_size(10).text_color(c.text).child(label); };
     const review = { APPROVED: ["approved", t.ansi2], CHANGES_REQUESTED: ["changes requested", t.ansi1], REVIEW_REQUIRED: ["review required", t.muted] }[pr.reviewDecision];
     const c = pr.checks, ci = c.fail ? [`${c.fail} failing`, t.ansi1] : c.pending ? [`${c.pending} running`, runningColor(t)] : c.pass ? ["checks pass", t.ansi2] : null;
     const button = (id, label, act, primary) => div().id(id).flex_none().h(24).px(9).flex().items_center().rounded(6).cursor_pointer().text_size(11)

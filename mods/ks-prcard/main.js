@@ -7,7 +7,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, Scrollbar } from "gpui-base";
 import { props, exec, hc, theme, run, notify, agents, spaces, panes, shared, settings, appHome, openOverlay, closeOverlay, nextCommand } from "herdr";
-import { checkKind, runningColor } from "./lib/ci.js";
+import { checkKind, runningColor, pillColors } from "./lib/ci.js";
 import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { candidates, git } from "./lib/branch.js";
 import * as cache from "./lib/cache.js";
@@ -222,7 +222,8 @@ export default class PrCard extends View {
       .bg(primary && enabled ? t.solid : t.background).text_color(!enabled ? t.dim : primary ? t.solid_foreground : t.foreground)
       .border_1().border_color(primary && enabled ? t.solid : t.border).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .when(enabled, (e) => e.cursor_pointer().hover((s) => s.opacity(0.85)).on_click((_e, cx) => act(cx))).child(label);
-    const pill = (label, tone) => div().flex_none().px(6).py(1).rounded(8).border_1().border_color(tone).text_size(10).text_color(tone).whitespace_nowrap().child(label);
+    const pill = (label, tone) => { const c = pillColors(tone, t);
+      return div().flex_none().px(6).py(1).rounded(8).border_1().border_color(c.border).when(Boolean(c.bg), (e) => e.bg(c.bg)).text_size(10).text_color(c.text).whitespace_nowrap().child(label); };
     const section = (title) => div().flex_none().pt(10).pb(3).text_size(11).font_semibold().text_color(t.muted).child(title);
     const root = v_flex().id("prcard").size_full().relative().bg(t.background).text_color(t.foreground).track_focus(this.handle)
       .on_size_change((size) => { this.size = size; })
