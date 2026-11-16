@@ -8,7 +8,7 @@ import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualLi
 import { spaces, panes, focused, exec, hc, watchFolder, theme, settings, home, appHome, run, shared, setShared, openOverlay } from "herdr";
 import { langOf, colorsFor } from "./lib/highlight.js";
 import { parseDiff, wrapTokens, colsFor } from "./lib/diff.js";
-import { WORKTREE, readBranch, readCommits, readCommitFiles, treeRows } from "./lib/branch.js";
+import { WORKTREE, RECENT, readBranch, readCommits, readCommitFiles, treeRows } from "./lib/branch.js";
 import * as comments from "./lib/comments.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
@@ -643,7 +643,8 @@ export default class Changes extends View {
           .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(tilde(s.root)))
           .child(div().flex_none().text_color(t.dim).child(this.scope === "commits" && !this.picked ? "" : `${shown.length}`)))
         .when(this.scope !== "working" && Boolean(info), (e) => e.child(div().text_size(10.5).text_color(t.dim).truncate()
-          .child(`${info?.base ? `vs ${info.base}` : "no base branch"} · ${info?.commits ?? 0} commit${info?.commits === 1 ? "" : "s"}`))), this.scope === "working" ? 30 : 44);
+          .child(info?.onBase && !info.commits && this.scope === "commits" ? `on ${info.base} · last ${RECENT} commits`
+            : `${info?.base ? `vs ${info.base}` : "no base branch"} · ${info?.commits ?? 0} commit${info?.commits === 1 ? "" : "s"}${info?.onBase ? " not pushed" : ""}`))), this.scope === "working" ? 30 : 44);
       if (folded && (multi || this.scope !== "working")) continue;
       if (this.scope === "commits" && !this.picked) {
         const list = s.commitList ?? [];
@@ -661,7 +662,7 @@ export default class Changes extends View {
       const before = listRows.length;
       this.filesInto(s, shown, t, listRows, `${this.scope}\n${this.picked?.sha ?? ""}\n${s.root}`);
       listHeight += (listRows.length - before) * 28;
-      const none = this.scope === "working" ? "No uncommitted changes" : this.scope === "branch" ? "No changes on this branch" : "No files in this commit";
+      const none = this.scope === "working" ? "No uncommitted changes" : this.scope === "branch" ? (info?.onBase ? `On ${info.base} itself: nothing to compare. Commits shows its history.` : "No changes on this branch") : "No files in this commit";
       if (!shown.length && (multi || this.scope !== "working")) push(div().px(30).h(22).flex_none().text_size(11).text_color(t.dim).child(none), 22);
       if (s.limited && this.scope === "working") push(div().px(8).text_size(11).text_color(t.dim).child("Showing the first 1,000 changed files"), 20);
     }

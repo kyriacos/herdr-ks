@@ -17,7 +17,7 @@ import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { langOf, colorsFor } from "./lib/highlight.js";
 import { parseDiff, fileRows, splitRows, wrapTokens, colsFor, charWidth, longest } from "./lib/diff.js";
 import * as comments from "./lib/comments.js";
-import { READ, git, base, WORKTREE, readBranch, readCommits, readCommitFiles, treeRows, candidates } from "./lib/branch.js";
+import { READ, git, base, WORKTREE, RECENT, branchRefs, readBranch, readCommits, readCommitFiles, treeRows, candidates } from "./lib/branch.js";
 
 const MAX_LINES = 20000, ROW = 20;
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -75,7 +75,12 @@ export default class Review extends View {
     this.input = InputState.new({ placeholder: "Your comment, then Enter" });
     this.input.on("submit", (_e, cx) => this.saveComment(cx));
     this.roots = this.branchMode ? (p.roots ?? []).filter(Boolean) : p.root ? [p.root] : [];
-    this.bases = p.bases ?? {}; // root -> base ref (a PR's base branch); else origin's default
+    this.bases = p.bases ?? {}; // root -> base ref (a PR's base branch, or one picked); else the branch it came from
+    // "Compare with" picker (branch review): the repo it's open for, its branches, and a filter box.
+    this.picking = null; this.refs = null;
+    this.refFilter = InputState.new({ placeholder: "Filter branches, Enter picks the first" });
+    this.refFilter.on("change", (_e, cx) => cx.notify());
+    this.refFilter.on("submit", (_e, cx) => { const first = this.pickable()[0]; if (first) this.setBase(this.picking, first.ref, cx); });
     if (!this.roots.length || (!this.branchMode && !p.path)) { this.status = "nothing"; this.error = "Nothing to review"; return; }
     if (this.branchMode) this.reloadBranch(cx, true);
     else {
@@ -237,6 +242,43 @@ export default class Review extends View {
     for (let i = (this.cur ?? (dir > 0 ? -1 : this.files.length)) + dir; i >= 0 && i < this.files.length; i += dir) {
       if (!this.foldedRepos.has(this.files[i].root)) { this.select(i, cx); return; }
     }
+  }
+
+  // ---------- what a repo is compared with ----------
+  togglePicker(root, cx) {
+    if (this.picking === root) { this.closePicker(cx); return; }
+    this.picking = root; this.refs = null; this.refFilter.set_value(""); this.refFilter.focus(); cx.notify();
+    const r = this.repos.find((x) => x.root === root);
+    cx.spawn(async (cx) => { const refs = await branchRefs(root, r?.on ?? this.on).catch(() => []); if (this.picking === root) { this.refs = refs; cx.notify(); } });
+  }
+  closePicker(cx) { this.picking = null; this.handle.focus(); cx.notify(); }
+  pickable() {
+    const r = this.repos.find((x) => x.root === this.picking), q = this.refFilter.value().trim().toLowerCase();
+    return (this.refs ?? []).filter((b) => b.ref !== r?.branch && (!q || b.ref.toLowerCase().includes(q)));
+  }
+  // ref null: back to the default (the branch it came from).
+  setBase(root, ref, cx) {
+    if (ref) this.bases = { ...this.bases, [root]: ref };
+    else { const { [root]: _gone, ...rest } = this.bases; this.bases = rest; }
+    this.openProps = { ...this.openProps, bases: this.bases };
+    this.closePicker(cx);
+    this.commits = this.left === "commits" ? [] : null; this.commit = null;
+    this.reloadBranch(cx, false);
+  }
+  picker(r, t) {
+    const list = this.pickable().slice(0, 40), custom = !r.auto;
+    const row = (id, label, note, act, on) => h_flex().id(id).flex_none().mx(4).px(8).h(24).gap(8).items_center().rounded(6).cursor_pointer().text_size(11.5)
+      .when(on, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover)).on_click((_e, cx) => act(cx))
+      .child(div().flex_1().min_w(0).truncate().child(label)).child(div().flex_none().text_size(10.5).text_color(t.dim).child(note));
+    return v_flex().id(`picker-${r.root}`).flex_none().mx(4).mb(6).py(4).rounded(7).border_1().border_color(t.accent).bg(t.background)
+      .on_key_down((e, cx) => { if (e.key === "escape") { this.closePicker(cx); cx.stop_propagation(); } })
+      .child(div().mx(6).mb(4).h(26).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).bg(t.chrome)
+        .child(Input.new(this.refFilter).h_full().text_size(11.5).text_color(t.foreground)))
+      .when(custom, (e) => e.child(row(`pick-default-${r.root}`, "Default: the branch it came from", "", (cx) => this.setBase(r.root, null, cx), false)))
+      .child(v_flex().id(`picker-rows-${r.root}`).max_h(260).overflow_y_scroll()
+        .when(this.refs === null, (e) => e.child(div().px(12).py(4).text_size(11).text_color(t.dim).child("Reading branches…")))
+        .when(this.refs !== null && !list.length, (e) => e.child(div().px(12).py(4).text_size(11).text_color(t.dim).child("No branch matches")))
+        .children(list.map((b) => row(`pick-${r.root}-${b.ref}`, b.ref, b.when, (cx) => this.setBase(r.root, b.ref, cx), b.ref === r.base))));
   }
 
   // ---------- which worktrees ----------
@@ -585,7 +627,15 @@ export default class Review extends View {
           .child(h_flex().gap(6).items_center().text_size(12)
             .child(div().w(10).flex_none().text_color(t.dim).child(folded ? "▸" : "▾"))
             .child(div().font_semibold().truncate().child(this.label(r))).child(div().text_color(t.dim).child(`${r.files.length}`)))
-          .child(div().text_size(10.5).text_color(t.dim).truncate().child(`${r.branch ?? ""}${r.base ? ` vs ${r.base}` : ""} · ${r.commits} commit${r.commits === 1 ? "" : "s"}`)));
+          .child(h_flex().gap(4).items_center().text_size(10.5).text_color(t.dim)
+            .child(div().flex_none().truncate().child(r.branch ?? ""))
+            // What it's compared with: click to pick another branch.
+            .child(div().id(`vs-${r.root}`).flex_none().px(5).rounded(5).border_1().border_color(this.picking === r.root ? t.accent : t.border)
+              .cursor_pointer().text_color(r.auto ? t.dim : t.accent).hover((s) => s.bg(t.hover).text_color(t.foreground))
+              .on_click((_e, cx) => { cx.stop_propagation(); this.togglePicker(r.root, cx); })
+              .child(`vs ${r.base ?? "?"} ▾`))
+            .child(div().flex_1().min_w(0).truncate().child(`${r.commits} commit${r.commits === 1 ? "" : "s"}`))));
+        if (this.picking === r.root) out.push(this.picker(r, t));
         if (folded) continue;
         if (!r.files.length) out.push(div().px(18).py(2).text_size(11).text_color(t.dim).child("No changes on this branch"));
         this.fileRows(this.files.filter((f) => f.root === r.root), r.root, t, out);
@@ -608,7 +658,7 @@ export default class Review extends View {
         out.push(h_flex().id(`crepo-${r.root}`).flex_none().mx(4).mt(6).px(6).py(4).gap(6).items_center().rounded(6).cursor_pointer()
           .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.foldRepo(r.root, cx)).text_size(12)
           .child(div().w(10).flex_none().text_color(t.dim).child(folded ? "▸" : "▾"))
-          .child(div().flex_1().min_w(0).font_semibold().truncate().child(`${this.label(r)}${r.base ? ` · since ${r.base}` : ""}`))
+          .child(div().flex_1().min_w(0).font_semibold().truncate().child(`${this.label(r)}${r.onBase && !r.commits ? ` · last ${RECENT} on ${r.base}` : r.base ? ` · since ${r.base}` : ""}`))
           .child(div().flex_none().text_color(t.dim).child(`${list.length}`)));
         if (folded) continue;
         if (!list.length) out.push(div().px(18).py(2).text_size(11).text_color(t.dim).child("No commits on this branch yet"));
@@ -683,6 +733,7 @@ export default class Review extends View {
       .when(Boolean(this.windowKey), (e) => e.on_mouse_move((ev) => { if (ev.bounds) this.winRect = ev.bounds; }))
       .on_key_down((e, cx) => {
         if (this.composer) { if (e.key === "escape") { this.closeComposer(cx); cx.stop_propagation(); } return; }
+        if (this.picking) { if (e.key === "escape") { this.closePicker(cx); cx.stop_propagation(); } return; } // typing a branch filter
         if (this.vimKey(e, cx)) cx.stop_propagation();
       })
       .child(h_flex().h(44).flex_none().px(14).gap(10).items_center().border_b(1).border_color(t.border).bg(t.chrome)

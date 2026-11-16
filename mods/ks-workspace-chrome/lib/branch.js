@@ -17,11 +17,51 @@ export async function baseRef(root, on) {
   return null;
 }
 
-// One repo's branch: { root, on, name, branch, base, mb, commits, files: [{ path, status, add, del, fresh }] }.
+// Branches to compare against, newest first: local ones and origin's (not HEAD itself). [{ ref, when, remote }].
+export async function branchRefs(root, on, limit = 80) {
+  const r = await git(root, on, ["for-each-ref", "--sort=-committerdate", `--count=${limit}`, "--format=%(refname:short)%09%(committerdate:relative)%09%(refname)",
+    "refs/heads", "refs/remotes"]);
+  if (r.code !== 0) return [];
+  return r.stdout.split("\n").filter(Boolean).map((l) => { const [ref, when, full] = l.split("\t"); return { ref, when, remote: full.startsWith("refs/remotes/") }; })
+    .filter((b) => !b.ref.endsWith("/HEAD") && b.ref !== "origin");
+}
+
+// The branch this one was most likely made from: of the recent branches (not itself or its own upstream), the one
+// it has the fewest commits beyond (a stacked branch: its parent feature; a fresh one: main), leaving out branches
+// that already contain it. Ties and no better
+// match go to origin's default. Remembered per checkout and branch for 5 minutes (it walks up to 30 branches).
+const parents = new Map();
+export async function parentRef(root, on, branch) {
+  const def = await baseRef(root, on);
+  if (!branch || branch === "detached HEAD" || !def || def.replace(/^[^/]+\//, "") === branch) return def;
+  const key = `${on ?? ""}\n${root}\n${branch}`, hit = parents.get(key);
+  if (hit && Date.now() - hit.at < 300000) return hit.ref;
+  const ahead = async (ref) => {
+    const m = await git(root, on, ["merge-base", "HEAD", ref]);
+    if (m.code !== 0) return Infinity;
+    return Number((await git(root, on, ["rev-list", "--count", `${m.stdout.trim()}..HEAD`])).stdout.trim());
+  };
+  const up = (await git(root, on, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])).stdout.trim();
+  let best = def, bestN = await ahead(def);
+  for (const b of (await branchRefs(root, on, 30))) {
+    if (b.ref === branch || b.ref === up || b.ref === def || b.ref.replace(/^[^/]+\//, "") === branch) continue;
+    // A branch that already holds this one (made from it, or the same commit) isn't where it came from.
+    if ((await git(root, on, ["merge-base", "--is-ancestor", "HEAD", b.ref])).code === 0) continue;
+    const n = await ahead(b.ref);
+    if (n < bestN) { best = b.ref; bestN = n; }
+  }
+  parents.set(key, { ref: best, at: Date.now() });
+  return best;
+}
+
+// One repo's branch: { root, on, name, branch, base, auto, onBase, mb, commits, files: [{ path, status, add, del, fresh }] }.
+// base: what it's compared against, refOverride when given (auto false), else parentRef (auto true).
+// onBase: the checkout is on the base branch itself (main vs origin/main), so "the branch's commits" are only the
+// unpushed ones; readCommits shows recent history there instead when there are none.
 export async function readBranch(root, on, refOverride = null) {
   const br = await git(root, on, ["branch", "--show-current"]);
   const branch = br.code === 0 ? br.stdout.trim() || "detached HEAD" : null;
-  const ref = refOverride ?? await baseRef(root, on);
+  const ref = refOverride ?? await parentRef(root, on, branch);
   let mb = null;
   if (ref) { const m = await git(root, on, ["merge-base", "HEAD", ref]); if (m.code === 0) mb = m.stdout.trim(); }
   if (!mb) { const h = await git(root, on, ["rev-parse", "--verify", "HEAD"]); mb = h.code === 0 ? h.stdout.trim() : null; }
@@ -39,22 +79,27 @@ export async function readBranch(root, on, refOverride = null) {
   const untracked = await git(root, on, ["ls-files", "--others", "--exclude-standard", "-z"]);
   for (const path of untracked.stdout.split("\0").filter(Boolean)) if (!files.has(path)) files.set(path, { path, status: "A", add: 0, del: 0, fresh: true });
   const main = (await git(root, on, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).stdout.trim();
-  return { root, on, name: base(main.endsWith("/.git") ? main.slice(0, -5) : root), branch, base: ref, mb, commits,
+  const onBase = Boolean(ref && branch && ref.replace(/^[^/]+\//, "") === branch);
+  return { root, on, name: base(main.endsWith("/.git") ? main.slice(0, -5) : root), branch, base: ref, auto: !refOverride, onBase, mb, commits,
     files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)) };
 }
 
 export const WORKTREE = "WORKTREE"; // the "Uncommitted changes" entry of the commit list
+export const RECENT = 30; // commits shown for a checkout on its base branch
 
 // A repo's commits on the branch, newest first, with an "Uncommitted changes" entry on top when there is any.
+// On the base branch with nothing unpushed (main vs origin/main), its last RECENT commits instead (marked recent).
 export async function readCommits(repo) {
   const { root, on, mb } = repo, out = [];
   const dirty = await git(root, on, ["status", "--porcelain"]);
   if (dirty.code === 0 && dirty.stdout.trim()) out.push({ root, on, sha: WORKTREE, short: "", subject: "Uncommitted changes", when: "now", author: "" });
   if (!mb) return out;
-  const log = await git(root, on, ["log", "--no-color", "--format=%H%x09%h%x09%cr%x09%an%x09%s", `${mb}..HEAD`]);
+  const recent = Boolean(repo.onBase && !repo.commits);
+  const range = recent ? [`-${RECENT}`, "HEAD"] : [`${mb}..HEAD`];
+  const log = await git(root, on, ["log", "--no-color", "--format=%H%x09%h%x09%cr%x09%an%x09%s", ...range]);
   for (const line of log.stdout.split("\n").filter(Boolean)) {
     const [sha, short, when, author, ...subject] = line.split("\t");
-    out.push({ root, on, sha, short, when, author, subject: subject.join("\t") });
+    out.push({ root, on, sha, short, when, author, subject: subject.join("\t"), ...(recent ? { recent: true } : {}) });
   }
   return out;
 }

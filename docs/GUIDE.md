@@ -84,6 +84,13 @@ highlighted, Wrap, horizontal scroll. Unchanged and untracked files open whole, 
 **A whole branch** (Review branch): everything the PR would contain, for every repo the panel shows, plus
 uncommitted work.
 
+- **Compared with** the branch it was made from: of your recent branches, the one it has the fewest commits beyond
+  (a branch stacked on a feature branch is compared with that feature; a fresh one with `main`), else origin's
+  default. Click **vs main ▾** under a repo in the file list to pick any other branch (type to filter, Enter picks
+  the first); **Default** goes back. A PR opened from the PRs panel uses the PR's own base.
+- **On `main` itself** there's nothing to compare, so **Commits** (here and in the Changes panel) lists the last 30
+  commits instead, each one reviewable; any unpushed commits come first as usual.
+
 - File list grouped by repo, with status, +/−, comment count and a ✓ once viewed ("3/17 viewed").
 - **Files | Commits**: the whole branch, or one commit at a time.
 - **Tree | Flat**, foldable repo groups.
