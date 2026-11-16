@@ -187,7 +187,10 @@ export default class Tabs extends View {
         })
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "ks-tabs", kind: "popup", width: 220, height: 237, props: { menu: { id: c.id, space: space.id } } }); })
         .when(Boolean(program?.icon), el => el.child(program.tint ? svg(program.icon).size(14).text_color(t.muted) : image(program.icon).size(14)))
-        .child(div().max_w(170).truncate().child(c.zoomed ? `${name} Z` : name))
+        .child(div().max_w(170).truncate().child(name))
+        // ks: a pane in this tab is zoomed (Herdr's, or ks-zen's over the window): a badge, as on the pane's header.
+        .when(c.zoomed || shared("ks-zen.zoom")?.tab === c.id, el => el.child(div().id(`zoomed-${c.id}`).flex_none().h(16).px(4).flex().items_center()
+          .rounded(4).bg(t.accent + "26").text_size(10).font_semibold().text_color(t.accent).tooltip("A pane here is zoomed").child("⤢")))
         .when(lost.length > 0, el => el.child(div().id(`resume-${c.id}`).flex_none().h(18).px(6).flex().items_center().rounded(5)
           .bg(t.accent + "22").text_size(10.5).font_semibold().text_color(t.accent).hover(s => s.bg(t.accent + "40"))
           .tooltip(`Resume ${lost.map(x => `"${sessions.label(x.rec)}"`).join(", ")} · Claude ran here ${sessions.ago(Math.max(...lost.map(x => x.rec.at ?? 0)))}`)

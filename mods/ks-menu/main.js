@@ -45,7 +45,8 @@ function items(p, git) {
           ? [
               ["Split right", "pane.split", { direction: "right", pane: tg.pane }],
               ["Split down", "pane.split", { direction: "down", pane: tg.pane }],
-              ["Zoom", "pane.zoom", { pane: tg.pane }],
+              // ks: zoom fills the window (ks-zen), the same everywhere.
+              ["Zoom", `ks-zen.zoom:${tg.pane}`, {}],
             ]
           : []),
         ...(term

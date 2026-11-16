@@ -109,8 +109,10 @@ uncommitted work.
 with **↑** / **↓** to the previous / next change in that file, and **← File** / **File →** for the previous / next
 file (branch review).
 
-**Zoom and zen:** a review tab is a pane alone in its tab, so **zoom** (`cmd-shift-enter`, `ctrl-w o`, service `z`,
-the pane menu) hides the sidebar and side panel to give the review the whole window; zoom again brings them back.
+**Zoom and zen:** **zoom** (`cmd-shift-enter`, `ctrl-w o`, service `z`, the pane header or menu) works the same on
+every pane, a review tab included: the pane fills the whole window (other panes in its tab, the sidebar and the side
+panel hide); zoom again brings everything back. A zoomed pane's header shows **⤢ Zoomed · N hidden** (click it to
+unzoom) and its tab shows **⤢**.
 **Zen** (`cmd-shift-z`, service `Z`, vim `zz`) opens the review in the zen window, on the file you were on; Esc or
 Exit leaves zen, and the review tab moves to the file you ended on.
 

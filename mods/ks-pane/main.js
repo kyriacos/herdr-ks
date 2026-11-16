@@ -150,7 +150,10 @@ export default class Pane extends View {
     const name = given || fallback;
     const id = paneId(p);
     const pic = icon(p.program, 14, t.dim);
-    const st = p.status, zoomed = p.zoomed || Boolean(shared("ks-zen.zoom")); // ks-zen: a lone pane zooms over the window
+    // ks-zen: a pane zoomed in its tab (Herdr), or a lone pane zoomed over the window (sidebar and panel hidden).
+    const wz = shared("ks-zen.zoom"), winZoom = Boolean(wz && (!wz.tab || wz.tab === p.tab));
+    const st = p.status, zoomed = p.zoomed || winZoom;
+    const hiddenPanes = p.zoomed ? panes().filter((x) => x.tab === p.tab).length - 1 : 0;
     const pane = p.pane;
     const lost = p.terminal ? sessions.resumable(p.terminal, !p.program?.agent) : null;
     return h_flex()
@@ -198,6 +201,13 @@ export default class Pane extends View {
         .on_click((e, cx) => { if (e.click_count === 2) { cx.stop_propagation(); this.copyId(cx, id); } })
         .child(this.copied ? "copied" : id.shown))
       .child(div().flex_1().truncate().text_color(t.dim).child(folder(p.cwd, home())))
+      // ks: zoomed, say so and what it hides; a click zooms back out.
+      .when(zoomed, (el) => el.child(h_flex().id(`ph-zoomed-${pane}`).flex_none().h(18).px(6).gap(4).items_center().rounded(5)
+        .bg(t.accent + "26").border_1().border_color(t.accent + "66").text_size(10.5).font_semibold().text_color(t.accent).cursor_pointer()
+        .hover((s) => s.bg(t.accent + "40"))
+        .tooltip(`Zoomed: ${[p.zoomed && hiddenPanes > 0 ? `${hiddenPanes} other pane${hiddenPanes === 1 ? "" : "s"}` : null, winZoom ? "the sidebar and side panel" : null].filter(Boolean).join(" and ")} hidden. Click to unzoom.`)
+        .on_click((_e, cx) => { cx.stop_propagation(); run(`ks-zen.zoom:${pane}`); })
+        .child("⤢ Zoomed").when(p.zoomed && hiddenPanes > 0, (e) => e.child(div().child(`· ${hiddenPanes} hidden`)))))
       // ks: Claude ran here before this terminal was lost (a reboot): resume that session (lib/sessions.js).
       .when(Boolean(lost), (el) => el.child(this.resumePill(t, p, lost)))
       .when(st === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))

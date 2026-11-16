@@ -56,21 +56,27 @@ const shownIn = (st) => st?.content
   ? { ...st.content, props: { ...(shared(`${st.content.mod}.zen`)?.props ?? st.content.props), zen: true } }
   : st?.terminal;
 
-// Zoom (pane.zoom from the key modes, the pane menu, cmd-shift-enter): a pane in a split fills its tab, as Herdr
-// does. A pane alone in its tab (a review tab, a lone terminal) has nothing to zoom over, so it fills the window
-// instead: the sidebar and the side panel hide, and the next zoom shows what it hid. Shared "ks-zen.zoom" =
-// { hid: [layout ids] } while that's on.
+// Zoom (pane.zoom from the key modes, the pane menu, cmd-shift-enter): the pane fills the whole window, always the
+// same way. In a split Herdr zooms it over its tab, and either way the sidebar and the side panel hide. Zooming again
+// undoes all of it. Shared "ks-zen.zoom" = { hid: [layout ids], tab, pane, herdr: whether Herdr's zoom is part of it }
+// while it's on.
 const ZOOM = "ks-zen.zoom";
 function zoom(pane) {
   const ps = panes(), id = pane || focused()?.pane, p = ps.find((x) => x.pane === id) ?? ps.find((x) => x.focused);
   const z = shared(ZOOM);
-  if (z?.hid?.length) { for (const n of z.hid) run("layout.show", { id: n }); setShared(ZOOM, null); return; }
+  if (z || p?.zoomed) {
+    for (const n of z?.hid ?? []) run("layout.show", { id: n });
+    const zoomedPane = ps.find((x) => x.zoomed && (!z?.tab || x.tab === z.tab)) ?? (p?.zoomed ? p : null);
+    if (zoomedPane) run("pane.zoom", { pane: zoomedPane.pane });
+    setShared(ZOOM, null);
+    return;
+  }
   if (!p) return;
-  if (p.zoomed || ps.filter((x) => x.tab === p.tab).length > 1) { run("pane.zoom", { pane: p.pane }); return; }
+  const split = ps.filter((x) => x.tab === p.tab).length > 1;
+  if (split) run("pane.zoom", { pane: p.pane });
   const root = layout(), hid = ["sidebar", "panel"].filter((n) => { const node = find(root, n); return node && !node.hidden; });
-  if (!hid.length) return;
   for (const n of hid) run("layout.hide", { id: n });
-  setShared(ZOOM, { hid });
+  setShared(ZOOM, { hid, tab: p.tab, pane: p.pane, herdr: split });
 }
 
 // The zen window's openOverlay spec: a title bar, the terminal, a bottom edge with grips. `rect` in window points;
