@@ -3,7 +3,7 @@
 //
 // A check is "fail" only when it really failed. Cancelled, skipped and neutral checks (a run superseded by a newer
 // push, a job that didn't apply) don't count either way; one waiting for approval (ACTION_REQUIRED) counts as
-// running. So a PR shows running (orange) while anything is still going, unless something has already failed.
+// running. So a PR shows running (yellow) while anything is still going, unless something has already failed.
 
 const FAILED = new Set(["FAILURE", "TIMED_OUT", "ERROR", "STARTUP_FAILURE"]);
 const WAITING = new Set(["PENDING", "EXPECTED", "ACTION_REQUIRED", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", ""]);
@@ -27,12 +27,12 @@ export function summarize(checks) {
   return { ci, counts };
 }
 
-// Orange for "running": themes have no orange of their own (and a red/yellow mix comes out pink in some), so a fixed
-// one, darker on a light background so it reads on both.
-export function orange(t) {
+// Yellow for "running": a fixed one (themes have no yellow meant for text, and some themes' yellow is orange),
+// a dark gold on light backgrounds so it stays readable, a bright one on dark.
+export function runningColor(t) {
   const bg = hex(t.background);
   const light = bg ? (0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2]) / 255 > 0.55 : false;
-  return light ? "#c2620c" : "#f0913a";
+  return light ? "#a88700" : "#e3c341";
 }
 function hex(c) {
   const m = /^#?([0-9a-f]{6})/i.exec(String(c ?? ""));

@@ -143,7 +143,7 @@ Needs the GitHub CLI (`gh`) logged in.
 Ones needing you come first. Click the header to fold it, × to hide, `cmd-shift-m` to show or hide. Toasts when
 CI turns red or green, a review lands, or a PR is merged or closed.
 
-- **CI colours:** orange while checks are still running (and "waiting on CI" instead of GitHub's "unstable"), red
+- **CI colours:** yellow while checks are still running (and "waiting on CI" instead of GitHub's "unstable"), red
   only when a check actually failed. Cancelled and skipped checks (a run superseded by a newer push) don't count.
 - **Updates:** every minute, every 20 s while a PR's CI is running, 30 s after a failed look, and straight away
   after the Mac wakes. A look that hangs gives up after 20 s. When the list is older than a minute and a half, the

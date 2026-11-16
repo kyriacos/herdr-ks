@@ -7,7 +7,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, Scrollbar } from "gpui-base";
 import { props, exec, hc, theme, run, notify, agents, spaces, panes, shared, settings, appHome, openOverlay, closeOverlay, nextCommand } from "herdr";
-import { checkKind, orange } from "./lib/ci.js";
+import { checkKind, runningColor } from "./lib/ci.js";
 import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { candidates, git } from "./lib/branch.js";
 import * as cache from "./lib/cache.js";
@@ -239,8 +239,8 @@ export default class PrCard extends View {
     const asked = (pr.reviewRequests ?? []).map((r) => r.login || r.name || r.slug).filter(Boolean);
     const decision = { APPROVED: ["approved", t.ansi2], CHANGES_REQUESTED: ["changes requested", t.ansi1], REVIEW_REQUIRED: ["review required", t.muted] }[pr.reviewDecision];
     const running = checks.some((c) => c.kind === "running") && !checks.some((c) => c.kind === "fail");
-    const merge = { CLEAN: ["ready to merge", t.ansi2], BLOCKED: ["blocked", t.muted], BEHIND: ["behind base", orange(t)], DIRTY: ["conflicts", t.ansi1],
-      UNSTABLE: running ? ["waiting on CI", orange(t)] : ["unstable", t.ansi1], DRAFT: ["draft", t.dim] }[pr.mergeStateStatus];
+    const merge = { CLEAN: ["ready to merge", t.ansi2], BLOCKED: ["blocked", t.muted], BEHIND: ["behind base", runningColor(t)], DIRTY: ["conflicts", t.ansi1],
+      UNSTABLE: running ? ["waiting on CI", runningColor(t)] : ["unstable", t.ansi1], DRAFT: ["draft", t.dim] }[pr.mergeStateStatus];
     // Who works on this PR (an agent in one of its worktrees) and everyone else, kept apart so it's clear.
     const onPr = (this.places ?? []).flatMap((w) => w.agents.map((a) => ({ address: a.address, title: `${a.space_name} / ${a.title}`, where: w.root.split("/").pop() })));
     const here = new Set(onPr.map((a) => a.address));
@@ -278,7 +278,7 @@ export default class PrCard extends View {
       .child(section(`Checks · ${checks.length}`))
       .when(!checks.length, (e) => e.child(div().text_size(11.5).text_color(t.dim).child("No checks")))
       .children(checks.map((c) => h_flex().flex_none().gap(6).items_center().text_size(11.5)
-        .child(div().w(14).flex_none().text_color({ fail: t.ansi1, running: orange(t), pass: t.ansi2, skip: t.dim }[c.kind]).child({ fail: "✕", running: "◌", pass: "✓", skip: "–" }[c.kind]))
+        .child(div().w(14).flex_none().text_color({ fail: t.ansi1, running: runningColor(t), pass: t.ansi2, skip: t.dim }[c.kind]).child({ fail: "✕", running: "◌", pass: "✓", skip: "–" }[c.kind]))
         .child(div().flex_1().min_w(0).truncate().text_color(c.kind === "skip" ? t.dim : t.foreground).child(c.name))))
       .child(section("Reviews"))
       .when(!reviews.length && !asked.length, (e) => e.child(div().text_size(11.5).text_color(t.dim).child("No reviews yet")))

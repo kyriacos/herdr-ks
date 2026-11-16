@@ -8,7 +8,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
 import { exec, theme, run, notify, openOverlay } from "herdr";
 import * as cache from "./lib/cache.js";
-import { summarize, orange } from "./lib/ci.js";
+import { summarize, runningColor } from "./lib/ci.js";
 import { fetchPr, prKey } from "./lib/github.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
@@ -158,10 +158,10 @@ export default class MyPrs extends View {
 
   row(pr, t) {
     const s = pr.s, repo = pr.repository.nameWithOwner.split("/").pop();
-    const ci = { pass: [`✓ CI`, t.ansi2], fail: [`✕ CI ${s.counts.fail}`, t.ansi1], running: [`◌ CI ${s.counts.running}`, orange(t)], none: ["no CI", t.dim] }[s.ci];
+    const ci = { pass: [`✓ CI`, t.ansi2], fail: [`✕ CI ${s.counts.fail}`, t.ansi1], running: [`◌ CI ${s.counts.running}`, runningColor(t)], none: ["no CI", t.dim] }[s.ci];
     const review = { approved: ["✓ approved", t.ansi2], changes: ["✕ changes", t.ansi1], waiting: ["review", t.muted], none: ["no review", t.dim] }[s.review];
-    const merge = { ready: ["ready", t.ansi2], blocked: ["blocked", t.muted], approval: ["needs approval", t.muted], behind: ["behind", orange(t)], conflicts: ["conflicts", t.ansi1], unstable: ["unstable", t.ansi1], waitci: ["waiting on CI", orange(t)], draft: ["draft", t.dim], checking: ["…", t.dim] }[s.merge];
-    const mark = s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? orange(t) : s.urgent === 2 ? t.ansi2 : t.dim;
+    const merge = { ready: ["ready", t.ansi2], blocked: ["blocked", t.muted], approval: ["needs approval", t.muted], behind: ["behind", runningColor(t)], conflicts: ["conflicts", t.ansi1], unstable: ["unstable", t.ansi1], waitci: ["waiting on CI", runningColor(t)], draft: ["draft", t.dim], checking: ["…", t.dim] }[s.merge];
+    const mark = s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? runningColor(t) : s.urgent === 2 ? t.ansi2 : t.dim;
     return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 4).mx(6).mb(4).px(8).py(4).gap(3).rounded(7).cursor_pointer()
       .when(focusedNow(this, "ks-myprs") && this.prs[this.cursor] === pr, (e) => e.bg(t.selected ?? t.hover))
       .border_l_2().border_color(mark).hover((st) => st.bg(t.hover)).on_click(() => this.openCard(pr))
@@ -200,7 +200,7 @@ export default class MyPrs extends View {
         .child(div().flex_none().text_size(12).text_color(t.muted).child("My PRs"))
         .child(div().flex_none().text_size(11).text_color(t.dim).child(this.loaded ? `${prs.length}` : this.loading ? "…" : ""))
         .when(fail > 0, (e) => e.child(div().flex_none().px(5).rounded(6).bg(t.ansi1).text_size(10).text_color(t.background).child(`${fail} need you`)))
-        .when(running > 0, (e) => e.child(div().flex_none().px(5).rounded(6).border_1().border_color(orange(t)).text_size(10).text_color(orange(t)).child(`${running} running`)))
+        .when(running > 0, (e) => e.child(div().flex_none().px(5).rounded(6).border_1().border_color(runningColor(t)).text_size(10).text_color(runningColor(t)).child(`${running} running`)))
         .child(div().flex_1())
         // How old the list is, once that's more than a minute and a half (a look failing, or the Mac asleep).
         .when(!this.loading && this.doneAt > 0 && Boolean(ago(Date.now() - this.doneAt)), (e) => e.child(div().flex_none().text_size(10.5).text_color(this.error ? t.ansi1 : t.dim).child(ago(Date.now() - this.doneAt))))
