@@ -38,7 +38,7 @@ two repos (a backend and a frontend) at once, with you reviewing their work and 
 | Right | The side panel: Files, Changes or PRs, remembered per space |
 | Bottom | Status bar |
 
-The interface font is JetBrains Mono, the same as the diffs.
+The interface font is whatever you pick in Herdr's Settings (the layout sets none); JetBrains Mono matches the diffs.
 
 ## Spaces, worktrees and new worktrees
 

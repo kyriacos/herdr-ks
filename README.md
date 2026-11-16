@@ -139,7 +139,7 @@ that one is pinned or follows an agent. When the session has several worktrees (
 shows), a **worktree bar** under the header has a chip for each (repo, folder, branch): click one to browse
 it, **Auto** to follow the Changes panel / the focused terminal again. Remembered per space. Right-click a file for **Review & comment**.
 
-**Font.** The interface uses JetBrains Mono, the same monospace as the diffs (`ui_font` on the layout).
+**Font.** The layout sets no fonts, so Herdr's Settings choose both the terminal and the interface font (JetBrains Mono matches the diffs).
 
 **Speed: stale while revalidate.** GitHub answers (`gh`) are cached in `~/.config/herdr-app/data/ks-cache/`
 (small JSON files shared by every mod and window). My PRs, the PRs panel and the PR window show the last
@@ -229,7 +229,7 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | Shared code: highlighter, diff model and wrapping, comment store, branch/commit/worktree git, GitHub (`gh`) and a file cache; copied into `lib/` of the mods using it by `install.sh` | `shared/` |
 | Changes panel: Uncommitted / Branch / Commits, tree / flat, Wrap / Expand / Review / Open file above the diff | `mods/ks-changes/main.js` |
 | Files panel: "Review & comment" menu entry; follows the Changes panel's pinned or agent checkout | `mods/ks-files/input.js`, `main.js`, `location.js` |
-| Interface font JetBrains Mono | `layouts/ks.json` (`ui_font`) |
+| Fonts | Herdr's Settings (`settings.json`); the layout sets none |
 | PRs panel: open PRs of the session's worktrees, review each against its base | `mods/ks-prs/` (new), layout `prs` block, `mods/ks-tabs/main.js` |
 | Send dialog: choose, edit, delete, add a note, pick the agent, preview, then send | `mods/ks-send/` (new) |
 | My PRs in the sidebar: your open PRs with CI, review and merge state, foldable, hideable | `mods/ks-myprs/` (new), layout `my-prs` block |
