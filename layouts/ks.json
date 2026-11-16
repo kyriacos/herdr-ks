@@ -186,6 +186,13 @@
                       "content": {
                         "mod": "ks-prs"
                       }
+                    },
+                    {
+                      "id": "notes",
+                      "type": "block",
+                      "content": {
+                        "mod": "ks-notes"
+                      }
                     }
                   ]
                 }

@@ -140,7 +140,7 @@ export default class Tabs extends View {
       const first = this.space === undefined;
       this.space = space.id; this.pending = null;
       if (!(first && !(space.id in this.panels))) {
-        const stored = this.panels[space.id] ?? null, want = enabled.includes(stored) ? stored : null;
+        const stored = this.panels[space.id] ?? null, want = [...enabled, "prs", "notes"].includes(stored) ? stored : null;
         if (want !== now) {
           this.pending = { want, until: Date.now() + 1000 };
           if (want) { run("layout.select", { stack: "panel-body", child: want }); run("layout.show", { id: "panel" }); }
@@ -234,6 +234,8 @@ export default class Tabs extends View {
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
       // ks: open pull requests for the session's worktrees (ks-prs).
       .child(panelButton("prs", "PRs", "mods/ks-changes/changes.svg"))
+      // ks: a scratchpad per space that outlives the space (ks-notes).
+      .child(panelButton("notes", "Notes", "mods/ks-notes/note.svg"))
       // ks: every ks setting in one panel (ks-settings).
       .child(button("ks-settings", "⚙", () => openOverlay({ mod: "ks-settings", kind: "dialog", width: 860, height: 620 })))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/ks-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))

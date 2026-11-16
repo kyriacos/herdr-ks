@@ -13,6 +13,7 @@ two repos (a backend and a frontend) at once, with you reviewing their work and 
 - [Reviewing: files, branches, several worktrees](#reviewing)
 - [Comments and sending them to an agent](#comments-and-sending-them-to-an-agent)
 - [Floating review windows](#floating-review-windows)
+- [Notes](#notes)
 - [Pull requests: My PRs, the PR window, the PRs panel](#pull-requests)
 - [Resuming Claude sessions after a reboot](#resuming-claude-sessions-after-a-reboot)
 - [Closing with undo](#closing-with-undo)
@@ -140,6 +141,18 @@ Exit leaves zen, and the review tab moves to the file you ended on.
 - ⛶ fills the app window, Restore goes back; ✕ or Esc closes.
 
 Switching layouts closes floating windows (a Herdr rule).
+
+## Notes
+
+A scratchpad in the side panel: **Notes** in the tab bar, or `cmd-shift-j`.
+
+- **This space** shows the notes written in the space you're in; **All** shows every note, grouped by space, with
+  closed spaces marked. Closing a space keeps its notes; a new space in the same folder picks them up again.
+- **+ New** (or `n`) starts a note in this space. It's saved as you type; the first line is its title. **Done** or
+  Esc stops editing; a note left empty goes away.
+- **Delete** (or `x`) removes one, with **Undo** (or `u`) for a few seconds.
+- Keys in the panel: `j`/`k`, `gg`/`G`, Enter or `o` to edit, `a` This space / All, `h`/`l`/Esc to leave.
+- Stored in `~/.config/herdr-app/data/ks-notes.json` (plain JSON, one entry per note with its space's name and folder).
 
 ## Pull requests
 
@@ -342,6 +355,7 @@ Only while the `ks` layout shows.
 | `cmd-shift-n` | New space + worktree |
 | `cmd-shift-e` / `cmd-shift-g` / `cmd-shift-u` | Files / Changes / PRs panel |
 | `cmd-shift-m` | Show or hide My PRs |
+| `cmd-shift-j` | Notes panel |
 | `cmd-w` / `cmd-shift-w` | Close tab (asks, 30 s undo) / close pane |
 | `cmd-shift-t` | Undo the last close |
 | `ctrl-;` | Service mode (configurable) |
