@@ -149,6 +149,15 @@ Exit leaves zen, and the review tab moves to the file you ended on.
 
 Switching layouts closes floating windows (a Herdr rule).
 
+## Processes under an agent
+
+An agent's row in **Agents** shows **N procs** when something runs under it (accent when one serves a port). Click
+it to expand: each process with its command (launcher prefixes like `uv run` dropped), the folder it runs in, its
+ports (click one to open `http://localhost:<port>`), how long it has run, CPU when busy, and **■** to stop it (click
+twice; it stops everything under that command). MCP servers fold into one line (hover for the list). Looked at every
+5 s while expanded, every 15 s otherwise. `ks-agents.procs` toggles the focused agent's list (bind it in the key
+modes editor).
+
 ## Notes
 
 A scratchpad in the side panel: **Notes** in the tab bar, or `cmd-shift-j`.

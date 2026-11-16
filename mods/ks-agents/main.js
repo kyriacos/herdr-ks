@@ -1,9 +1,11 @@
-// Cloned from Herdr's `agents` mod for ks: unchanged except that focus mode dims it (lib/focus.js).
+// Cloned from Herdr's `agents` mod for ks: focus mode dims it (lib/focus.js), and each agent can expand to the processes
+// running under it (procs.js): the "N procs" chip on its row, with each one's command, folder, ports, run time and Stop.
 // Agents in grouped or priority views; parents take their most urgent sub-agent's place.
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
+import { agents, terminals, panes, focused, spaces, run, exec, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, settings, nextCommand } from "herdr";
+import { readProcs, stop as stopProc } from "./procs.js";
 import { dimmed } from "./lib/focus.js";
 
 function find(node, id) {
@@ -87,6 +89,62 @@ export default class Agents extends View {
     if (!this.pendingPins.length) localStorage.removeItem("pins");
     this.migratingPins = new Set();
     cx.timer.every(30000, (cx) => cx.notify());
+    // ks: processes under each agent. Looked at every 5 s while one is expanded, else every 15 s for the chips.
+    // `ks-agents.procs` toggles the focused agent's, `ks-agents.procs:<address>` that one's.
+    this.procs = {}; this.procPids = {}; this.stopping = null;
+    this.procsOpen = new Set(JSON.parse(localStorage.getItem("procsOpen") ?? "[]"));
+    this.procTick = 0;
+    this.lookProcs(cx);
+    cx.timer.every(5000, (cx) => { if (this.procsOpen.size || ++this.procTick % 3 === 0) this.lookProcs(cx); });
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = await nextCommand();
+        if (c === "procs" || c.startsWith("procs:")) { const a = c.slice(6) || focused()?.agent || focused()?.terminal; if (a) this.toggleProcs(a, cx); }
+      }
+    });
+  }
+
+  lookProcs(cx) {
+    if (this.lookingProcs) return;
+    this.lookingProcs = true;
+    cx.spawn(async (cx) => {
+      try {
+        const got = await readProcs(agents().map((a) => a.address), this.procPids, true);
+        if (got && JSON.stringify(got) !== JSON.stringify(this.procs)) { this.procs = got; cx.notify(); }
+      } finally { this.lookingProcs = false; }
+    });
+  }
+  toggleProcs(address, cx) {
+    this.procsOpen.has(address) ? this.procsOpen.delete(address) : this.procsOpen.add(address);
+    localStorage.setItem("procsOpen", JSON.stringify([...this.procsOpen]));
+    this.lookProcs(cx); cx.notify();
+  }
+  // One process under an agent: command, folder, ports (click: open in the browser), how long, CPU when busy, Stop
+  // (asks once: a second click within 4 s stops it).
+  procRow(t, a, p) {
+    const key = `${a.address}:${p.pid ?? "mcp"}`, asking = this.stopping?.key === key && Date.now() < this.stopping.until;
+    const mono = settings().font_family ?? "JetBrains Mono";
+    return h_flex().id(`proc-${key}`).pl(39).pr(8).h(24).flex_none().gap(6).items_center().rounded(6).text_size(11.5)
+      .hover((s) => s.bg(t.hover))
+      .when(Boolean(p.mcp), (el) => el.tooltip(p.mcp.join("\n")))
+      .child(div().w(6).h(6).flex_none().rounded(3).bg(p.mcp ? t.dim : p.cpu > 5 ? t.working : t.done))
+      .child(div().flex_1().min_w(0).truncate().font_family(mono).text_size(11).text_color(p.mcp ? t.dim : t.foreground)
+        .child(p.mcp ? `MCP servers · ${p.count}` : p.label))
+      .when(Boolean(p.where), (el) => el.child(div().flex_none().max_w(90).truncate().px(4).rounded(4).border_1().border_color(t.border).text_size(10).text_color(t.muted).child(p.where)))
+      .children(p.ports.slice(0, 3).map((port) => div().id(`port-${key}-${port}`).flex_none().px(4).rounded(4).bg(t.accent + "1f").text_size(10).text_color(t.accent)
+        .cursor_pointer().hover((s) => s.bg(t.accent + "3a")).tooltip(`Open http://localhost:${port}`)
+        .on_click((_e, cx) => { cx.stop_propagation(); exec("open", [`http://localhost:${port}`]).catch(() => null); }).child(`:${port}`)))
+      .when(p.cpu > 5, (el) => el.child(div().flex_none().text_size(10).text_color(t.working).child(`${p.cpu}%`)))
+      .child(div().flex_none().text_size(10.5).text_color(t.dim).child(duration(p.secs * 1000)))
+      .when(!p.mcp, (el) => el.child(div().id(`stop-${key}`).flex_none().px(4).rounded(4).text_size(10.5).cursor_pointer()
+        .text_color(asking ? t.ansi1 : t.dim).when(asking, (e) => e.bg(t.ansi1 + "1f")).hover((s) => s.bg(t.hover).text_color(t.ansi1))
+        .tooltip(asking ? "Click again to stop it" : `Stop (${p.count} process${p.count === 1 ? "" : "es"})`)
+        .on_click((_e, cx) => {
+          cx.stop_propagation();
+          if (!asking) { this.stopping = { key, until: Date.now() + 4000 }; cx.timer.after(4100, (cx) => cx.notify()); cx.notify(); return; }
+          this.stopping = null;
+          cx.spawn(async (cx) => { await stopProc(p); cx.timer.after(600, (cx) => this.lookProcs(cx)); });
+        }).child(asking ? "Stop?" : "■")));
   }
 
   // Stamps agents whose state changed. Done and idle count as one: looking at a
@@ -246,8 +304,25 @@ export default class Agents extends View {
     const withKids = (a, i) => {
       const subs = collapsed ? [] : this.tree(all, a.address);
       const r = row(a, i, subs);
-      if (this.folded.has(a.address)) return [r];
-      return [r, ...subs.map((s) => this.subRow(t, s, shown, byPriority))];
+      // ks: its processes, when expanded (the chip on the row).
+      const procs = !collapsed && this.procsOpen.has(a.address) ? (this.procs[a.address] ?? []).map((p) => this.procRow(t, a, p)) : [];
+      if (this.procsOpen.has(a.address) && !collapsed && !(this.procs[a.address] ?? []).length)
+        procs.push(div().pl(39).h(22).flex_none().flex().items_center().text_size(11).text_color(t.dim).child("Nothing running under it"));
+      if (this.folded.has(a.address)) return [r, ...procs];
+      return [r, ...procs, ...subs.map((s) => this.subRow(t, s, shown, byPriority))];
+    };
+    // ks: the chip that expands an agent's processes: how many (MCP servers aside).
+    const procChip = (a) => {
+      const list = this.procs[a.address] ?? [], n = list.filter((p) => !p.mcp).length, open = this.procsOpen.has(a.address);
+      if (!n && !open) return null;
+      const busy = list.some((p) => !p.mcp && p.ports.length);
+      return h_flex().id(`procs-${a.address}`).h(18).px(4).gap(3).flex_none().items_center().rounded(4).text_size(10.5).cursor_pointer()
+        .border_1().border_color(open ? t.accent : t.border).text_color(open ? t.foreground : busy ? t.accent : t.dim)
+        .hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .tooltip(`${n} process${n === 1 ? "" : "es"} running under it${busy ? " (some serving a port)" : ""}`)
+        .on_click((_e, cx) => { cx.stop_propagation(); this.toggleProcs(a.address, cx); })
+        .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(10).flex_none())
+        .child(`${n} proc${n === 1 ? "" : "s"}`);
     };
 
     // The fold chevron; folded, the count too, colored by the most urgent one.
@@ -364,6 +439,7 @@ export default class Agents extends View {
           .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
           .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
+        .when(Boolean(procChip(a)), el => el.child(procChip(a)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
         .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
