@@ -43,6 +43,13 @@ The interface font is whatever you pick in Herdr's Settings (the layout sets non
 
 ## Spaces, worktrees and new worktrees
 
+- **Space names** come from the worktree its agent works in: `search-filters · backend + web` (the branch first,
+  then the repos on it; `+2` for other worktrees), or `herdr-ks · main` on main. Under the name: what the agent is
+  working on (its tab's name, else its title) and git's ↑ ↓ ±. A name you give a space (right-click → Rename) is
+  kept, unless it only repeats the repo or folder (`backend`, `web`, `~`). The worktrees are the ones the Changes
+  panel has seen the agent use, plus the folders the agents run in; a space nobody has looked at yet keeps
+  Herdr's name until then.
+
 - Spaces of the same repo sit together on one card in the sidebar: main checkout first, then each worktree
   with its branch.
 - **New space + worktree** (`cmd-shift-n`, or right-click a space → New worktree): pick a repo (any folder),

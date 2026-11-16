@@ -13,6 +13,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { exec, appHome, spaces, theme, settings } from "herdr";
 import { dimmed } from "./lib/focus.js";
+import { spaceName } from "./lib/spacenames.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 
 const FILE = () => `${appHome()}/data/ks-notes.json`;
@@ -117,7 +118,7 @@ export default class Notes extends View {
 
   create(cx) {
     const sp = this.space(), now = Date.now();
-    const n = { id: `n${now.toString(36)}${Math.round(Math.random() * 1e4)}`, text: "", space: sp?.id ?? null, spaceName: sp?.name ?? "No space", folder: sp?.folder ?? null, created: now, updated: now };
+    const n = { id: `n${now.toString(36)}${Math.round(Math.random() * 1e4)}`, text: "", space: sp?.id ?? null, spaceName: sp ? spaceName(sp) : "No space", folder: sp?.folder ?? null, created: now, updated: now };
     this.notes.unshift(n); this.persist(cx);
     this.edit(n, cx);
   }
@@ -149,7 +150,7 @@ export default class Notes extends View {
   // Live names: a note's space name follows a rename while the space is open.
   spaceLabel(n) {
     const live = spaces().find((s) => s.id === n.space);
-    return live ? live.name : n.spaceName || "No space";
+    return live ? spaceName(live) : n.spaceName || "No space";
   }
 
   card(n, t, at) {
@@ -241,7 +242,7 @@ export default class Notes extends View {
             .border_1().border_color(this.grouped ? t.accent : t.border).text_color(this.grouped ? t.foreground : t.muted).hover((s) => s.bg(t.hover))
             .on_click((_e, cx) => this.setGrouped(!this.grouped, cx)).child(this.grouped ? "Grouped ✓" : "Grouped"))))
         .when(!this.all, (e) => e.child(div().text_size(10.5).text_color(t.dim).truncate()
-          .child(sp ? `${sp.name}${sp.folder ? ` · ${tilde(sp.folder)}` : ""}` : "No space open")))
+          .child(sp ? `${spaceName(sp)}${sp.folder ? ` · ${tilde(sp.folder)}` : ""}` : "No space open")))
         .when(this.all && this.noteSpaces().length > 1, (e) => e.child(h_flex().id("notes-spaces").gap(5).items_center().overflow_x_scroll()
           .child(chip("ns-all", "All spaces", !this.only, (cx) => { this.only = null; this.cursor = 0; cx.notify(); }))
           .children(this.noteSpaces().map((x) => chip(`ns-${x.key}`, `${x.label}${x.open ? "" : " · closed"} · ${x.count}`, this.only === x.key,

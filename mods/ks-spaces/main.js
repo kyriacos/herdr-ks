@@ -14,6 +14,7 @@ import * as closing from "./lib/closing.js";
 import { parseStatus, parseRevParse } from "./git-parse.js";
 import { docValue, quicklook, fingerprint } from "./pane-map.js";
 import { dimmed } from "./lib/focus.js";
+import { NAMES, spaceName, spaceTask, labelFor, generic } from "./lib/spacenames.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -79,6 +80,10 @@ export function tone(t, status) {
 
 export default class Spaces extends View {
   init(_props, cx) {
+    // ks: space names from their worktrees (lib/spacenames.js), looked up now and every 15 s.
+    this.trees = {}; // worktree root -> { repo, branch, at }
+    this.nameSpaces(cx);
+    cx.timer.every(15000, (cx) => this.nameSpaces(cx));
     this.git = {}; // where() -> { name, branch, ahead, behind, dirty, repo, linked }, null: not a repo
     this.checked = {}; // where() -> when it was last looked at
     this.unsure = new Set(); // where()s git couldn't answer for (a machine away)
@@ -645,6 +650,16 @@ export default class Spaces extends View {
     });
   }
 
+  // ks: under the name, what the agent works on, then ↑ ↓ ± (the name already says repo · branch).
+  taskLine(task, g, t, id) {
+    return h_flex().min_w(0).gap(5).items_center().text_size(11.5).text_color(t.dim)
+      .when(Boolean(task), (el) => el.child(div().flex_1().min_w(0).truncate().child(task)))
+      .when(!task, (el) => el.child(div().flex_1()))
+      .when(g?.ahead > 0, (el) => el.child(div().flex_none().text_color(t.muted).child(`\u2191${g.ahead}`)))
+      .when(g?.behind > 0, (el) => el.child(div().flex_none().text_color(t.muted).child(`\u2193${g.behind}`)))
+      .when(g?.dirty > 0, (el) => el.child(div().id(`dirty-${id}`).flex_none().tooltip(changesTip(g.dirty)).child(`\u00b1${g.dirty}`)));
+  }
+
   // Under the name: "repo · branch ↑2 ↓1 ±3" (space-text.js's gitWhere says what goes).
   // A worktree row has the branch icon on its left already. Null: nothing to show.
   gitLine(g, tree, name, t, id) {
@@ -794,13 +809,51 @@ export default class Spaces extends View {
       .child(v_flex().id(`quick-list-${w.id}`).max_h(QUICK_HIGH).overflow_y_scrollbar().children(groups.map(section)));
   }
 
+  // ks: "repo · branch" for every space nobody named: the worktrees the Changes panel saw its agent use (shared
+  // "ks.session"), and the folders its agents run in. Into shared "ks.spaceNames" when that changed.
+  nameSpaces(cx) {
+    if (this.naming) return;
+    this.naming = true;
+    cx.spawn(async (cx) => {
+      try {
+        const session = shared("ks.session") ?? {}, ps = panes(), out = {};
+        const tree = async (root, on) => {
+          const k = `${on ?? ""}\n${root}`, hit = this.trees[k];
+          if (hit && Date.now() - hit.at < 30000) return hit.info;
+          const r = await exec("git", ["-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir", "--abbrev-ref", "HEAD"], { on, timeout: 5000 }).catch(() => null);
+          const [common, branch] = r?.code === 0 ? r.stdout.trim().split("\n") : [];
+          const info = common ? { root, repo: common.replace(/\/\.git\/?$/, "").split("/").pop(), branch: branch === "HEAD" ? "detached" : branch } : null;
+          this.trees[k] = { info, at: Date.now() };
+          return info;
+        };
+        for (const sp of spaces()) {
+          const tabs = new Set(sp.tabs.map((x) => x.id));
+          const roots = [...(session[sp.id] ?? []).map((r) => ({ root: r.root, on: r.on ?? null })),
+            ...agents().filter((a) => a.space === sp.id).map((a) => ps.find((p) => p.pane === a.pane)).filter((p) => p?.cwd && p.branch && tabs.has(p.tab)).map((p) => ({ root: p.cwd, on: sp.machine ?? null }))];
+          const trees = [], seen = new Set();
+          for (const r of roots) {
+            const info = await tree(r.root, r.on);
+            if (info && !seen.has(`${info.repo}\n${info.branch}`)) { seen.add(`${info.repo}\n${info.branch}`); trees.push(info); }
+          }
+          // A name you gave it stays, unless it only repeats the repo or folder (lib/spacenames.js).
+          if (sp.named && !generic(sp, trees)) continue;
+          const label = labelFor(trees);
+          if (label && label !== sp.name) out[sp.id] = label;
+        }
+        if (JSON.stringify(out) !== JSON.stringify(shared(NAMES) ?? {})) setShared(NAMES, out);
+      } finally { this.naming = false; }
+    });
+  }
+
   row({ w, i, g, tree }, t, crew, tint) {
     const on = w.active;
     const fromIndex = this.pressed === null ? -1 : spaces().findIndex(s => s.id === this.pressed);
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (t[color] ?? t.accent);
-    const line = g ? this.gitLine(g, tree, w.name, t, w.id) : null;
+    // ks: the name says repo · branch (lib/spacenames.js); under it, what its agent works on and git's ↑ ↓ ±.
+    const label = spaceName(w), task = spaceTask(w);
+    const line = (g && (g.ahead || g.behind || g.dirty)) || task ? this.taskLine(task, g, t, w.id) : null;
     return this.draggable(v_flex()
       .relative()
       .id(`space-${w.id}`)
@@ -826,9 +879,9 @@ export default class Spaces extends View {
           .when(Boolean(tree), el => el.child(h_flex().size(22).flex_none().items_center().justify_center().text_color(t.dim)
             .child(svg("mods/workspace-chrome/branch.svg").size(13))))
           .when(!tree, el => el.child(h_flex().size(22).flex_none().rounded(6).bg(alpha(fill, tint) ?? t.selected)
-            .items_center().justify_center().text_size(11.5).font_bold().text_color(fill).child([...w.name][0]?.toUpperCase() ?? "?")))
+            .items_center().justify_center().text_size(11.5).font_bold().text_color(fill).child([...label][0]?.toUpperCase() ?? "?")))
           .child(v_flex().flex_1().min_w(0).gap(2)
-            .child(div().min_w(0).truncate().font_medium().text_color(t.foreground).child(w.name))
+            .child(div().min_w(0).truncate().font_medium().text_color(t.foreground).child(label))
             .when(Boolean(line), el => el.child(line)))
           .when(crew.length > 0, el => el.child(this.crewBadge(w, crew, t))),
       ), w.id, w.machine ?? null, () => run("space.select", { id: w.id }));
