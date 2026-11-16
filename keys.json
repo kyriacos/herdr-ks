@@ -15,6 +15,7 @@
     "cmd-shift-t": "ks-tabs.undo",
     "cmd-shift-z": "ks-zen.toggle",
     "cmd-shift-f": "ks-zen.focus",
-    "cmd-shift-,": "mod.open:ks-settings"
+    "cmd-shift-,": "mod.open:ks-settings",
+    "cmd-shift-enter": "ks-zen.zoom"
   }
 }

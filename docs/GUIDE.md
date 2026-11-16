@@ -90,6 +90,15 @@ uncommitted work.
 - **Worktree bar**: **All** puts every worktree in one view grouped by project; click one to review it alone;
   **+ Add worktree** adds any worktree of the repos involved; × removes one.
 
+**Moving between changes:** a file opens with the cursor on its first change. The header shows **Change 2 of 5**
+with **↑** / **↓** to the previous / next change in that file, and **← File** / **File →** for the previous / next
+file (branch review).
+
+**Zoom and zen:** a review tab is a pane alone in its tab, so **zoom** (`cmd-shift-enter`, `ctrl-w o`, service `z`,
+the pane menu) hides the sidebar and side panel to give the review the whole window; zoom again brings them back.
+**Zen** (`cmd-shift-z`, service `Z`, vim `zz`) opens the review in the zen window, on the file you were on; Esc or
+Exit leaves zen, and the review tab moves to the file you ended on.
+
 **Vim keys in a review:**
 
 | Key | Does |
@@ -97,13 +106,13 @@ uncommitted work.
 | `j` / `k` (↓ / ↑) | Move the line cursor |
 | `ctrl-d` / `ctrl-u` | Half a page |
 | `gg` / `G` | Top / bottom |
-| `}` / `{` | Next / previous change |
+| `n` / `N` (or `p`), `}` / `{` | Next / previous change in this file |
 | `]` / `[`, `J` / `K` | Next / previous file |
 | `c` or Enter | Comment on the cursor line |
 | `C` | Comment on the file |
 | `s` | Inline / side by side |
 | `w` | Wrap |
-| Esc | Cancel a comment, or close an expanded review |
+| Esc | Cancel a comment, close an expanded review, or leave zen |
 
 ## Comments and sending them to an agent
 
@@ -252,7 +261,7 @@ entry keys into `keys.json` (and keeps them there, even after a reinstall); the 
 
 ## Zen mode
 
-`cmd-shift-z` (or service `Z`, vim `zz`, main menu **Zen mode**). The terminal you're in, alone in a floating
+`cmd-shift-z` (or service `Z`, vim `zz`, main menu **Zen mode**). The terminal (or [review](#reviewing)) you're in, alone in a floating
 window over everything, on a backdrop that covers the rest. Both are windows over your layout, so zen wears
 whatever theme is showing.
 
@@ -324,6 +333,7 @@ Only while the `ks` layout shows.
 | `cmd-shift-t` | Undo the last close |
 | `ctrl-;` | Service mode (configurable) |
 | `cmd-shift-z` | Zen mode |
+| `cmd-shift-enter` | Zoom the pane (a pane alone in its tab, like a review: hide the sidebar and panel) |
 | `cmd-shift-f` | Focus mode |
 | `cmd-shift-,` | herdr-ks settings |
 | `cmd-k` | Key modes editor (configurable) |

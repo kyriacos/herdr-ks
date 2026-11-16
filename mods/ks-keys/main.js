@@ -174,7 +174,8 @@ async function openMode(id, keep = null) {
 // The open strip's mode and pane, for ks-zen's "raise" (shared "ks-keys.live").
 const LIVE = "ks-keys.live";
 const PANEL = "ks.panelFocus"; // the side panel pane.go moved to while the strip was open (shared/panelkeys.js)
-const zenTerminal = () => shared("ks-zen.state")?.win ? shared("ks-zen.state").terminal : null;
+// Zen is open (its terminal, or for a review in zen, its pane): pane commands don't act on the tab behind it.
+const zenTerminal = () => { const z = shared("ks-zen.state"); return z?.win ? z.terminal ?? z.pane ?? "zen" : null; };
 
 const openEditor = () => openOverlay({ mod: "ks-keys", kind: "dialog", width: 860, height: 640, props: { editor: true } });
 
@@ -320,7 +321,7 @@ export default class Keys extends View {
     // In zen there's one terminal, in a window: pane commands would act on the tab under it (and move the keyboard
     // to the same terminal there, at another size). They do nothing here.
     if (zenTerminal() && (PANE_ARG.has(a.command) || a.command === "pane.go")) {
-      this.flash = "Not in zen (one terminal)"; this.shown = true; cx.notify(); return;
+      this.flash = "Not in zen (one pane)"; this.shown = true; cx.notify(); return;
     }
     // A one-shot mode closes before running; a sticky one before a command that opens something to type into
     // (rename, palette, a confirm), so that gets the keyboard.
@@ -338,6 +339,8 @@ export default class Keys extends View {
           .then((msg) => { if (msg && !this.leaving) { this.flash = msg; this.shown = true; cx.notify(); } }).catch(() => {});
       }
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24, this.pane);
+      // ks-zen zooms: a pane in a split as Herdr does, a pane alone in its tab (a review) over the whole window.
+      else if (a.command === "pane.zoom") run(`ks-zen.zoom:${a.args.pane ?? ""}`);
       else if (a.command === "pane.go") { setShared(PANEL, null); run("pane.go", a.args); const g = focused(); if (g?.pane) { this.pane = g.pane; this.terminal = g.terminal ?? null; } }
       else if (a.command === "tab.shift") {
         const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;

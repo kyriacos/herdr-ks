@@ -173,7 +173,7 @@ for the window (motions, counts, `gt`/`3gt`, `gg`/`G`, `ctrl-d`/`ctrl-u` scrolli
 move, tab and space modes too. `cmd-k` opens the editor: switch modes off, change entry keys, edit every key.
 See the [guide](docs/GUIDE.md#key-modes).
 
-**Zen mode** (`cmd-shift-z`): the terminal you're in, alone in a floating window (drag to move, corners to resize)
+**Zen mode** (`cmd-shift-z`): the terminal (or review) you're in, alone in a floating window (drag to move, corners to resize)
 over an opaque or translucent backdrop, in your current theme. **Focus mode** (`cmd-shift-f`): everything around
 the terminals dims until hovered. **Resizing** in service mode: `-` / `=` narrower / wider, Shift (`_` / `+`) shorter / taller, `0` the default size, all on what you're in (zen, the split pane, else the pane against the side panel).
 

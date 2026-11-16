@@ -12,7 +12,7 @@
 // comments' buttons live outside the list.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
-import { props, exec, theme, settings, watchFolder, closeOverlay, openOverlay, shared, setShared, nextCommand } from "herdr";
+import { props, exec, run, theme, settings, watchFolder, closeOverlay, openOverlay, shared, setShared, nextCommand } from "herdr";
 import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { langOf, colorsFor } from "./lib/highlight.js";
 import { parseDiff, fileRows, splitRows, wrapTokens, colsFor, charWidth, longest } from "./lib/diff.js";
@@ -36,7 +36,12 @@ export default class Review extends View {
     // window) and the props to reopen it with when resized. Herdr can't resize a window, so a resize reopens
     // it at the new size under the same key, which keeps its place.
     this.windowKey = p.windowKey ?? null; this.winSize = p.winSize ?? { w: 0.7, h: 0.8 }; this.prevSize = p.prevSize ?? null;
-    this.openProps = Object.fromEntries(Object.entries(p).filter(([k]) => k !== "overlay"));
+    this.openProps = Object.fromEntries(Object.entries(p).filter(([k]) => !["overlay", "zen", "at", "from"].includes(k)));
+    // Zen (ks-zen): this review in the zen window is a copy, opened with { zen: true }, the file it was on (`at`)
+    // and `from` (the tab copy's id). Esc and ✕ leave zen; when it closes, the tab copy goes to the file the zen
+    // copy was on.
+    this.zen = Boolean(p.zen); this.id = p.from ?? `rv-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+    this.wantAt = p.at ?? null; this.jumpFirst = true;
     this.repos = []; this.files = []; this.cur = null; this.viewed = new Set();
     // Branch review's left column: "files" (the whole branch) or "commits" (pick one: this.commit); tree or flat.
     this.left = p.left === "commits" ? "commits" : "files"; this.tree = load("tree", true); this.collapsed = new Set(); this.commit = null;
@@ -49,21 +54,22 @@ export default class Review extends View {
     this.handle.focus(); // vim keys work as soon as the tab opens
     // A floating review takes the key modes' resize keys while it has the keyboard (lib/windows.js): - = narrower /
     // wider, _ + shorter / taller, 0 its default size.
-    if (this.windowKey) {
-      trackActive(this, cx, this.windowKey, "ks-review");
-      cx.spawn(async (cx) => {
-        for (;;) {
-          const c = await nextCommand();
-          if (c !== "winresize") continue;
-          const r = takeRequest(this, this.windowKey);
-          if (!r) continue;
-          const step = 0.02 * (r.dir || 1), sz = this.winSize;
-          if (r.reset) this.resizeWindow({ w: 0.7, h: 0.8 }, null);
-          else this.resizeWindow({ w: sz.w + (r.kind === "tall" ? 0 : step), h: sz.h + (r.kind === "wide" ? 0 : step) });
-          raiseStrip();
-        }
-      });
-    }
+    if (this.windowKey) trackActive(this, cx, this.windowKey, "ks-review");
+    // "focus": Herdr gives this pane the keyboard (pane.go onto it, back from zen). "winresize": see above.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = await nextCommand();
+        if (c === "focus" && !this.windowKey && !this.zen) { this.handle.focus(); cx.notify(); continue; }
+        if (c !== "winresize" || !this.windowKey) continue;
+        const r = takeRequest(this, this.windowKey);
+        if (!r) continue;
+        const step = 0.02 * (r.dir || 1), sz = this.winSize;
+        if (r.reset) this.resizeWindow({ w: 0.7, h: 0.8 }, null);
+        else this.resizeWindow({ w: sz.w + (r.kind === "tall" ? 0 : step), h: sz.h + (r.kind === "wide" ? 0 : step) });
+        raiseStrip();
+      }
+    });
+    if (!this.windowKey) this.offerZen(cx);
     this.scroll = VirtualListScrollHandle.new();
     this.cursorAt = 0; this.visible = { start: 0, end: 0 }; this.pendingG = false;
     this.input = InputState.new({ placeholder: "Your comment, then Enter" });
@@ -88,6 +94,41 @@ export default class Review extends View {
     });
   }
 
+  // Shared "ks-review.zen" = { props }: what ks-zen opens when zen is asked for while a review tab has the keyboard
+  // (the review you're in, on the file you're on). Kept current every 300 ms by the copy that has the keyboard.
+  offerZen(cx) {
+    cx.timer.every(300, () => {
+      const o = shared("ks-review.zen");
+      // Back from zen: the tab copy picks up where the zen copy was.
+      if (!this.zen && o?.fromZen && o.props?.from === this.id && !shared("ks-zen.state")?.win && o.n !== this.synced) {
+        this.synced = o.n; const at = o.props.at, pr = o.props;
+        if (pr.mode && pr.mode !== this.mode) this.mode = pr.mode;
+        if (pr.wrap != null) this.wrap = pr.wrap;
+        const i = at ? this.files.findIndex((f) => f.root === at.root && f.path === at.path) : -1;
+        if (i >= 0 && i !== this.cur) this.select(i, cx); else cx.notify();
+      }
+      if (!this.handle.is_focused()) return;
+      const f = this.file();
+      const props = { ...this.openProps, mode: this.mode, wrap: this.wrap, from: this.id, ...(f ? { at: { root: f.root, path: f.path } } : {}) };
+      const was = o?.props;
+      if (!was || JSON.stringify(was) !== JSON.stringify(props) || Boolean(o.fromZen) !== this.zen) setShared("ks-review.zen", { props, fromZen: this.zen, n: Date.now() });
+    });
+  }
+  leaveZen() { run("ks-zen.toggle"); }
+
+  // ---------- changes (the runs of added / removed lines) in this file ----------
+  changeStarts() { return this.list.reduce((out, it, i) => (this.isChange(it) && !this.isChange(this.list[i - 1]) ? [...out, i] : out), []); }
+  // Which change the cursor is in or after (1-based; 0 above the first), and how many.
+  changeAt() {
+    const s = this.changeStarts();
+    return { n: s.filter((i) => i <= this.cursorAt).length, of: s.length };
+  }
+  nextChange(dir, cx) {
+    const s = this.changeStarts();
+    const i = dir > 0 ? s.find((i) => i > this.cursorAt) : [...s].reverse().find((i) => i < this.cursorAt);
+    if (i != null) { this.moveCursor(i, cx); this.scroll.scroll_to_item(i, "center"); }
+  }
+
   file() { return this.cur == null ? null : this.files[this.cur] ?? null; }
   repoOf(f) { return this.repos.find((r) => r.root === f?.root) ?? null; }
 
@@ -99,7 +140,7 @@ export default class Review extends View {
       try {
         const repos = [];
         for (const root of this.roots) { try { repos.push(await readBranch(root, this.on, this.bases[root] ?? null)); } catch {} }
-        const keep = this.file();
+        const keep = this.file() ?? this.wantAt;
         this.repos = repos;
         if (this.commits) this.commits = (await Promise.all(repos.map((r) => readCommits(r).catch(() => [])))).flat();
         if (this.commit) {
@@ -259,7 +300,7 @@ export default class Review extends View {
 
   select(i, cx) {
     if (i == null || i < 0 || i >= this.files.length) return;
-    this.cur = i; this.composer = null; this.rows = []; this.status = "loading"; this.cursorAt = 0;
+    this.cur = i; this.composer = null; this.rows = []; this.status = "loading"; this.cursorAt = 0; this.jumpFirst = true;
     this.viewed.add(this.keyOf(this.file()));
     this.reloadFile(cx); cx.notify();
   }
@@ -297,7 +338,7 @@ export default class Review extends View {
   setMode(mode, cx) { this.mode = mode; save("mode", mode); this.cursorAt = 0; cx.notify(); }
 
   // ---------- vim keys ----------
-  // j/k ↓/↑ line · ctrl-d/ctrl-u half page · gg/G top/bottom · }/{ next/previous change · ]/[ or J/K next/previous
+  // j/k ↓/↑ line · ctrl-d/ctrl-u half page · gg/G top/bottom · n/N (or p, }/{) next/previous change · ]/[ or J/K next/previous
   // file (branch review) · c or Enter comment on the line · C comment on the file · s inline/side by side · Esc cancel.
   isChange(it) {
     return Boolean(it && ((it.t === "code" && it.r.kind !== " ") || (it.t === "pair" && (it.left !== it.right))));
@@ -330,14 +371,15 @@ export default class Review extends View {
     } else if (is("g", "G")) this.moveCursor(this.list.length - 1, cx);
     else if ((k === "j" && !shift) || k === "down") this.moveCursor(this.cursorAt + 1, cx);
     else if ((k === "k" && !shift) || k === "up") this.moveCursor(this.cursorAt - 1, cx);
-    else if (is("]", "}")) { const i = this.list.findIndex((it, i) => i > this.cursorAt && this.isChange(it) && !this.isChange(this.list[i - 1])); if (i >= 0) this.moveCursor(i, cx); }
-    else if (is("[", "{")) { let i = -1; this.list.forEach((it, j) => { if (j < this.cursorAt && this.isChange(it) && !this.isChange(this.list[j - 1])) i = j; }); if (i >= 0) this.moveCursor(i, cx); }
+    else if (is("]", "}") || (k === "n" && !shift)) this.nextChange(1, cx);
+    else if (is("[", "{") || is("n", "N") || (k === "p" && !shift)) this.nextChange(-1, cx);
     else if (this.branchMode && (k === "]" || is("j", "J"))) this.step(1, cx);
     else if (this.branchMode && (k === "[" || is("k", "K"))) this.step(-1, cx);
     else if ((k === "c" && !shift) || k === "enter") this.commentAtCursor(cx);
     else if (is("c", "C")) this.openComposer({ line: null, side: null, code: "" }, cx);
     else if (k === "s" && !shift) this.setMode(this.mode === "split" ? "inline" : "split", cx);
     else if (k === "w" && !shift) this.setWrap(!this.wrap, cx);
+    else if (k === "escape" && this.zen) this.leaveZen();
     else if (k === "escape" && this.overlay) closeOverlay(this.overlay);
     else handled = false;
     this.pendingG = false;
@@ -593,6 +635,13 @@ export default class Review extends View {
   render(cx) {
     const t = theme(), colors = colorsFor(t), f = this.file(), mine = this.fileComments(), every = this.allComments();
     const items = this.list = this.items();
+    // A file just opened: the cursor starts on its first change (once its rows are in).
+    if (this.jumpFirst && this.status !== "loading" && items.length) {
+      this.jumpFirst = false;
+      const first = this.changeStarts()[0];
+      if (first != null && this.cursorAt === 0) { this.cursorAt = first; this.scroll.scroll_to_item(first, "center"); }
+    }
+    const ch = this.changeAt();
     const agent = comments.pickAgent(this.agent, this.space);
     const tab = (id, label) => div().id(`mode-${id}`).h(24).px(10).flex().items_center().rounded(6).cursor_pointer().text_size(11.5)
       .bg(this.mode === id ? t.selected : t.chrome).text_color(this.mode === id ? t.foreground : t.muted).hover((s) => s.bg(t.hover))
@@ -640,18 +689,23 @@ export default class Review extends View {
         .child(v_flex().min_w(0).flex_1()
           .child(div().truncate().font_semibold().text_size(13).child(head))
           .child(div().truncate().text_size(11).text_color(t.dim).child(this.branchMode ? (f ? `${f.path} · ${repoLine}` : "") : repoLine)))
+        // This file's changes: where you are, previous / next (n / N).
+        .when(ch.of > 0, (e) => e.child(h_flex().gap(4).items_center()
+          .child(button("prev-change", "↑", (cx) => this.nextChange(-1, cx), false, ch.n > 1 || (ch.n === 1 && this.cursorAt > this.changeStarts()[0])))
+          .child(div().min_w(70).text_center().text_size(11.5).text_color(t.muted).child(ch.n ? `Change ${ch.n} of ${ch.of}` : `${ch.of} change${ch.of === 1 ? "" : "s"}`))
+          .child(button("next-change", "↓", (cx) => this.nextChange(1, cx), false, ch.n < ch.of))))
         .when(this.branchMode, (e) => e
-          .child(button("prev-file", "← Prev", (cx) => this.step(-1, cx), false, (this.cur ?? 0) > 0))
-          .child(button("next-file", "Next →", (cx) => this.step(1, cx), false, this.cur != null && this.cur < this.files.length - 1)))
+          .child(button("prev-file", "← File", (cx) => this.step(-1, cx), false, (this.cur ?? 0) > 0))
+          .child(button("next-file", "File →", (cx) => this.step(1, cx), false, this.cur != null && this.cur < this.files.length - 1)))
         .child(h_flex().gap(2).p(2).rounded(8).bg(t.chrome).border_1().border_color(t.border).child(tab("inline", "Inline")).child(tab("split", "Side by side")))
         .child(button("wrap", this.wrap ? "Wrap ✓" : "Wrap", (cx) => this.setWrap(!this.wrap, cx)))
         .child(button("comment-file", "Comment on file", (cx) => this.openComposer({ line: null, side: null, code: "" }, cx), false, Boolean(f)))
         .child(button("send-all", every.length ? `Send ${every.length} to agent…` : "No comments", () => this.openSend(), every.length > 0, every.length > 0))
         .when(Boolean(this.windowKey), (e) => e
           .child(button("win-max", this.prevSize ? "Restore" : "⛶", () => this.toggleMax())))
-        .when(Boolean(this.overlay), (e) => e.child(button("close-overlay", "✕", () => closeOverlay(this.overlay)))))
+        .when(Boolean(this.overlay) && !this.zen, (e) => e.child(button("close-overlay", "✕", () => closeOverlay(this.overlay)))))
       .child(h_flex().h(22).flex_none().px(14).items_center().text_size(10.5).text_color(t.dim).border_b(1).border_color(t.border)
-        .child(div().flex_1().child(this.branchMode ? "j/k move · }/{ next change · J/K or ]/[ next file · c comment · C file comment · s side by side · w wrap" : "j/k move · }/{ next change · c comment · C file comment · s side by side · w wrap"))
+        .child(div().flex_1().child(this.branchMode ? "j/k move · n/N next/previous change · J/K or ]/[ next file · c comment · C file comment · s side by side · w wrap" : "j/k move · n/N next/previous change · c comment · C file comment · s side by side · w wrap"))
         .child(div().child(agent ? `Sends to ${agent.title}` : "No agent running")))
       .when(this.branchMode, (e) => e.children(this.worktreeBar(t)))
       .child(h_flex().flex_1().min_h(0).items_stretch()

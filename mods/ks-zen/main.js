@@ -1,6 +1,6 @@
 // ks-zen: zen mode, focus mode, and their settings.
 //
-// Zen (cmd-shift-z, service Z, vim zz): the terminal you're in, alone in a floating window over everything, on a
+// Zen (cmd-shift-z, service Z, vim zz): the terminal you're in (or a review: a mod pane that offers zen), alone in a floating window over everything, on a
 // glass backdrop that covers the rest of the window. Both are windows over the layout you're in, so they wear the
 // theme that's showing; nothing switches. The zen window has a title bar to drag it by, corner grips to resize it
 // (ks-resize, as the review windows), Narrower / Wider, ⚙ settings and Exit. Clicking the backdrop brings the zen
@@ -16,7 +16,7 @@ import { h_flex, v_flex } from "gpui-base";
 import { run, spaces, panes, focused, nextCommand, shared, setShared, notify, theme, props, openOverlay, closeOverlay, exec, appHome, settings, layout } from "herdr";
 import { focusOn, focusLevel, setFocus } from "./lib/focus.js";
 
-// Shared "ks-zen.state" while zen is open: { terminal, win (overlay id), backdrop (overlay id), rect: the zen
+// Shared "ks-zen.state" while zen is open: { terminal (or content: a mod copy, and its pane), win (overlay id), backdrop (overlay id), rect: the zen
 // window in window points { x, y, width, height } }.
 const ZEN = "ks-zen.state";
 // { backdrop: "theme" | "dark" (its color), opacity: 0.4..1 (1 opaque; below, the layout shows through like glass),
@@ -38,18 +38,45 @@ async function windowSize() {
   try { const b = JSON.parse(r.stdout).bounds; return { w: b[2], h: b[3] }; } catch { return { w: 1600, h: 1000 }; }
 }
 
-// The terminal to show: the focused pane's, else the shown tab's first.
-function currentTerminal() {
+// What zen shows: the focused pane's terminal; else, for a mod pane that offers zen (it keeps shared
+// "<mod>.zen" = { props } current while it has the keyboard, as ks-review does), a copy of that mod with those props
+// and { zen: true }; else the shown tab's first terminal. { terminal, pane, tab } or { content, pane, tab }.
+function currentTarget() {
   const ps = panes(), f = ps.find((p) => p.focused) ?? ps.find((p) => p.pane === focused()?.pane);
-  if (f?.terminal) return f.terminal;
+  if (f?.terminal) return { terminal: f.terminal, pane: f.pane, tab: f.tab };
+  const offer = f?.mod ? shared(`${f.mod}.zen`) : null;
+  if (offer?.props) return { content: { mod: f.mod, props: { ...offer.props, zen: true } }, pane: f.pane, tab: f.tab };
   const tab = spaces().find((s) => s.active)?.tabs.find((t) => t.active);
-  return ps.find((p) => p.tab === tab?.id && p.terminal)?.terminal ?? null;
+  const p = ps.find((p) => p.tab === tab?.id && p.terminal);
+  return p ? { terminal: p.terminal, pane: p.pane, tab: p.tab } : null;
+}
+// The zen window's content: its terminal, or the mod copy. A reopen (resize, move) starts a new copy, so it takes
+// the props the mod published last (the zen copy keeps them current: the file it's on, inline or side by side).
+const shownIn = (st) => st?.content
+  ? { ...st.content, props: { ...(shared(`${st.content.mod}.zen`)?.props ?? st.content.props), zen: true } }
+  : st?.terminal;
+
+// Zoom (pane.zoom from the key modes, the pane menu, cmd-shift-enter): a pane in a split fills its tab, as Herdr
+// does. A pane alone in its tab (a review tab, a lone terminal) has nothing to zoom over, so it fills the window
+// instead: the sidebar and the side panel hide, and the next zoom shows what it hid. Shared "ks-zen.zoom" =
+// { hid: [layout ids] } while that's on.
+const ZOOM = "ks-zen.zoom";
+function zoom(pane) {
+  const ps = panes(), id = pane || focused()?.pane, p = ps.find((x) => x.pane === id) ?? ps.find((x) => x.focused);
+  const z = shared(ZOOM);
+  if (z?.hid?.length) { for (const n of z.hid) run("layout.show", { id: n }); setShared(ZOOM, null); return; }
+  if (!p) return;
+  if (p.zoomed || ps.filter((x) => x.tab === p.tab).length > 1) { run("pane.zoom", { pane: p.pane }); return; }
+  const root = layout(), hid = ["sidebar", "panel"].filter((n) => { const node = find(root, n); return node && !node.hidden; });
+  if (!hid.length) return;
+  for (const n of hid) run("layout.hide", { id: n });
+  setShared(ZOOM, { hid });
 }
 
 // The zen window's openOverlay spec: a title bar, the terminal, a bottom edge with grips. `rect` in window points;
 // width/height go to Herdr in mod pixels (points / zoom).
 // Not moved (`moved` false): no `at`, so Herdr centers it exactly; after a drag, at its place.
-function zenSpec(terminal, rect, moved = false) {
+function zenSpec(what, rect, moved = false) {
   const z = settings().zoom || 1;
   return {
     mod: "ks-zen", kind: "window", key: "ks-zen", width: Math.round(rect.width / z), height: Math.round(rect.height / z),
@@ -58,7 +85,7 @@ function zenSpec(terminal, rect, moved = false) {
       { type: "block", size: { px: 36 }, content: { mod: "ks-zen", props: { bar: true } } },
       // The layout's terminals are see-through (terminal_opacity 0, so the panes' rounded frames show at the
       // corners): this one gets the theme's background behind it.
-      { type: "block", background: "background", content: { terminal } },
+      { type: "block", background: "background", content: typeof what === "string" ? { terminal: what } : what },
       { type: "block", size: { px: 12 }, content: { mod: "ks-zen", props: { foot: true } } },
     ] },
   };
@@ -66,17 +93,18 @@ function zenSpec(terminal, rect, moved = false) {
 
 // Opens (or reopens, to move or resize) the zen window. A window opened last is on top, so when the key modes strip
 // is open (resizing zen from service mode) it is asked to come back on top, and it keeps the keyboard.
-function showZen(terminal, rect, moved = zen()?.moved ?? false) {
-  const win = openOverlay(zenSpec(terminal, rect, moved));
-  setShared(ZEN, { ...(zen() ?? {}), terminal, rect, win, moved });
+function showZen(what, rect, moved = zen()?.moved ?? false) {
+  const win = openOverlay(zenSpec(what, rect, moved));
+  setShared(ZEN, { ...(zen() ?? {}), rect, win, moved });
   // No pane.focus: focusing the terminal would switch back to its tab (Herdr prefers the pane). The window opened
   // last has the keyboard.
   if (shared("ks-keys.open")) run("ks-keys.raise");
 }
 
 async function openZen() {
-  const terminal = currentTerminal();
-  if (!terminal) return notify({ title: "Zen needs a terminal", body: "Focus a terminal pane first.", level: "info", timeout: 2500 });
+  const target = currentTarget();
+  if (!target) return notify({ title: "Nothing to show in zen", body: "Focus a terminal or a review first.", level: "info", timeout: 2500 });
+  const terminal = target.terminal ?? null, content = target.content ?? null;
   const { w, h } = await windowSize(), share = prefs().share;
   const rect = { width: Math.round(w * share), height: Math.round(h * Math.min(0.92, share + 0.1)) };
   rect.x = Math.round((w - rect.width) / 2); rect.y = Math.round((h - rect.height) / 2);
@@ -84,9 +112,10 @@ async function openZen() {
   // The tab behind must not be drawn while zen shows its terminal: drawn twice at two sizes, the terminal is resized
   // back and forth (Claude's screen breaks) and focusing it lands in the tab, not zen. So the space shows a blank
   // placeholder tab meanwhile; closing zen removes it and shows the tab again.
-  const tab = panes().find((p) => p.terminal === terminal)?.tab ?? null;
+  // (A mod copy would be drawn twice too: the one in the tab keeps running behind the placeholder.)
+  const tab = target.tab ?? null;
   const space = spaces().find((s) => s.tabs.some((t) => t.id === tab))?.id ?? null;
-  setShared(ZEN, { terminal, rect, backdrop, win: null, tab, placeholder: null });
+  setShared(ZEN, { terminal, content, pane: target.pane ?? null, rect, backdrop, win: null, tab, placeholder: null });
   if (tab && space) {
     const before = new Set(spaces().find((s) => s.id === space)?.tabs.map((t) => t.id) ?? []);
     run("tab.new", { space, name: "zen", mod: "ks-zen", props: { placeholder: true } });
@@ -97,7 +126,7 @@ async function openZen() {
       if (fresh) { setShared(ZEN, { ...zen(), placeholder: fresh.id }); break; }
     }
   }
-  showZen(terminal, rect);
+  showZen(terminal ?? content, rect);
 }
 
 // A window reopened by ks-resize has a new overlay id; opening its key again replaces it and returns the id
@@ -114,6 +143,7 @@ function closeZen() {
   if (st.tab) run("tab.select", { id: st.tab });
   if (st.placeholder) run("tab.close", { id: st.placeholder, confirmed: true });
   if (st.terminal) run("pane.focus", { terminal: st.terminal });
+  else if (st.pane) run("pane.focus", { pane: st.pane });
 }
 
 const toggleZen = () => (zenOpen() ? closeZen() : openZen());
@@ -130,7 +160,7 @@ async function resizeZen(dw, dh) {
     ? { width, height, x: Math.max(0, Math.round(r.x + (r.width - width) / 2)), y: Math.max(0, Math.round(r.y + (r.height - height) / 2)) }
     : { width, height, x: Math.round((w - width) / 2), y: Math.round((h - height) / 2) };
   if (dw) setShared(PREFS, { ...prefs(), share: Math.round((width / w) * 100) / 100 });
-  showZen(st.terminal, rect);
+  showZen(shownIn(st), rect);
 }
 const widen = (step) => resizeZen(step, 0);
 
@@ -142,7 +172,7 @@ async function resetZen() {
   const rect = { width: Math.round(w * share), height: Math.round(h * Math.min(0.92, share + 0.1)) };
   rect.x = Math.round((w - rect.width) / 2); rect.y = Math.round((h - rect.height) / 2);
   setShared(PREFS, { ...prefs(), share });
-  showZen(st.terminal, rect, false);
+  showZen(shownIn(st), rect, false);
 }
 
 function toggleFocus() {
@@ -170,6 +200,7 @@ export default class Zen extends View {
       for (;;) {
         const c = await nextCommand();
         if (c === "toggle") await toggleZen();
+        else if (c === "zoom" || c.startsWith("zoom:")) zoom(c.slice(5));
         else if (c === "focus") toggleFocus();
         else if (c === "wider") await widen(0.02);
         else if (c === "narrower") await widen(-0.02);
@@ -190,7 +221,7 @@ export default class Zen extends View {
     const st = zen();
     if (!st?.win) return;
     openOverlay({ mod: "ks-resize", kind: "window", frame: "none", key: "ks-resize", width: 1, height: 1, at: { x: 0, y: 0 },
-      props: { rect: st.rect, corner, zoom: settings().zoom || 1, reopen: zenSpec(st.terminal, st.rect, true) } });
+      props: { rect: st.rect, corner, zoom: settings().zoom || 1, reopen: zenSpec(shownIn(st), st.rect, true) } });
   }
   grips(t, corners) {
     return corners.map((corner) => div().id(`zgrip-${corner}`).absolute().size(14)
@@ -216,7 +247,7 @@ export default class Zen extends View {
       const area = { left: sidebar ? sidebar + 1 : 0, top: px(node("tabs")), right: panel ? panel + pad : 0, bottom: px(node("status")) };
       return div().id("zen-backdrop").size_full().relative().bg(base + hex2(pr.opacity))
         .when(pr.opacity < 1, (e) => e.child(div().absolute().left(area.left).top(area.top).right(area.right).bottom(area.bottom).bg(base)))
-        .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); const st = zen(); if (st?.win) showZen(st.terminal, st.rect); });
+        .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); const st = zen(); if (st?.win) showZen(shownIn(st), st.rect); });
     }
     if (p.foot) return div().id("zen-foot").size_full().relative().bg(t.background).children(this.grips(t, ["bl", "br"]));
     if (!p.bar) return div();
