@@ -157,7 +157,8 @@ A scratchpad in the side panel: **Notes** in the tab bar, or `cmd-shift-j`.
   its notes (marked closed); a new space in the same folder picks them up again.
 - **Search** (`/`): every word must appear in the note or its space's name; Esc clears it.
 - In **All**: **Grouped** (`gs`) turns grouping by space on or off; the space chips narrow it to one space.
-- Every note shows which space it's in.
+- Every note shows which space it's in (hover the tag for what its agent was working on); the space header shows
+  that too, live while the space is open, and the last one seen once it's closed.
 - **+ New** (or `n`) starts a note in this space. It's saved as you type; the first line is its title. **Done** or
   Esc stops editing; a note left empty goes away.
 - **Delete** (or `x`) removes one, with **Undo** (or `u`) for a few seconds.

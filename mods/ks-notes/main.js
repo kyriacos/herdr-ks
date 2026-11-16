@@ -5,7 +5,9 @@
 // with the space chips. The search box matches a note's text and its space's name, in either view. Every note shows
 // which space it's in.
 //
-// Stored in <app home>/data/ks-notes.json ({ notes: [{ id, text, space, spaceName, folder, created, updated }] }),
+// Each space shows what its agent works on under its name (lib/spacenames.js), live while the space is open; a note keeps
+// the last one it saw (`task`), so a closed space still says what it was about.
+// Stored in <app home>/data/ks-notes.json ({ notes: [{ id, text, space, spaceName, task, folder, created, updated }] }),
 // written a moment after you stop typing, and read again when another copy of this mod changed it.
 // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o edit, n new, x delete (u undoes), a this space / all, / search,
 // g s grouping on / off, h/l/Esc leave.
@@ -13,7 +15,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { exec, appHome, spaces, theme, settings } from "herdr";
 import { dimmed } from "./lib/focus.js";
-import { spaceName } from "./lib/spacenames.js";
+import { spaceName, spaceTask } from "./lib/spacenames.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 
 const FILE = () => `${appHome()}/data/ks-notes.json`;
@@ -80,6 +82,8 @@ export default class Notes extends View {
     const n = this.notes.find((x) => x.id === this.editing);
     if (!n) return;
     n.text = this.editor.value(); n.updated = Date.now(); this.dirty = true;
+    const live = spaces().find((x) => x.id === n.space);
+    if (live) { n.spaceName = spaceName(live); n.task = spaceTask(live) || n.task || ""; } // kept for when the space is gone
     const gen = (this.gen = (this.gen ?? 0) + 1);
     cx.timer.after(700, (cx) => { if (gen === this.gen) this.persist(cx); });
     cx.notify();
@@ -118,7 +122,7 @@ export default class Notes extends View {
 
   create(cx) {
     const sp = this.space(), now = Date.now();
-    const n = { id: `n${now.toString(36)}${Math.round(Math.random() * 1e4)}`, text: "", space: sp?.id ?? null, spaceName: sp ? spaceName(sp) : "No space", folder: sp?.folder ?? null, created: now, updated: now };
+    const n = { id: `n${now.toString(36)}${Math.round(Math.random() * 1e4)}`, text: "", space: sp?.id ?? null, spaceName: sp ? spaceName(sp) : "No space", task: sp ? spaceTask(sp) : "", folder: sp?.folder ?? null, created: now, updated: now };
     this.notes.unshift(n); this.persist(cx);
     this.edit(n, cx);
   }
@@ -147,6 +151,13 @@ export default class Notes extends View {
   }
   setAll(on, cx) { this.all = on; save("all", on); this.cursor = 0; if (!on) this.only = null; cx.notify(); }
 
+  // What the space's agent works on: live while it's open, else the latest any of its notes kept.
+  taskOf(key) {
+    const live = spaces().find((x) => x.id === key);
+    if (live) return spaceTask(live);
+    return this.notes.filter((n) => (n.space ?? "none") === key && n.task).sort((a, b) => b.updated - a.updated)[0]?.task ?? "";
+  }
+
   // Live names: a note's space name follows a rename while the space is open.
   spaceLabel(n) {
     const live = spaces().find((s) => s.id === n.space);
@@ -163,7 +174,8 @@ export default class Notes extends View {
       .when(!editing, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.edit(n, cx)))
       .child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
         // Which space it's in, always (grouped, the group header says it too).
-        .child(div().flex_none().px(5).rounded(5).border_1().border_color(t.border).max_w(170).truncate()
+        .child(div().id(`tag-${n.id}`).flex_none().px(5).rounded(5).border_1().border_color(t.border).max_w(170).truncate()
+          .when(Boolean(this.taskOf(n.space ?? "none")), (e) => e.tooltip(this.taskOf(n.space ?? "none")))
           .text_color(closed ? t.dim : t.muted).child(`${this.spaceLabel(n)}${closed ? " · closed" : ""}`))
         .child(div().flex_1().min_w(0).truncate().child(ago(n.updated)))
         .child(link(`del-${n.id}`, "Delete", (cx) => this.remove(n, cx), t.dim)))
@@ -191,10 +203,13 @@ export default class Notes extends View {
       const k = n.space ?? "none";
       if (this.all && this.grouped && k !== last) {
         const open = spaces().some((s) => s.id === k);
-        rows.push(h_flex().flex_none().mx(10).mt(12).gap(6).items_center().text_size(11)
-          .child(div().font_semibold().text_color(open ? t.muted : t.dim).child(this.spaceLabel(n)))
-          .when(!open, (e) => e.child(div().px(5).rounded(5).border_1().border_color(t.border).text_size(10).text_color(t.dim).child("closed")))
-          .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(tilde(n.folder))));
+        const task = this.taskOf(k);
+        rows.push(v_flex().flex_none().mx(10).mt(12).gap(1)
+          .child(h_flex().gap(6).items_center().text_size(11)
+            .child(div().font_semibold().text_color(open ? t.muted : t.dim).child(this.spaceLabel(n)))
+            .when(!open, (e) => e.child(div().px(5).rounded(5).border_1().border_color(t.border).text_size(10).text_color(t.dim).child("closed")))
+            .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(tilde(n.folder))))
+          .when(Boolean(task), (e) => e.child(div().text_size(10.5).text_color(t.dim).truncate().child(task))));
         last = k;
       }
       rows.push(this.card(n, t, focusedList && list[this.cursor] === n));
@@ -241,8 +256,9 @@ export default class Notes extends View {
           .when(this.all, (e) => e.child(div().id("notes-group").flex_none().h(24).px(8).flex().items_center().rounded(6).cursor_pointer().text_size(11)
             .border_1().border_color(this.grouped ? t.accent : t.border).text_color(this.grouped ? t.foreground : t.muted).hover((s) => s.bg(t.hover))
             .on_click((_e, cx) => this.setGrouped(!this.grouped, cx)).child(this.grouped ? "Grouped ✓" : "Grouped"))))
-        .when(!this.all, (e) => e.child(div().text_size(10.5).text_color(t.dim).truncate()
-          .child(sp ? `${spaceName(sp)}${sp.folder ? ` · ${tilde(sp.folder)}` : ""}` : "No space open")))
+        .when(!this.all, (e) => e.child(v_flex().gap(1)
+          .child(div().text_size(10.5).text_color(t.muted).truncate().child(sp ? `${spaceName(sp)}${sp.folder ? ` · ${tilde(sp.folder)}` : ""}` : "No space open"))
+          .when(Boolean(sp && spaceTask(sp)), (e) => e.child(div().text_size(10.5).text_color(t.dim).truncate().child(spaceTask(sp))))))
         .when(this.all && this.noteSpaces().length > 1, (e) => e.child(h_flex().id("notes-spaces").gap(5).items_center().overflow_x_scroll()
           .child(chip("ns-all", "All spaces", !this.only, (cx) => { this.only = null; this.cursor = 0; cx.notify(); }))
           .children(this.noteSpaces().map((x) => chip(`ns-${x.key}`, `${x.label}${x.open ? "" : " · closed"} · ${x.count}`, this.only === x.key,
