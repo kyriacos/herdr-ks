@@ -173,6 +173,7 @@ async function openMode(id, keep = null) {
 }
 // The open strip's mode and pane, for ks-zen's "raise" (shared "ks-keys.live").
 const LIVE = "ks-keys.live";
+const IDLE = 5000; // a one-key strip with no key for this long closes (ms)
 const PANEL = "ks.panelFocus"; // the side panel pane.go moved to while the strip was open (shared/panelkeys.js)
 // Zen is open (its terminal, or for a review in zen, its pane): pane commands don't act on the tab behind it.
 const zenTerminal = () => { const z = shared("ks-zen.state"); return z?.win ? z.terminal ?? z.pane ?? "zen" : null; };
@@ -255,6 +256,21 @@ export default class Keys extends View {
     this.handle.focus();
     cx.timer.after(200, () => this.handle.focus());
     this.publish();
+    // The strip never stays up on its own. A one-key mode (ctrl-w, tmux) closes after IDLE with no key, and as soon
+    // as something else takes the keyboard (a click elsewhere), so no stale strip is left. A sticky mode takes the
+    // keyboard back instead, so Esc always reaches it first, and closes if it can't get it back within IDLE.
+    this.lastKey = Date.now(); this.lostAt = null;
+    cx.timer.every(250, () => {
+      if (this.leaving) return;
+      const m = km.config().modes[this.mode], now = Date.now();
+      if (!m) return this.leave(false);
+      if (!m.sticky && now - this.lastKey > IDLE) return this.leave(false);
+      if (now - this.openedAt < 600 || this.handle.is_focused()) { this.lostAt = null; return; }
+      if (!m.sticky) return this.leave(false);
+      this.lostAt ??= now;
+      if (now - this.lostAt > IDLE) return this.leave(false);
+      this.handle.focus();
+    });
   }
 
   deferShow(cx) {
@@ -363,6 +379,7 @@ export default class Keys extends View {
   }
 
   key(e, cx) {
+    this.lastKey = Date.now();
     this.deferShow(cx);
     if (this.leaving) return; // on the way out: nothing more goes anywhere
     const m = km.config().modes[this.mode];
@@ -466,7 +483,7 @@ export default class Keys extends View {
     return v_flex().id("mode").w_full().max_h_full().p(PAD).gap(8).bg(t.popover).rounded(10).border_1().border_color(t.border).shadow_lg()
       .child(h_flex().gap(8).items_center()
         .child(div().px(7).h(20).flex().items_center().rounded(5).bg(t.accent).text_color(t.solid_foreground ?? t.background).text_size(11).font_semibold().child(m.name.toUpperCase()))
-        .child(div().text_size(11.5).text_color(t.muted).child(m.sticky ? `sticky: keys repeat until esc${m.counts ? " · counts: 3j, 2gt" : ""}` : "one key"))
+        .child(div().text_size(11.5).text_color(t.muted).child(m.sticky ? `sticky: keys repeat until esc${m.counts ? " · counts: 3j, 2gt" : ""}` : "one key · closes after 5 s"))
         .when(resizes, (el) => el.child(div().px(6).h(20).flex().items_center().rounded(5).bg(t.hover).text_size(11).text_color(t.foreground)
           .child(`- = narrower / wider · shift: _ + shorter / taller · 0 default · ${this.resizeTarget()}`)))
         .child(div().flex_1())

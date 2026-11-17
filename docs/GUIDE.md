@@ -244,8 +244,10 @@ in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 - **Service mode** is sticky: once in, its keys keep working until Esc. A key that opens something to type into
   (rename, new space, palette, the space picker, search, a close confirmation, the editors) leaves it first.
 - **Sticky** modes in general (service, vim, move, resize, tabs, spaces): keys repeat until Esc (or a "leave" key
-  such as `i` or `q`).
-- **One-shot** (tmux): one key, then back to the terminal.
+  such as `i` or `q`). If something else takes the keyboard (a click elsewhere), the strip takes it back, so Esc
+  always closes the strip first; it closes itself when it can't get it back within 5 seconds.
+- **One-shot** (`ctrl-w`, tmux): one key, then back to the terminal. The strip closes after 5 seconds with no key,
+  or as soon as you click elsewhere.
 - **Counts** (vim, move): digits first repeat a key (`3l`) or fill it in (`3gt` goes to tab 3).
 - **Sequences**: a key can be several keys (`g t`, `d d`, `g g`); typing the start waits for the rest.
 - Pressing a mode's entry key again sends it on to the terminal.
