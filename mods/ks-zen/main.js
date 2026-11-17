@@ -57,17 +57,17 @@ const shownIn = (st) => st?.content
   ? { ...st.content, props: { ...(shared(`${st.content.mod}.zen`)?.props ?? st.content.props), zen: true } }
   : st?.terminal;
 
-// Zoom in the tab only (cmd-shift-alt-enter): Herdr's zoom, the pane over its tab, sidebar and side panel left as they
+// Zoom in the tab only (cmd-shift-enter): Herdr's zoom, the pane over its tab, sidebar and side panel left as they
 // are. A full zoom that's on comes off instead.
 function zoomTab(pane) {
   if (shared(ZOOM)) return zoom(pane);
   const ps = panes(), id = pane || focused()?.pane, p = ps.find((x) => x.pane === id) ?? ps.find((x) => x.focused);
   if (!p) return;
-  if (!p.zoomed && ps.filter((x) => x.tab === p.tab).length < 2) return notify({ title: "Nothing to zoom over", body: "This pane is alone in its tab. ⌘⇧↩ zooms it over the window.", level: "info", timeout: 2500 });
+  if (!p.zoomed && ps.filter((x) => x.tab === p.tab).length < 2) return notify({ title: "Nothing to zoom over", body: "This pane is alone in its tab. ⌘⌥⇧↩ zooms it over the window.", level: "info", timeout: 2500 });
   run("pane.zoom", { pane: p.pane });
 }
 
-// Zoom (pane.zoom from the key modes, the pane menu, cmd-shift-enter): the pane fills the whole window, always the
+// Zoom (pane.zoom from the key modes, the pane menu, cmd-shift-alt-enter): the pane fills the whole window, always the
 // same way. In a split Herdr zooms it over its tab, and either way the sidebar and the side panel hide. Zooming again
 // undoes all of it. Shared "ks-zen.zoom" = { hid: [layout ids], tab, pane, herdr: whether Herdr's zoom is part of it }
 // while it's on.

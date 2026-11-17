@@ -109,7 +109,7 @@ uncommitted work.
 with **↑** / **↓** to the previous / next change in that file, and **← File** / **File →** for the previous / next
 file (branch review).
 
-**Zoom and zen:** **zoom** (`cmd-shift-enter`, `ctrl-w o`, service `z`, the pane header or menu) works the same on
+**Zoom and zen:** **zoom** (`cmd-shift-alt-enter`, `ctrl-w o`, service `z`, the pane header or menu) works the same on
 every pane, a review tab included: the pane fills the whole window (other panes in its tab, the sidebar and the side
 panel hide); zoom again brings everything back. A zoomed pane's header shows **⤢ Zoomed · N hidden** (click it to
 unzoom) and its tab shows **⤢**.
@@ -387,8 +387,8 @@ Only while the `ks` layout shows.
 | `cmd-shift-t` | Undo the last close |
 | `ctrl-;` | Service mode (configurable) |
 | `cmd-shift-z` | Zen mode |
-| `cmd-shift-enter` | Zoom the pane over the whole window (other panes, sidebar and side panel hidden) |
-| `cmd-shift-alt-enter` | Zoom the pane over its tab only (sidebar and side panel stay) |
+| `cmd-shift-enter` | Zoom the pane over its tab only (sidebar and side panel stay) |
+| `cmd-shift-alt-enter` | Zoom the pane over the whole window (other panes, sidebar and side panel hidden) |
 | `cmd-shift-f` | Focus mode |
 | `cmd-shift-,` | herdr-ks settings |
 | `cmd-k` | Key modes editor (configurable) |
