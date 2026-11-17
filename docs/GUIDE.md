@@ -197,8 +197,10 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   it, or **Add files…** / **Paste image**; write a comment and **Comment** (or `cmd-enter`). Esc closes it.
 - Drop files onto a card to attach them to that task, or onto a column or list for a new task carrying them.
 - **+ Add task** at the end of each list (or `n`): type and Enter, and the box stays open for the next one.
-- Keys: `j`/`k`, `gg`/`G`, `h`/`l` between columns, Enter/`o` open, `t` today, `x` delete (`u` undoes), `b` Today /
-  Board, `B` the window.
+- **Undo / redo:** every change on the board or in Today (moves, today on / off, adding, deleting, columns): `u` /
+  `U`, `cmd-z` / `cmd-shift-z`, or **↶ ↷** in the header. A card's **×** deletes it, with Undo.
+- Keys: `j`/`k`, `gg`/`G`, `h`/`l` between columns, Enter/`o` open, `t` today, `x` delete, `u`/`U` undo / redo,
+  `b` Today / Board, `B` the window.
 - Stored in `~/.config/herdr-app/data/ks-tasks.json`, attachments in `data/ks-attach/` (neither is in the repo).
 
 ## Pull requests

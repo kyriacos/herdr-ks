@@ -4,6 +4,7 @@
 //   - the board window ({ board: true }): the same, full size;
 //   - a task ({ task: id }): a dialog with its title, description, column, Today, attachments and comments.
 //
+// Undo / redo (u / U, cmd-z / cmd-shift-z, ↶ ↷): every change made here, back to when the panel opened.
 // Board: columns you add, rename, reorder and delete; drag a card onto another column (or between two cards), or
 // H / L (move to the column left / right), J / K (up / down in its column).
 // Today: what you mean to do today, then the backlog (everything else not done). t (or the card's ☀) moves a task
@@ -97,6 +98,23 @@ const ops = {
   },
 };
 
+// What each change is called in the undo / redo messages.
+const LABELS = { create: "add", patch: "edit", move: "move", plan: "today", remove: "delete", attach: "attach", unattach: "remove attachment",
+  comment: "comment", uncomment: "delete comment", addColumn: "add column", renameColumn: "rename column", shiftColumn: "move column", removeColumn: "delete column" };
+for (const [k, f] of Object.entries(ops)) ops[k] = (...a) => Object.assign(f(...a), { label: LABELS[k] });
+const clone = (x) => JSON.parse(JSON.stringify(x));
+// Undo / redo: a step keeps the tasks it changed (before and after; null = didn't exist) and the columns if they
+// changed. Going back or forward puts just those back, on the file as it is now, so nothing else written meanwhile
+// (a comment in a task's window, say) is lost.
+const putBack = (step, side) => Object.assign((d) => {
+  for (const [id, pair] of Object.entries(step.tasks)) {
+    const v = pair[side], i = d.tasks.findIndex((x) => x.id === id);
+    if (v === null) { if (i >= 0) d.tasks.splice(i, 1); }
+    else if (i >= 0) d.tasks[i] = clone(v); else d.tasks.push(clone(v));
+  }
+  if (step.cols) d.columns = clone(step.cols[side]);
+}, { label: step.label });
+
 export default class Tasks extends View {
   init(_props, cx) {
     const p = props() ?? {};
@@ -120,9 +138,12 @@ export default class Tasks extends View {
     });
   }
   // One change: on this copy now, then on the file (read fresh, so nothing another copy wrote is lost).
-  apply(op, cx) {
+  apply(op, cx, record = true) {
     if (this.error) return;
-    op(this.data); cx.notify();
+    const before = this.history && record ? clone(this.data) : null;
+    op(this.data);
+    if (before) this.record(before, this.data, op.label ?? "change");
+    cx.notify();
     this.busy = true;
     this.chain = this.chain.then(async () => {
       const d = await readAll();
@@ -131,6 +152,30 @@ export default class Tasks extends View {
       this.rev = Date.now(); setShared(REV, this.rev);
     }).catch(() => null).finally(() => { this.busy = false; });
     return this.chain;
+  }
+  record(before, after, label) {
+    const b = new Map(before.tasks.map((x) => [x.id, x])), a = new Map(after.tasks.map((x) => [x.id, x])), tasks = {};
+    for (const id of new Set([...b.keys(), ...a.keys()])) {
+      const x = b.get(id) ?? null, y = a.has(id) ? clone(a.get(id)) : null;
+      if (JSON.stringify(x) !== JSON.stringify(y)) tasks[id] = [x, y];
+    }
+    const cols = JSON.stringify(before.columns) !== JSON.stringify(after.columns) ? [before.columns, clone(after.columns)] : null;
+    if (!Object.keys(tasks).length && !cols) return;
+    this.history.push({ tasks, cols, label }); if (this.history.length > 200) this.history.shift();
+    this.future = [];
+  }
+  step(back, cx) {
+    const from = back ? this.history : this.future, to = back ? this.future : this.history, s = from.pop();
+    if (!s) { this.say(back ? "Nothing to undo" : "Nothing to redo", null, cx); return; }
+    this.apply(putBack(s, back ? 0 : 1), cx, false);
+    to.push(s);
+    this.say(`${back ? "Undid" : "Redid"} ${s.label}`, back ? "redo" : "undo", cx);
+  }
+  // A short message under the header, with Undo or Redo next to it.
+  say(text, offer, cx) {
+    const mine = (this.toast = { text, offer, until: Date.now() + 6000 });
+    cx.timer.after(6100, (cx) => { if (this.toast === mine) this.toast = null; cx.notify(); });
+    cx.notify();
   }
   // Another copy wrote: read again (render is called for every shared write).
   checkRev(cx) {
@@ -171,7 +216,7 @@ export default class Tasks extends View {
     this.colName.on("submit", (_e, cx) => this.doneRename(cx));
     this.colName.on("focus", (_e, cx) => { this.typing = true; cx.notify(); });
     this.colName.on("blur", (_e, cx) => { this.typing = false; if (this.renaming) this.doneRename(cx); });
-    this.undo = null;
+    this.history = []; this.future = []; this.toast = null;
     if (!this.board) { takeFocus(this, cx, "ks-tasks", (c, cx) => this.command(c, cx)); watchFocus(this, cx, "ks-tasks", () => this.typing); }
     else {
       this.handle.focus(); cx.timer.after(150, () => this.handle.focus());
@@ -230,14 +275,9 @@ export default class Tasks extends View {
     cx.spawn(async (cx) => { const atts = await addPaths(paths); if (atts.length) this.apply(ops.attach(task.id, atts), cx); });
   }
   remove(task, cx) {
-    // Undo for 8 s; after that its attachment copies go too.
-    if (this.undo) dropFiles(this.undo.task.attachments);
-    this.undo = { task: JSON.parse(JSON.stringify(task)), until: Date.now() + 8000 };
     this.apply(ops.remove(task.id), cx);
-    const mine = this.undo;
-    cx.timer.after(8100, (cx) => { if (this.undo === mine) { dropFiles(mine.task.attachments); this.undo = null; } cx.notify(); });
+    this.say(`Deleted "${task.title || "Untitled"}"`, "undo", cx);
   }
-  restore(cx) { if (!this.undo) return; this.apply(ops.create(this.undo.task), cx); this.undo = null; }
   toggleToday(task, cx) {
     const l = this.lists(), to = !task.today;
     this.apply(ops.plan(task.id, to, null, to ? l.today : l.backlog), cx);
@@ -299,6 +339,8 @@ export default class Tasks extends View {
     }
     // Shift+letter reads as the capital (e.key can be the lowercase letter with shift held).
     const m = e.modifiers ?? {}, k = m.shift && /^[a-z]$/.test(e.key) ? e.key.toUpperCase() : e.key, sel = this.selected();
+    // cmd-z / cmd-shift-z (and ctrl-r) undo and redo, like everywhere else.
+    if ((m.platform && e.key.toLowerCase() === "z") || (m.control && e.key === "r")) { this.step(!(m.shift) && !m.control, cx); cx.stop_propagation(); return; }
     if (m.platform || m.alt || m.control) return;
     if (this.drag && k === "escape") { this.drag = null; this.over = null; cx.stop_propagation(); cx.notify(); return; }
     const today = this.view === "today", flat = today ? this.flat() : null;
@@ -315,7 +357,8 @@ export default class Tasks extends View {
     else if (k === "n") this.startAdd(today ? "@today" : col?.id, cx);
     else if (k === "t" && sel) this.toggleToday(sel, cx);
     else if (k === "x" && sel) this.remove(sel, cx);
-    else if (k === "u") this.restore(cx);
+    else if (k === "u") this.step(true, cx);
+    else if (k === "U") this.step(false, cx);
     else if (k === "b" || k === "tab") this.setView(today ? "board" : "today", cx);
     else if (k === "B" && !this.board) this.openBoard();
     else if (!today && (k === "l" || k === "right") && this.cur.col < this.data.columns.length - 1) goCol(this.cur.col + 1);
@@ -465,7 +508,7 @@ export default class Tasks extends View {
       .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted).hover((s) => s.bg(t.hover)).on_click((_e, cx) => act(cx)).child(label);
     const btn = (id, label, act, tip) => div().id(id).h(24).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).text_size(11).text_color(t.muted)
       .cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip).on_click((_e, cx) => act(cx)).child(label);
-    const l = this.lists(), undoing = this.undo && Date.now() < this.undo.until;
+    const l = this.lists(), toast = this.toast && Date.now() < this.toast.until ? this.toast : null;
     return v_flex().id("tasks").size_full().min_h(0).rounded(this.board ? 0 : 10).overflow_hidden().bg(t.background)
       .border_1().border_color(!this.board && focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
       .track_focus(this.handle)
@@ -481,14 +524,17 @@ export default class Tasks extends View {
           .child(seg("v-today", `Today · ${l.today.length}`, this.view === "today", (cx) => this.setView("today", cx)))
           .child(seg("v-board", "Board", this.view === "board", (cx) => this.setView("board", cx))))
         .child(div().flex_1())
+        .child(btn("tasks-undo-btn", "↶", (cx) => this.step(true, cx), this.history.length ? `Undo ${this.history[this.history.length - 1].label} (u, cmd-z)` : "Nothing to undo"))
+        .child(btn("tasks-redo-btn", "↷", (cx) => this.step(false, cx), this.future.length ? `Redo ${this.future[this.future.length - 1].label} (U, cmd-shift-z)` : "Nothing to redo"))
         .when(!this.board, (e) => e.child(btn("tasks-big", "⤢", () => this.openBoard(), "Open the board in a window (B)")))
         .child(div().id("tasks-new").h(24).px(9).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground).text_size(11).cursor_pointer()
           .hover((s) => s.opacity(0.85)).on_click((_e, cx) => this.startAdd(this.view === "today" ? "@today" : this.data.columns[this.cur.col]?.id, cx)).child("+ New"))
         .when(this.board, (e) => e.child(div().id("board-x").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
           .hover((s) => s.bg(t.hover)).tooltip("Close (Esc)").on_click(() => closeOverlay(props().overlay)).child("✕"))))
-      .when(Boolean(undoing), (e) => e.child(h_flex().flex_none().mx(8).mt(8).px(10).h(28).gap(8).items_center().rounded(7).bg(t.accent + "1f").text_size(11.5).text_color(t.accent)
-        .child(div().flex_1().truncate().child(`Deleted "${this.undo.task.title || "Untitled"}"`))
-        .child(div().id("tasks-undo").px(6).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => this.restore(cx)).child("Undo (u)"))))
+      .when(Boolean(toast), (e) => e.child(h_flex().flex_none().mx(8).mt(8).px(10).h(28).gap(8).items_center().rounded(7).bg(t.accent + "1f").text_size(11.5).text_color(t.accent)
+        .child(div().flex_1().truncate().child(toast.text))
+        .when(Boolean(toast.offer), (e) => e.child(div().id("tasks-undo").px(6).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a"))
+          .on_click((_e, cx) => this.step(toast.offer === "undo", cx)).child(toast.offer === "undo" ? "Undo (u)" : "Redo (U)")))))
       .when(Boolean(this.error), (e) => e.child(div().p(12).text_size(12).text_color(t.ansi1).child(this.error)))
       .child(div().flex_1().min_h(0).relative()
         .child(this.view === "today" ? this.renderToday(t, focused) : this.renderBoard(t, focused))
