@@ -130,6 +130,7 @@ export default class Tasks extends View {
       op(d); await writeAll(d);
       this.rev = Date.now(); setShared(REV, this.rev);
     }).catch(() => null).finally(() => { this.busy = false; });
+    return this.chain;
   }
   // Another copy wrote: read again (render is called for every shared write).
   checkRev(cx) {
@@ -363,7 +364,11 @@ export default class Tasks extends View {
             .bg(task.today ? t.accent + "1f" : t.background)
             .tooltip(task.today ? "On today's list (t takes it off)" : "Add to today (t)")
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-            .on_click((_e, cx) => { cx.stop_propagation(); this.toggleToday(task, cx); }).child(task.today ? "☀ Today" : "☀")))
+            .on_click((_e, cx) => { cx.stop_propagation(); this.toggleToday(task, cx); }).child(task.today ? "☀ Today" : "☀"))
+          .child(div().id(`del-${task.id}`).flex_none().px(4).rounded(4).text_size(11).text_color(t.dim).cursor_pointer()
+            .hover((s) => s.bg(t.hover).text_color(t.ansi1)).tooltip("Delete (x), with undo")
+            .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+            .on_click((_e, cx) => { cx.stop_propagation(); this.remove(task, cx); }).child("×")))
         .when(pics.length > 0, (e) => e.child(attachRow(pics, t, `cp-${task.id}`)))
         .when(meta.length > 0 || Boolean(task.spaceName), (e) => e.child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
           .when(Boolean(task.spaceName), (e) => e.child(div().flex_none().px(5).rounded(5).border_1().border_color(t.border).max_w(140).truncate().text_color(t.muted).child(task.spaceName)))
@@ -516,12 +521,24 @@ export default class Tasks extends View {
     this.seeded = true; this.title.set_value(x.title ?? ""); this.body.set_value(x.body ?? "");
     if (!x.title) this.title.focus();
   }
+  // Saved a moment after the last key; every field typed meanwhile goes in that one save.
   typed(field, value, cx) {
     if (!this.seeded) return;
     const gen = (this.gen = (this.gen ?? 0) + 1);
     const x = this.task(); if (x) x[field] = value;
+    this.pending = { ...(this.pending ?? {}), [field]: value };
     this.dirty = true; cx.notify();
-    cx.timer.after(600, (cx) => { if (gen === this.gen) { this.dirty = false; this.apply(ops.patch(this.taskId, { [field]: value }), cx); } });
+    cx.timer.after(600, (cx) => { if (gen === this.gen) this.flush(cx); });
+  }
+  flush(cx) {
+    const p = this.pending; this.pending = null; this.dirty = false;
+    return p ? this.apply(ops.patch(this.taskId, p), cx) : this.chain;
+  }
+  // Closing waits for what's still being saved: the window going away would drop it.
+  closeTask(cx) {
+    if (this.closing) return;
+    this.closing = true;
+    Promise.resolve(this.flush(cx)).then(() => this.chain).finally(() => closeOverlay(props().overlay));
   }
   attachWith(cx, label, get) {
     this.working = label; cx.notify();
@@ -544,10 +561,10 @@ export default class Tasks extends View {
   renderTask(cx) {
     this.checkRev(cx);
     const t = theme(), x = this.task();
-    const close = () => closeOverlay(props().overlay);
+    const close = (cx) => this.closeTask(cx);
     if (!x) {
       return v_flex().size_full().p(20).gap(10).bg(t.background).text_color(t.foreground).track_focus(this.handle)
-        .on_key_down((e, cx) => { if (e.key === "escape") { close(); cx.stop_propagation(); } })
+        .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(props().overlay); cx.stop_propagation(); } })
         .child(div().text_size(13).text_color(t.dim).child(this.loaded ? "This task was deleted." : "Loading…"));
     }
     const d = this.data, mono = settings().font_family ?? "JetBrains Mono";
@@ -563,14 +580,14 @@ export default class Tasks extends View {
       .on_drop((e, cx) => this.attachWith(cx, "Adding…", () => addPaths(e.paths)))
       .on_key_down((e, cx) => {
         const m = e.modifiers ?? {};
-        if (e.key === "escape") { close(); cx.stop_propagation(); return; }
+        if (e.key === "escape") { close(cx); cx.stop_propagation(); return; }
         if (e.key === "enter" && m.platform && this.note.value().trim()) { this.sendComment(cx); cx.stop_propagation(); }
       })
       .child(h_flex().flex_none().h(44).px(16).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().flex_1().h(30).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).bg(t.chrome)
           .child(Input.new(this.title).h_full().text_size(14).font_semibold().text_color(t.foreground)))
         .child(div().id("task-x").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
-          .hover((s) => s.bg(t.hover)).on_click(() => close()).child("✕")))
+          .hover((s) => s.bg(t.hover)).on_click((_e, cx) => close(cx)).child("✕")))
       .child(div().flex_1().min_h(0).relative()
         .child(v_flex().id("task-body").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).px(16).pt(12).pb(20)
           .child(h_flex().flex_wrap().gap(6).items_center()
@@ -606,9 +623,9 @@ export default class Tasks extends View {
         .child(Scrollbar.vertical("task-body").absolute().inset_0()))
       .child(h_flex().flex_none().h(40).px(16).gap(8).items_center().border_t(1).border_color(t.border)
         .child(div().flex_1().text_size(10.5).text_color(t.dim).child("Esc closes · drop files anywhere here to attach"))
-        .child(btn("task-del", this.confirmDel ? "Delete for good?" : "Delete task", (cx) => {
+        .child(btn("task-del", this.confirmDel ? "Click again to delete" : "Delete task", (cx) => {
           if (!this.confirmDel) { this.confirmDel = true; cx.timer.after(4000, (cx) => { this.confirmDel = false; cx.notify(); }); cx.notify(); return; }
-          dropFiles(x.attachments); this.apply(ops.remove(x.id), cx); close();
+          this.pending = null; dropFiles(x.attachments); this.apply(ops.remove(x.id), cx); close(cx);
         }, t.ansi1)));
   }
 
