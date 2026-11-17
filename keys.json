@@ -18,6 +18,7 @@
     "cmd-shift-,": "mod.open:ks-settings",
     "cmd-shift-enter": "ks-zen.zoomtab",
     "cmd-shift-j": "ks-tabs.panel:notes",
+    "cmd-shift-k": "ks-tabs.panel:tasks",
     "cmd-alt-shift-enter": "ks-zen.zoom"
   }
 }

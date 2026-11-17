@@ -7,7 +7,10 @@
 //
 // Each space shows what its agent works on under its name (lib/spacenames.js), live while the space is open; a note keeps
 // the last one it saw (`task`), so a closed space still says what it was about.
-// Stored in <app home>/data/ks-notes.json ({ notes: [{ id, text, space, spaceName, task, folder, created, updated }] }),
+// Attachments (lib/attach.js): drop files from Finder onto a note (that note) or onto the list (a new note with them);
+// a note being edited also picks files and pastes a copied picture. Pictures show as thumbnails, click opens.
+// Stored in <app home>/data/ks-notes.json ({ notes: [{ id, text, space, spaceName, task, folder, created, updated,
+// attachments }] }),
 // written a moment after you stop typing, and read again when another copy of this mod changed it.
 // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o edit, n new, x delete (u undoes), a this space / all, / search,
 // g s grouping on / off, h/l/Esc leave.
@@ -17,6 +20,7 @@ import { exec, appHome, spaces, theme, settings } from "herdr";
 import { dimmed } from "./lib/focus.js";
 import { spaceName, spaceTask } from "./lib/spacenames.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
+import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles } from "./lib/attach.js";
 
 const FILE = () => `${appHome()}/data/ks-notes.json`;
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -134,12 +138,15 @@ export default class Notes extends View {
   doneEditing(cx) {
     const n = this.notes.find((x) => x.id === this.editing);
     this.editing = null;
-    // An empty note goes away when you leave it.
-    if (n && !n.text.trim()) this.notes = this.notes.filter((x) => x !== n);
+    // An empty note goes away when you leave it (one with attachments stays).
+    if (n && !n.text.trim() && !(n.attachments ?? []).length) this.notes = this.notes.filter((x) => x !== n);
     this.persist(cx); this.handle.focus(); cx.notify();
   }
   remove(n, cx) {
+    if (this.undo) dropFiles(this.undo.note.attachments); // the previous one can't come back now
     this.undo = { note: n, until: Date.now() + 8000 };
+    const mine = this.undo;
+    cx.timer.after(8100, () => { if (this.undo === mine) { dropFiles(mine.note.attachments); this.undo = null; } });
     this.notes = this.notes.filter((x) => x.id !== n.id);
     if (this.editing === n.id) this.editing = null;
     this.persist(cx); this.handle.focus(); cx.notify();
@@ -148,6 +155,28 @@ export default class Notes extends View {
   restore(cx) {
     if (!this.undo) return;
     this.notes.unshift(this.undo.note); this.undo = null; this.persist(cx); cx.notify();
+  }
+  // Attachments: added to a note (dropped on it, picked, pasted), or a new note carrying files dropped on the list.
+  attach(n, get, cx, label) {
+    this.working = { id: n.id, label }; cx.notify();
+    cx.spawn(async (cx) => {
+      const r = await get(), list = Array.isArray(r) ? r : r ? [r] : [];
+      this.working = list.length || label !== "Pasting…" ? null : { id: n.id, label: "No picture on the clipboard" };
+      if (this.working) cx.timer.after(2500, (cx) => { this.working = null; cx.notify(); });
+      if (list.length) { n.attachments = [...(n.attachments ?? []), ...list]; n.updated = Date.now(); this.persist(cx); }
+      cx.notify();
+    });
+  }
+  unattach(n, a, cx) { n.attachments = (n.attachments ?? []).filter((x) => x.id !== a.id); dropFiles([a]); n.updated = Date.now(); this.persist(cx); cx.notify(); }
+  dropNew(paths, cx) {
+    cx.spawn(async (cx) => {
+      const list = await addPaths(paths);
+      if (!list.length) return;
+      const sp = this.space(), now = Date.now();
+      this.notes.unshift({ id: `n${now.toString(36)}${Math.round(Math.random() * 1e4)}`, text: list.map((a) => a.name).join(", "), space: sp?.id ?? null,
+        spaceName: sp ? spaceName(sp) : "No space", task: sp ? spaceTask(sp) : "", folder: sp?.folder ?? null, created: now, updated: now, attachments: list });
+      this.persist(cx); cx.notify();
+    });
   }
   setAll(on, cx) { this.all = on; save("all", on); this.cursor = 0; if (!on) this.only = null; cx.notify(); }
 
@@ -172,6 +201,7 @@ export default class Notes extends View {
     return v_flex().id(`note-${n.id}`).flex_none().mx(8).mt(8).p(10).gap(4).rounded(8).border_1()
       .border_color(editing || at ? t.accent : t.border).bg(t.background)
       .when(!editing, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.edit(n, cx)))
+      .on_drop((e, cx) => { cx.stop_propagation(); this.droppedOnNote = true; cx.timer.after(100, () => { this.droppedOnNote = false; }); this.attach(n, () => addPaths(e.paths), cx, "Adding…"); })
       .child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
         // Which space it's in, always (grouped, the group header says it too).
         .child(div().id(`tag-${n.id}`).flex_none().px(5).rounded(5).border_1().border_color(t.border).max_w(170).truncate()
@@ -182,12 +212,16 @@ export default class Notes extends View {
       .when(editing, (e) => e
         .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)
           .child(Textarea.new(this.editor).w_full().text_size(12.5).text_color(t.foreground).font_family(settings().font_family ?? "JetBrains Mono")))
+        .when((n.attachments ?? []).length > 0, (e) => e.child(attachRow(n.attachments, t, `na-${n.id}`, { onRemove: (a, cx) => this.unattach(n, a, cx) })))
         .child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
-          .child(div().flex_1().child(this.dirty ? "Saving…" : "Saved"))
+          .child(div().flex_1().truncate().child(this.working?.id === n.id ? this.working.label : this.dirty ? "Saving…" : "Saved"))
+          .child(link(`pick-${n.id}`, "Attach…", (cx) => this.attach(n, pickAndAdd, cx, "Choosing…"), t.muted))
+          .child(link(`paste-${n.id}`, "Paste image", (cx) => this.attach(n, pasteImage, cx, "Pasting…"), t.muted))
           .child(link(`done-${n.id}`, "Done", (cx) => this.doneEditing(cx), t.accent))))
       .when(!editing, (e) => e
         .child(div().text_size(12.5).font_semibold().text_color(text ? t.foreground : t.dim).child(first))
-        .when(Boolean(rest), (e) => e.child(div().text_size(12).text_color(t.muted).max_h(96).overflow_hidden().child(rest))));
+        .when(Boolean(rest), (e) => e.child(div().text_size(12).text_color(t.muted).max_h(96).overflow_hidden().child(rest)))
+        .when((n.attachments ?? []).length > 0, (e) => e.child(attachRow(n.attachments, t, `na-${n.id}`))));
   }
 
   render(cx) { return dimmed(this, this.renderInner(cx)); }
@@ -268,6 +302,7 @@ export default class Notes extends View {
         .child(div().id("notes-undo").px(6).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => this.restore(cx)).child("Undo"))))
       .child(div().flex_1().min_h(0).relative()
         .child(v_flex().id("notes-list").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).pb(12)
+          .on_drop((e, cx) => { if (this.droppedOnNote) { this.droppedOnNote = false; return; } this.dropNew(e.paths, cx); })
           .when(Boolean(this.error), (e) => e.child(div().p(12).text_size(12).text_color(t.ansi1).child(this.error)))
           .when(this.loaded && !list.length, (e) => e.child(div().p(14).text_size(12).text_color(t.dim)
             .child(q ? `No note matches "${q}"` : this.all ? "No notes yet. + New writes one for the space you're in." : "No notes for this space yet. + New (or n) starts one; they stay after the space is closed, under All.")))

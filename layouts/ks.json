@@ -193,6 +193,13 @@
                       "content": {
                         "mod": "ks-notes"
                       }
+                    },
+                    {
+                      "id": "tasks",
+                      "type": "block",
+                      "content": {
+                        "mod": "ks-tasks"
+                      }
                     }
                   ]
                 }

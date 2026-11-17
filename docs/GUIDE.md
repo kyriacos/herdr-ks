@@ -14,6 +14,7 @@ two repos (a backend and a frontend) at once, with you reviewing their work and 
 - [Comments and sending them to an agent](#comments-and-sending-them-to-an-agent)
 - [Floating review windows](#floating-review-windows)
 - [Notes](#notes)
+- [Tasks](#tasks)
 - [Pull requests: My PRs, the PR window, the PRs panel](#pull-requests)
 - [Resuming Claude sessions after a reboot](#resuming-claude-sessions-after-a-reboot)
 - [Closing with undo](#closing-with-undo)
@@ -176,7 +177,29 @@ A scratchpad in the side panel: **Notes** in the tab bar, or `cmd-shift-j`.
   Esc stops editing; a note left empty goes away.
 - **Delete** (or `x`) removes one, with **Undo** (or `u`) for a few seconds.
 - Keys in the panel: `j`/`k`, `gg`/`G`, Enter or `o` to edit, `a` This space / All, `/` search, `gs` grouping, `h`/`l`/Esc to leave.
+- **Attachments:** drop files from Finder onto a note to attach them, or onto the list for a new note carrying them.
+  While editing, **Attach…** picks files and **Paste image** adds a copied picture. Pictures show as thumbnails; a
+  click opens any attachment. Copies are kept in `data/ks-attach/`, so moving the original doesn't break them.
 - Stored in `~/.config/herdr-app/data/ks-notes.json` (plain JSON, one entry per note with its space's name and folder).
+
+## Tasks
+
+A kanban board and a Today list: **Tasks** in the tab bar, or `cmd-shift-k`. **⤢** (or `B`) opens the board in a
+window of its own; drag its corners to resize it (or use the key modes' resize keys), and it keeps that size.
+
+- **Board:** columns of your own. **+ Column** adds one; click a column's name (or `r`) to rename it, with **‹ ›**
+  to move it and **Delete** (a column with tasks hands them to the first other column). Drag a card to another
+  column or between two cards, or use `H`/`L` (to the column left / right) and `J`/`K` (up / down).
+- **Today:** what you plan to do today, then the backlog (everything else that isn't done). The **☀** on a card
+  (or `t`) moves it between the two; dragging works here too. The board's last column counts as done, and its tasks
+  leave both lists.
+- **A task** (click it, or Enter): its title, description, column, Today, attachments and comments. Drop files onto
+  it, or **Add files…** / **Paste image**; write a comment and **Comment** (or `cmd-enter`). Esc closes it.
+- Drop files onto a card to attach them to that task, or onto a column or list for a new task carrying them.
+- **+ Add task** at the end of each list (or `n`): type and Enter, and the box stays open for the next one.
+- Keys: `j`/`k`, `gg`/`G`, `h`/`l` between columns, Enter/`o` open, `t` today, `x` delete (`u` undoes), `b` Today /
+  Board, `B` the window.
+- Stored in `~/.config/herdr-app/data/ks-tasks.json`, attachments in `data/ks-attach/` (neither is in the repo).
 
 ## Pull requests
 
@@ -387,6 +410,7 @@ Only while the `ks` layout shows.
 | `cmd-shift-e` / `cmd-shift-g` / `cmd-shift-u` | Files / Changes / PRs panel |
 | `cmd-shift-m` | Show or hide My PRs |
 | `cmd-shift-j` | Notes panel |
+| `cmd-shift-k` | Tasks panel |
 | `cmd-w` / `cmd-shift-w` | Close tab (asks, 30 s undo) / close pane |
 | `cmd-shift-t` | Undo the last close |
 | `ctrl-;` | Service mode (configurable) |
