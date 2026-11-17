@@ -23,7 +23,7 @@ const SECTIONS = [
 ];
 
 const ZEN = "ks-zen.prefs";
-const zenPrefs = () => ({ backdrop: "theme", opacity: 1, share: 0.78, ...(shared(ZEN) ?? {}) });
+const zenPrefs = () => ({ backdrop: "theme", opacity: 1, share: 0.64, ...(shared(ZEN) ?? {}) });
 const setZen = (patch) => setShared(ZEN, { ...zenPrefs(), ...patch });
 const round = (v) => Math.round(v * 100) / 100;
 
@@ -114,7 +114,7 @@ export default class Settings extends View {
             btn("op-more", "+", () => setZen({ opacity: Math.min(1, round(z.opacity + 0.05)) }))))
           .child(row("Backdrop color", null, ...choice("bd", [["theme", "Theme color"], ["dark", "Dark"]], z.backdrop === "dark" ? "dark" : "theme", (v) => setZen({ backdrop: v }))))
           .child(row(`Size: ${Math.round(z.share * 100)}% of the window`, "Also: drag its corners, Narrower / Wider in its bar, service r then - / +.",
-            ...[0.6, 0.7, 0.78, 0.9].map((v) => btn(`sz-${v}`, `${Math.round(v * 100)}%`, () => setZen({ share: v }), Math.abs(z.share - v) < 0.001))));
+            ...[0.55, 0.64, 0.72, 0.85].map((v) => btn(`sz-${v}`, `${Math.round(v * 100)}%`, () => setZen({ share: v }), Math.abs(z.share - v) < 0.001))));
       }
       case "keys": {
         const cfg = shared("ks-keys.config"), modes = cfg?.modes ?? null;

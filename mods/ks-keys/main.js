@@ -11,7 +11,7 @@
 // - { editor: true }: the editor (a dialog).
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
-import { props, run, theme, openOverlay, closeOverlay, nextCommand, shared, setShared, spaces, focused, hc, exec, appHome, settings, notify, layout, panes } from "herdr";
+import { props, run, theme, openOverlay, closeOverlay, nextCommand, shared, setShared, spaces, focused, hc, exec, appHome, settings, notify, layout, panes, agents } from "herdr";
 import * as km from "./keymap.js";
 
 const OPEN = "ks-keys.open"; // the mode popup's overlay id, so a second entry key replaces it
@@ -341,6 +341,12 @@ export default class Keys extends View {
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24, this.pane);
       // ks-zen zooms: a pane in a split as Herdr does, a pane alone in its tab (a review) over the whole window.
       else if (a.command === "pane.zoom") run(`ks-zen.zoom:${a.args.pane ?? ""}`);
+      // Search works on the focused terminal, and the strip has the keyboard: the terminal gets it back first.
+      else if (a.command === "terminal.search") {
+        const term = this.terminal;
+        if (term) run("pane.focus", { terminal: term });
+        cx.timer.after(150, () => run("terminal.search"));
+      }
       else if (a.command === "pane.go") { setShared(PANEL, null); run("pane.go", a.args); const g = focused(); if (g?.pane) { this.pane = g.pane; this.terminal = g.terminal ?? null; } }
       else if (a.command === "tab.shift") {
         const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;
@@ -383,7 +389,9 @@ export default class Keys extends View {
     const starts = m.bindings.filter((b) => { const k = km.tokens(b.key); return k.length >= seq.length && seq.every((x, i) => k[i] === x); });
     const exact = starts.find((b) => km.tokens(b.key).length === seq.length);
     const longer = starts.some((b) => km.tokens(b.key).length > seq.length);
-    const run = (b, cx) => { const count = this.count ? Number(this.count) : null; this.seq = []; this.count = ""; this.act(b, cx, count); };
+    // A key that does nothing here (fits): say why instead of running it.
+    const notHere = (b) => { const why = this.why(b, this.where()); if (!why) return false; this.seq = []; this.count = ""; this.flash = `${b.label}: ${why}`; this.shown = true; cx.notify(); return true; };
+    const run = (b, cx) => { if (notHere(b)) return; const count = this.count ? Number(this.count) : null; this.seq = []; this.count = ""; this.act(b, cx, count); };
     if (exact && !longer) return run(exact, cx);
     if (starts.length) {
       this.seq = seq; this.flash = `${this.count}${seq.join(" ")}…`; cx.notify();
@@ -397,11 +405,39 @@ export default class Keys extends View {
     cx.notify();
   }
 
+  // Where you are, for fits(): zen, the pane you're in (a terminal or a mod), how many panes its tab has, how many tabs
+  // the space has, how many spaces there are. Read once per render / key.
+  where() {
+    const ps = panes(), p = ps.find((x) => x.pane === this.pane) ?? ps.find((x) => x.focused) ?? null;
+    const sp = spaces().find((s) => s.active);
+    return { zen: Boolean(shared("ks-zen.state")?.win), pane: p, terminal: p?.terminal ?? null,
+      inTab: p ? ps.filter((x) => x.tab === p.tab).length : 0, tabs: sp?.tabs.length ?? 0, spaces: spaces().length, agents: agents().length };
+  }
+  // Whether a key does something here; else why not (a short reason), so the strip leaves it out and a press says so.
+  // Zen shows one pane over everything: only zen, focus, resizing and settings work in it (tabs, spaces, agents and
+  // panes would change what's behind it).
+  why(b, w) {
+    const a = km.parse(b.do), c = a.command ?? "";
+    if (a.leave) return null;
+    if (a.mode) return w.zen && a.mode !== "resize" ? "not in zen" : null;
+    if (w.zen) return /^(ks-zen\.|resize$|ks-keys\.editor$)/.test(c) || (c === "mod.open" && a.args.name === "ks-settings") ? null : "not in zen";
+    if (c === "pane.swap") return w.inTab < 2 ? "only one pane in this tab" : null;
+    if (c === "tab.select") return Number(a.args.index) > w.tabs ? `only ${w.tabs} tab${w.tabs === 1 ? "" : "s"}` : null;
+    if (c === "tab.next" || c === "tab.prev" || c === "tab.shift") return w.tabs < 2 ? "only one tab" : null;
+    if (c === "space.next" || c === "space.prev") return w.spaces < 2 ? "only one space" : null;
+    if (c === "agent.next" || c === "agent.prev") return w.agents < 1 ? "no agents" : null;
+    if (/^terminal\./.test(c)) return !w.terminal ? "not a terminal" : null;
+    return null;
+  }
+  fits(b, w = this.where()) { return !this.why(b, w); }
+
   renderMode(cx) {
     const t = theme(), m = km.config().modes[this.mode];
     if (!m) return div();
     const cfg = km.config();
-    const list = shownBindings(m).filter((b) => !b.do.startsWith("mode:") || km.usable(cfg, b.do.slice(5).trim()));
+    const w = this.where();
+    // Only the keys that work where you are (fits).
+    const list = shownBindings(m).filter((b) => (!b.do.startsWith("mode:") || km.usable(cfg, b.do.slice(5).trim())) && this.fits(b, w));
     const cell = (b, i) => h_flex().id(`b-${i}`).w(CELL).h(ROW).flex_none().gap(8).items_center().px(6).rounded(5).hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => this.act(b, cx))
       .child(div().min_w(34).h(18).px(5).flex().items_center().justify_center().rounded(4).bg(t.accent + "26").text_color(t.accent).text_size(11.5).font_semibold().child(keyLabel(b.key)))

@@ -22,7 +22,8 @@ const ZEN = "ks-zen.state";
 // { backdrop: "theme" | "dark" (its color), opacity: 0.4..1 (1 opaque; below, the layout shows through like glass),
 //   share: the zen window's size as a share of the app window }
 const PREFS = "ks-zen.prefs";
-const prefs = () => ({ backdrop: "theme", opacity: 1, share: 0.78, ...(shared(PREFS) ?? {}) });
+const SHARE = 0.64; // zen's default width, a share of the app window (0.78 was too wide)
+const prefs = () => ({ backdrop: "theme", opacity: 1, share: SHARE, ...(shared(PREFS) ?? {}) });
 const hex2 = (a) => Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0");
 const zen = () => shared(ZEN);
 export const zenOpen = () => Boolean(zen()?.win);
@@ -55,6 +56,16 @@ function currentTarget() {
 const shownIn = (st) => st?.content
   ? { ...st.content, props: { ...(shared(`${st.content.mod}.zen`)?.props ?? st.content.props), zen: true } }
   : st?.terminal;
+
+// Zoom in the tab only (cmd-shift-alt-enter): Herdr's zoom, the pane over its tab, sidebar and side panel left as they
+// are. A full zoom that's on comes off instead.
+function zoomTab(pane) {
+  if (shared(ZOOM)) return zoom(pane);
+  const ps = panes(), id = pane || focused()?.pane, p = ps.find((x) => x.pane === id) ?? ps.find((x) => x.focused);
+  if (!p) return;
+  if (!p.zoomed && ps.filter((x) => x.tab === p.tab).length < 2) return notify({ title: "Nothing to zoom over", body: "This pane is alone in its tab. ⌘⇧↩ zooms it over the window.", level: "info", timeout: 2500 });
+  run("pane.zoom", { pane: p.pane });
+}
 
 // Zoom (pane.zoom from the key modes, the pane menu, cmd-shift-enter): the pane fills the whole window, always the
 // same way. In a split Herdr zooms it over its tab, and either way the sidebar and the side panel hide. Zooming again
@@ -112,7 +123,7 @@ async function openZen() {
   if (!target) return notify({ title: "Nothing to show in zen", body: "Focus a terminal or a review first.", level: "info", timeout: 2500 });
   const terminal = target.terminal ?? null, content = target.content ?? null;
   const { w, h } = await windowSize(), share = prefs().share;
-  const rect = { width: Math.round(w * share), height: Math.round(h * Math.min(0.92, share + 0.1)) };
+  const rect = { width: Math.round(w * share), height: Math.round(h * Math.min(0.92, Math.max(0.84, share + 0.1))) };
   rect.x = Math.round((w - rect.width) / 2); rect.y = Math.round((h - rect.height) / 2);
   const backdrop = openOverlay({ mod: "ks-zen", kind: "window", key: "ks-zen-backdrop", frame: "none", width: 1, height: 1, at: { x: 0, y: 0 }, props: { backdrop: true } });
   // The tab behind must not be drawn while zen shows its terminal: drawn twice at two sizes, the terminal is resized
@@ -170,12 +181,12 @@ async function resizeZen(dw, dh) {
 }
 const widen = (step) => resizeZen(step, 0);
 
-// Back to the default size (78% wide), centered in the window.
+// Back to the default size (SHARE wide), centered in the window.
 async function resetZen() {
   const st = zen();
   if (!st?.win) return;
-  const { w, h } = await windowSize(), share = 0.78;
-  const rect = { width: Math.round(w * share), height: Math.round(h * Math.min(0.92, share + 0.1)) };
+  const { w, h } = await windowSize(), share = SHARE;
+  const rect = { width: Math.round(w * share), height: Math.round(h * Math.min(0.92, Math.max(0.84, share + 0.1))) };
   rect.x = Math.round((w - rect.width) / 2); rect.y = Math.round((h - rect.height) / 2);
   setShared(PREFS, { ...prefs(), share });
   showZen(shownIn(st), rect, false);
@@ -202,11 +213,14 @@ export default class Zen extends View {
     }
     // The layout copy starts with the layout, and a layout switch closes windows: zen isn't open any more.
     if (zen()) setShared(ZEN, null);
+    // Once: a width saved before the narrower default comes down to it (it read as too wide).
+    if (!(shared(PREFS) ?? {}).narrowed) setShared(PREFS, { ...prefs(), share: Math.min(prefs().share, SHARE), narrowed: true });
     cx.spawn(async (cx) => {
       for (;;) {
         const c = await nextCommand();
         if (c === "toggle") await toggleZen();
         else if (c === "zoom" || c.startsWith("zoom:")) zoom(c.slice(5));
+        else if (c === "zoomtab" || c.startsWith("zoomtab:")) zoomTab(c.slice(8));
         else if (c === "focus") toggleFocus();
         else if (c === "wider") await widen(0.02);
         else if (c === "narrower") await widen(-0.02);

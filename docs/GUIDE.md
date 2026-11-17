@@ -236,6 +236,9 @@ Key chords as modes, in the self-contained `ks-keys` mod. Everything works as us
 then a strip at the bottom of the window shows that mode's keys and catches what you type next. It works the same
 in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 
+- **The strip shows only keys that work where you are:** no swap with one pane, no tab 7 with three tabs, no next
+  space with one space, no terminal keys in a review or panel, and in zen only zen's own keys. A hidden key pressed
+  anyway says why in the strip.
 - **Service mode** is sticky: once in, its keys keep working until Esc. A key that opens something to type into
   (rename, new space, palette, the space picker, search, a close confirmation, the editors) leaves it first.
 - **Sticky** modes in general (service, vim, move, resize, tabs, spaces): keys repeat until Esc (or a "leave" key
@@ -320,8 +323,10 @@ whatever theme is showing.
 - `cmd-shift-z` again (or Exit) closes it. Switching layouts closes it too.
 - While zen is open the space shows a blank "zen" tab, so your tab's terminal is drawn only in zen (at zen's size);
   closing zen removes it and brings your tab back.
-- In zen, service mode's pane keys (`h j k l`, splits, zoom, swap) do nothing: zen shows one terminal. `-` / `+` / `=`
-  resize and center it, and the key strip stays in front.
+- In zen the key strip shows only what works there: zen itself, focus mode, resizing (`-` / `=` / `_` / `+` / `0`),
+  settings and the editor. Tab, space, agent and pane keys would change what's behind zen, so they're hidden (pressed
+  anyway, the strip says why). The strip stays in front.
+- Zen opens 64% as wide as the window (Narrower / Wider and settings change it).
 
 ## Focus mode
 
@@ -382,7 +387,8 @@ Only while the `ks` layout shows.
 | `cmd-shift-t` | Undo the last close |
 | `ctrl-;` | Service mode (configurable) |
 | `cmd-shift-z` | Zen mode |
-| `cmd-shift-enter` | Zoom the pane (a pane alone in its tab, like a review: hide the sidebar and panel) |
+| `cmd-shift-enter` | Zoom the pane over the whole window (other panes, sidebar and side panel hidden) |
+| `cmd-shift-alt-enter` | Zoom the pane over its tab only (sidebar and side panel stay) |
 | `cmd-shift-f` | Focus mode |
 | `cmd-shift-,` | herdr-ks settings |
 | `cmd-k` | Key modes editor (configurable) |
