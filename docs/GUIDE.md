@@ -109,9 +109,11 @@ uncommitted work.
 with **↑** / **↓** to the previous / next change in that file, and **← File** / **File →** for the previous / next
 file (branch review).
 
-**Zoom and zen:** **zoom** (`cmd-shift-alt-enter`, `ctrl-w o`, service `z`, the pane header or menu) works the same on
-every pane, a review tab included: the pane fills the whole window (other panes in its tab, the sidebar and the side
-panel hide); zoom again brings everything back. A zoomed pane's header shows **⤢ Zoomed · N hidden** (click it to
+**Zoom and zen:** two zooms, each the same on every pane. **Over its tab** (`cmd-shift-enter`, `ctrl-w o`, service /
+tmux / move `z`, vim `o`, the pane header's Zoom): the other panes in the tab hide, the sidebar and side panel stay.
+**Over the window** (`cmd-shift-alt-enter`, `ctrl-w O`, tmux / move `Z`, vim `O`, the pane menu's "Zoom over the
+window"): the sidebar and side panel hide too. A pane alone in its tab (a review) zooms over the window either way.
+Zooming again brings everything back. A zoomed pane's header shows **⤢ Zoomed · N hidden** (click it to
 unzoom) and its tab shows **⤢**.
 **Zen** (`cmd-shift-z`, service `Z`, vim `zz`) opens the review in the zen window, on the file you were on; Esc or
 Exit leaves zen, and the review tab moves to the file you ended on.
@@ -253,7 +255,7 @@ in a Claude Code terminal: Herdr takes the key before the terminal sees it.
 work anywhere, not only from service mode:
 
 - `ctrl-w` then one window command, as in vim: `h j k l` (or `ctrl-h` …) go, `H J K L` swap, `s`/`v` split,
-  `n` new pane, `c`/`q` close, `o` zoom, `+`/`-` taller/shorter, `>`/`<` wider/narrower, `=` default size (all on
+  `n` new pane, `c`/`q` close, `o` zoom over the tab, `O` over the window, `+`/`-` taller/shorter, `>`/`<` wider/narrower, `=` default size (all on
   what you're in), `T` new tab, `gt`/`gT` tabs, `z` zen, `f` focus mode, `u` undo close, `:` palette, `N` vim
   normal mode. A count after the prefix repeats it (`ctrl-w 5 +`).
 - `ctrl-\` enters vim's normal mode directly (as neovim's `ctrl-\ ctrl-n`); there `ctrl-w …` works too.

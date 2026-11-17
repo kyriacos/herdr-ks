@@ -28,7 +28,7 @@ export const KEY = "ks-keys.config";
 // Commands that open a dialog, a picker or a search: a sticky mode leaves before them, so they get the keyboard.
 export const EXITS = new Set(["tab.rename", "space.rename", "app.palette", "mod.open", "terminal.search", "ks-keys.editor",
   "ks-zen.settings", "ks-tabs.close", "ks-tabs.close-space", "space.new", "app.help"]);
-export const VERSION = 14;
+export const VERSION = 15;
 
 const go = [
   { key: "h", label: "Go left", do: "pane.go direction=left" },
@@ -62,8 +62,9 @@ const windowKeys = [
   { key: "n", label: "New pane (split down)", do: "pane.split direction=down" },
   { key: "c", label: "Close pane", do: "ks-tabs.close-pane" },
   { key: "q", label: "Close pane", do: "ks-tabs.close-pane" },
-  { key: "o", label: "Zoom pane (only)", do: "pane.zoom" },
-  { key: "ctrl-o", label: "Zoom pane (only)", do: "pane.zoom" },
+  { key: "o", label: "Zoom pane over its tab", do: "pane.zoom" },
+  { key: "ctrl-o", label: "Zoom pane over its tab", do: "pane.zoom" },
+  { key: "O", label: "Zoom pane over the window", do: "ks-zen.zoom" },
   { key: "+", label: "Taller (what you're in)", do: "resize focus=tall by=1" },
   { key: "-", label: "Shorter (what you're in)", do: "resize focus=tall by=-1" },
   { key: ">", label: "Wider (what you're in)", do: "resize focus=wide by=1" },
@@ -93,7 +94,7 @@ export const DEFAULTS = {
         { key: "%", label: "Split right", do: "pane.split direction=right" },
         { key: "\"", label: "Split down", do: "pane.split direction=down" },
         { key: "x", label: "Close pane", do: "ks-tabs.close-pane" },
-        { key: "z", label: "Zoom pane", do: "pane.zoom" },
+        { key: "z", label: "Zoom pane over its tab", do: "pane.zoom" },
         { key: "c", label: "New tab", do: "tab.new" },
         { key: "n", label: "Next tab", do: "tab.next" },
         { key: "p", label: "Previous tab", do: "tab.prev" },
@@ -134,7 +135,8 @@ export const DEFAULTS = {
         { key: "%", label: "Split right", do: "pane.split direction=right" },
         { key: "\"", label: "Split down", do: "pane.split direction=down" },
         { key: "x", label: "Close pane", do: "ks-tabs.close-pane" },
-        { key: "z", label: "Zoom pane", do: "pane.zoom" },
+        { key: "z", label: "Zoom pane over its tab", do: "pane.zoom" },
+        { key: "Z", label: "Zoom pane over the window", do: "ks-zen.zoom" },
         { key: "c", label: "New tab", do: "tab.new" },
         { key: "n", label: "Next tab", do: "tab.next" },
         { key: "p", label: "Previous tab", do: "tab.prev" },
@@ -187,7 +189,8 @@ export const DEFAULTS = {
         { key: "/", label: "Search terminal", do: "terminal.search" },
         { key: "s", label: "Split down", do: "pane.split direction=down" },
         { key: "v", label: "Split right", do: "pane.split direction=right" },
-        { key: "o", label: "Zoom pane (only)", do: "pane.zoom" },
+        { key: "o", label: "Zoom pane over its tab", do: "pane.zoom" },
+        { key: "O", label: "Zoom pane over the window", do: "ks-zen.zoom" },
         { key: "d d", label: "Close pane", do: "ks-tabs.close-pane" },
         { key: "d t", label: "Close tab", do: "ks-tabs.close" },
         { key: "t", label: "New tab", do: "tab.new" },
@@ -205,7 +208,8 @@ export const DEFAULTS = {
       name: "move", entry: "", sticky: true, counts: true,
       bindings: [
         ...go, ...swap,
-        { key: "z", label: "Zoom pane", do: "pane.zoom" },
+        { key: "z", label: "Zoom pane over its tab", do: "pane.zoom" },
+        { key: "Z", label: "Zoom pane over the window", do: "ks-zen.zoom" },
         { key: "s", label: "Split down", do: "pane.split direction=down" },
         { key: "v", label: "Split right", do: "pane.split direction=right" },
         { key: "x", label: "Close pane", do: "ks-tabs.close-pane" },
@@ -329,6 +333,10 @@ function upgrade(old) {
     for (const k of ["off", "counts"]) if (mine[k] === undefined) mine[k] = m[k];
     const taken = new Set(mine.bindings.map((b) => tokens(b.key).join(" ")));
     for (const b of m.bindings) if (!taken.has(tokens(b.key).join(" "))) mine.bindings.push(clone(b));
+  }
+  // Version 15: zoom keys say which zoom they are (plain: over its tab; capital O / Z and ⌘⌥⇧↩: over the window).
+  if ((old.version ?? 0) < 15) for (const m of Object.values(c.modes)) for (const b of m.bindings ?? []) {
+    if (b.do === "pane.zoom" && /^Zoom pane( \(only\))?$/.test(b.label)) b.label = "Zoom pane over its tab";
   }
   // Version 14: the strip waits 1 s (500 ms felt too short); an older default goes up, a chosen one stays.
   if (c.delay === undefined || ((old.version ?? 0) < 14 && c.delay === 500)) c.delay = DEFAULTS.delay;

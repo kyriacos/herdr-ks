@@ -42,7 +42,8 @@ function menuRows(target) {
   return [
     { label: "Split right", icon: "panel-right", inTab: true, act: () => run("pane.split", { direction: "right", pane }), keys: shortcut(["pane.split:right"]) },
     { label: "Split down", icon: "panel-right", inTab: true, act: () => run("pane.split", { direction: "down", pane }), keys: shortcut(["pane.split:down"]) },
-    { label: "Zoom", icon: "square", inTab: true, act: () => run(`ks-zen.zoom:${pane}`), keys: shortcut(["pane.zoom", "ks-zen.zoom"]) },
+    { label: "Zoom", icon: "square", inTab: true, act: () => run(`ks-zen.zoomtab:${pane}`), keys: shortcut(["ks-zen.zoomtab"]) },
+    { label: "Zoom over the window", icon: "square", inTab: true, act: () => run(`ks-zen.zoom:${pane}`), keys: shortcut(["ks-zen.zoom"]) },
     ...(term ? [term.labels?.["herdr.right-click"] === "program"
       ? { label: "Use Herdr right-click menu", icon: "terminal", act: () => run("terminal.right_click", { terminal: term.address, to: "menu" }) }
       : { label: "Send right-clicks to pane", icon: "terminal", act: () => run("terminal.right_click", { terminal: term.address, to: "program" }) }] : []),
@@ -217,7 +218,7 @@ export default class Pane extends View {
         .child(this.button(t, `ph-n-${pane}`, "rename", "Rename", () => this.openRename(p, given, fallback)))
         .child(this.button(t, `ph-r-${pane}`, "split-right", "Split right", () => run("pane.split", { direction: "right", pane })))
         .child(this.button(t, `ph-d-${pane}`, "split-down", "Split down", () => run("pane.split", { direction: "down", pane })))
-        .child(this.button(t, `ph-z-${pane}`, zoomed ? "unzoom" : "zoom", zoomed ? "Unzoom" : "Zoom", () => run(`ks-zen.zoom:${pane}`)))
+        .child(this.button(t, `ph-z-${pane}`, zoomed ? "unzoom" : "zoom", zoomed ? "Unzoom" : "Zoom", () => run(`ks-zen.zoomtab:${pane}`)))
         .child(this.button(t, `ph-x-${pane}`, "close", "Close", () => closePane(pane))));
   }
 

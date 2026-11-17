@@ -339,8 +339,9 @@ export default class Keys extends View {
           .then((msg) => { if (msg && !this.leaving) { this.flash = msg; this.shown = true; cx.notify(); } }).catch(() => {});
       }
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24, this.pane);
-      // ks-zen zooms: a pane in a split as Herdr does, a pane alone in its tab (a review) over the whole window.
-      else if (a.command === "pane.zoom") run(`ks-zen.zoom:${a.args.pane ?? ""}`);
+      // ks-zen zooms: pane.zoom over its tab (as cmd-shift-enter), ks-zen.zoom over the whole window (cmd-shift-alt-enter).
+      else if (a.command === "pane.zoom") run(`ks-zen.zoomtab:${a.args.pane ?? ""}`);
+      else if (a.command === "ks-zen.zoom" || a.command === "ks-zen.zoomtab") run(`${a.command}:${this.pane ?? ""}`);
       // Search works on the focused terminal, and the strip has the keyboard: the terminal gets it back first.
       else if (a.command === "terminal.search") {
         const term = this.terminal;
@@ -420,7 +421,7 @@ export default class Keys extends View {
     const a = km.parse(b.do), c = a.command ?? "";
     if (a.leave) return null;
     if (a.mode) return w.zen && a.mode !== "resize" ? "not in zen" : null;
-    if (w.zen) return /^(ks-zen\.|resize$|ks-keys\.editor$)/.test(c) || (c === "mod.open" && a.args.name === "ks-settings") ? null : "not in zen";
+    if (w.zen) return (/^(ks-zen\.|resize$|ks-keys\.editor$)/.test(c) && !/^ks-zen\.zoom/.test(c)) || (c === "mod.open" && a.args.name === "ks-settings") ? null : "not in zen";
     if (c === "pane.swap") return w.inTab < 2 ? "only one pane in this tab" : null;
     if (c === "tab.select") return Number(a.args.index) > w.tabs ? `only ${w.tabs} tab${w.tabs === 1 ? "" : "s"}` : null;
     if (c === "tab.next" || c === "tab.prev" || c === "tab.shift") return w.tabs < 2 ? "only one tab" : null;
