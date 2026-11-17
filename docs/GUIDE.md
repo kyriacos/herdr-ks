@@ -109,9 +109,9 @@ uncommitted work.
 with **↑** / **↓** to the previous / next change in that file, and **← File** / **File →** for the previous / next
 file (branch review).
 
-**Zoom and zen:** two zooms, each the same on every pane. **Over its tab** (`cmd-shift-enter`, `ctrl-w o`, service /
+**Zoom and zen:** two zooms, each the same on every pane. **Over its tab** (`cmd-shift-enter`, `ctrl-w o`, service `o`/`z`,
 tmux / move `z`, vim `o`, the pane header's Zoom): the other panes in the tab hide, the sidebar and side panel stay.
-**Over the window** (`cmd-shift-alt-enter`, `ctrl-w O`, tmux / move `Z`, vim `O`, the pane menu's "Zoom over the
+**Over the window** (`cmd-shift-alt-enter`, `ctrl-w O`, service `O`, tmux / move `Z`, vim `O`, the pane menu's "Zoom over the
 window"): the sidebar and side panel hide too. A pane alone in its tab (a review) zooms over the window either way.
 Zooming again brings everything back. A zoomed pane's header shows **⤢ Zoomed · N hidden** (click it to
 unzoom) and its tab shows **⤢**.
@@ -285,7 +285,7 @@ half a page, Enter/`o` open, `h`/`l` leave towards that side, Esc back to the te
 
 | Mode | Enter with | Keys |
 |---|---|---|
-| service (sticky) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `z` zoom pane, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `o` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `Z` zen, `f` focus mode, `F` focus & zen settings, `.` all settings, `-`/`=` narrower/wider and `_`/`+` shorter/taller (what you're in), `0` default size, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor, Esc out |
+| service (sticky) | `ctrl-;` | `%` split right, `"` split down, `x` close pane, `z`/`o` zoom pane over its tab, `O` over the window, `c` new tab, `n`/`p` next/previous tab, `1`–`9` tab, `&` close tab, `,` rename tab, `$` rename space, `(`/`)` or `P`/`N` previous/next space, `h j k l` / arrows go to a pane, `H J K L` swap panes, `a` next agent, `s` pick a space, `/` search, `:` palette, `u` undo close, `Z` zen, `f` focus mode, `F` focus & zen settings, `.` all settings, `-`/`=` narrower/wider and `_`/`+` shorter/taller (what you're in), `0` default size, `r` resize mode, `[` vim mode, `m` move mode, `t` tab mode, `S` space mode, `?` editor, Esc out |
 | tmux (one key, off) | `ctrl-b` once switched on | `%` `"` split, `x` close pane, `z` zoom, `c` `n` `p` tabs, `&` close tab, `,` `$` rename, `(` `)` spaces, `o` next agent, `s` pick a space, `h j k l` go, `1`–`9`, `[` vim mode |
 | window (one key, vim keys) | `ctrl-w` | see **Vim keys** above |
 | vim (normal mode for the window) | service `[`, `ctrl-\` with vim keys | `h j k l` pane, `H J K L` swap, `gt`/`gT` or `w`/`b` next/previous tab, `3gt` tab 3, `}`/`{` next/previous space, `3gs` space 3, `ctrl-d`/`ctrl-u` half page, `ctrl-f`/`ctrl-b` page, `ctrl-e`/`ctrl-y` line, `gg`/`G` top/bottom of the scrollback, `/` search, `s`/`v` split, `o` zoom, `dd` close pane, `dt` close tab, `t` new tab, `r` rename, `u` undo close, `zz` zen, `:` palette, `ctrl-w …` window commands, `i`/`a`/`q`/Esc back to the terminal |

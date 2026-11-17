@@ -28,7 +28,7 @@ export const KEY = "ks-keys.config";
 // Commands that open a dialog, a picker or a search: a sticky mode leaves before them, so they get the keyboard.
 export const EXITS = new Set(["tab.rename", "space.rename", "app.palette", "mod.open", "terminal.search", "ks-keys.editor",
   "ks-zen.settings", "ks-tabs.close", "ks-tabs.close-space", "space.new", "app.help"]);
-export const VERSION = 15;
+export const VERSION = 16;
 
 const go = [
   { key: "h", label: "Go left", do: "pane.go direction=left" },
@@ -103,7 +103,11 @@ export const DEFAULTS = {
         { key: "$", label: "Rename space", do: "space.rename" },
         { key: "(", label: "Previous space", do: "space.prev" },
         { key: ")", label: "Next space", do: "space.next" },
-        { key: "o", label: "Next agent", do: "agent.next" },
+        { key: "N", label: "Next space", do: "space.next" },
+        { key: "P", label: "Previous space", do: "space.prev" },
+        { key: "o", label: "Zoom pane over its tab", do: "pane.zoom" },
+        { key: "O", label: "Zoom pane over the window", do: "ks-zen.zoom" },
+        { key: "a", label: "Next agent", do: "agent.next" },
         { key: "s", label: "Pick a space", do: "mod.open name=picker" },
         { key: "/", label: "Search terminal", do: "terminal.search" },
         { key: ":", label: "Command palette", do: "app.palette" },
@@ -326,6 +330,12 @@ function upgrade(old) {
     const mine = c.modes[id];
     if (!mine) continue;
     mine.bindings = mine.bindings.filter((b) => !(["-", "=", "+", "_", "<", ">", "v", "^", ",", ".", "0"].includes(b.key) && /^resize /.test(b.do)));
+  }
+  // Version 16: service o / O zoom (over its tab / the window) like ctrl-w and vim; next agent moves to a, and N / P
+  // go to the next / previous space. An o that still runs next agent gives way (the merge below adds the rest).
+  if ((old.version ?? 0) < 16 && c.modes.service) {
+    const sv = c.modes.service;
+    sv.bindings = sv.bindings.filter((b) => !(b.key === "o" && b.do === "agent.next"));
   }
   for (const [id, m] of Object.entries(DEFAULTS.modes)) {
     if (!c.modes[id]) { c.modes[id] = clone(m); continue; }
