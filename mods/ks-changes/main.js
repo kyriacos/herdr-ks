@@ -1,4 +1,5 @@
 // Roundup's Changes panel, cloned from Herdr's `changes` (0.1.15) and extended:
+// - search (/): narrows the files by path, and in Commits the commits;
 // - a checkout bar: follow the focused terminal, pin any worktree of the repo, or follow an agent
 //   (Claude Code: its real working folder, read from its session log, not where it was launched);
 // - matching repos: sibling repos (same parent folder as the main checkout) with a checkout on the
@@ -180,6 +181,18 @@ export default class Changes extends View {
       if (had !== Boolean(this.message.trim())) cx.notify();
     });
     this.input.on("submit", (_e, cx) => { if (this.sections.filter((s) => s.files.length).length === 1) this.commit(this.sections.find((s) => s.files.length), cx); });
+    // Search: narrows the files (every word in the path) and, in Commits, the commits (subject, sha, author). `/`.
+    this.query = "";
+    this.search = InputState.new({ placeholder: "Search files (and commits)  (/)" });
+    this.search.on("change", (_e, cx) => { this.query = this.search.value().trim().toLowerCase(); this.cursor = 0; cx.notify(); });
+    this.search.on("focus", (_e, cx) => { this.searching = true; cx.notify(); });
+    this.search.on("blur", (_e, cx) => { this.searching = false; cx.notify(); });
+    this.search.on("submit", (_e, cx) => {
+      // Enter: the first match opens, and the keyboard goes back to the list.
+      const first = this.sections.flatMap((x) => this.shownFiles(x).map((f) => ({ s: x, f })))[0];
+      if (first && !(this.scope === "commits" && !this.picked)) this.pick(first.s, first.f.path, cx);
+      this.handle.focus(); cx.notify();
+    });
     this.input.on("focus", (_e, cx) => { this.typing = true; cx.notify(); });
     this.input.on("blur", (_e, cx) => { this.typing = false; cx.notify(); });
     this.refresh(cx);
@@ -239,13 +252,14 @@ export default class Changes extends View {
     if (k === "t") { this.setTree(!this.tree, cx); return true; }
     if (k === "w") { this.setWrap(!this.wrap, cx); return true; }
     if (k === "c") { this.input.focus(); return true; }
+    if (k === "/") { this.search.focus(); return true; }
     if (k === "R") { this.openBranchReview(); return true; }
     if (k === "backspace" && this.picked) { this.leaveCommit(cx); this.cursor = 0; return true; }
     if (this.scope === "commits" && !this.picked) {
-      const commits = this.sections.flatMap((s) => s.commitList ?? []);
+      const commits = this.sections.flatMap((s) => this.shownCommits(s));
       return listKey(this, e, commits.length, (i) => { this.openCommit(commits[i], cx); this.cursor = 0; });
     }
-    const all = this.sections.filter((s) => !this.folded.has(s.root)).flatMap((s) => this.filesOf(s).map((f) => ({ s, f })));
+    const all = this.sections.filter((s) => !this.folded.has(s.root)).flatMap((s) => this.shownFiles(s).map((f) => ({ s, f })));
     const cur = all.findIndex(({ s, f }) => this.open && s.root === this.open.root && f.path === this.open.path);
     this.cursor = cur >= 0 ? cur : (this.cursor ?? 0);
     const before = this.cursor;
@@ -289,6 +303,14 @@ export default class Changes extends View {
     if (this.scope === "commits") return this.picked && this.picked.root === s.root ? this.pickedFiles : [];
     return s.files;
   }
+  // The files the list shows: filesOf, narrowed by the search.
+  matches(hay) {
+    if (!this.query) return true;
+    const h = String(hay).toLowerCase();
+    return this.query.split(/\s+/).every((w) => h.includes(w));
+  }
+  shownFiles(s) { const all = this.filesOf(s); return this.query ? all.filter((f) => this.matches(f.path)) : all; }
+  shownCommits(s) { const all = s.commitList ?? []; return this.query ? all.filter((c) => this.matches(`${c.subject} ${c.short ?? ""} ${c.sha} ${c.author ?? ""}`)) : all; }
   setScope(scope, cx) {
     if (scope === this.scope && !this.picked) return;
     this.scope = scope; save("scope", scope);
@@ -574,7 +596,8 @@ export default class Changes extends View {
 
   filesInto(s, files, t, out, rootKey) {
     if (!this.tree) { for (const f of files) out.push(this.fileRow(s, f, t)); return; }
-    for (const r of treeRows(files, this.collapsed, rootKey)) {
+    // While searching, every folder with a match is open.
+    for (const r of treeRows(files, this.query ? new Set() : this.collapsed, rootKey)) {
       if (r.t === "file") { out.push(this.fileRow(s, r.f, t, r.depth)); continue; }
       out.push(h_flex().id(`dir-${this.scope}-${r.key}`).h(24).flex_none().pl(8 + r.depth * 14).pr(8).gap(6).items_center().rounded(7).cursor_pointer()
         .text_size(12).text_color(t.muted).hover((st) => st.bg(t.hover))
@@ -600,6 +623,21 @@ export default class Changes extends View {
       .when(showingFiles, (e) => e.child(h_flex().gap(1).p(1).rounded(6).border_1().border_color(t.border)
         .child(seg("view-tree", "Tree", this.tree, (cx) => this.setTree(true, cx)))
         .child(seg("view-flat", "Flat", !this.tree, (cx) => this.setTree(false, cx)))));
+  }
+
+  // The search box, with how many match.
+  searchBar(t) {
+    const picking = this.scope === "commits" && !this.picked;
+    const total = this.sections.reduce((n, s) => n + (picking ? (s.commitList ?? []).length : this.filesOf(s).length), 0);
+    const shown = this.sections.reduce((n, s) => n + (picking ? this.shownCommits(s).length : this.shownFiles(s).length), 0);
+    return h_flex().h(34).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
+      .child(div().id("changes-search").flex_1().min_w(0).h(24).px(8).flex().items_center().rounded(6).border_1()
+        .border_color(this.searching ? t.accent : t.border).bg(t.chrome).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .child(Input.new(this.search).h_full().text_size(11.5).text_color(t.foreground)))
+      .when(Boolean(this.query), (e) => e
+        .child(div().flex_none().text_size(10.5).text_color(t.dim).child(`${shown} of ${total} ${picking ? "commits" : "files"}`))
+        .child(div().id("changes-search-x").flex_none().px(5).rounded(4).text_size(11).text_color(t.muted).cursor_pointer()
+          .hover((st) => st.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => { this.search.set_value(""); this.query = ""; cx.notify(); }).child("✕")));
   }
 
   // Above the diff: the open file and what to do with it.
@@ -630,7 +668,7 @@ export default class Changes extends View {
     let listHeight = 12;
     const push = (el, h) => { listRows.push(el); listHeight += h; };
     for (const s of secs) {
-      const info = s.branchInfo, shown = this.filesOf(s);
+      const info = s.branchInfo, shown = this.shownFiles(s);
       if (this.scope === "commits" && this.picked && this.picked.root !== s.root) continue;
       const folded = this.folded.has(s.root);
       if (multi || this.scope !== "working") push(v_flex().id(`sec-${s.root}`).flex_none().px(8).pt(4).pb(4).mt(listRows.length ? 4 : 0).gap(1)
@@ -647,8 +685,8 @@ export default class Changes extends View {
             : `${info?.base ? `vs ${info.base}` : "no base branch"} · ${info?.commits ?? 0} commit${info?.commits === 1 ? "" : "s"}${info?.onBase ? " not pushed" : ""}`))), this.scope === "working" ? 30 : 44);
       if (folded && (multi || this.scope !== "working")) continue;
       if (this.scope === "commits" && !this.picked) {
-        const list = s.commitList ?? [];
-        if (!list.length) push(div().px(30).h(22).flex_none().text_size(11).text_color(t.dim).child(s.commitList ? "No commits on this branch yet" : "Reading commits…"), 22);
+        const list = this.shownCommits(s);
+        if (!list.length) push(div().px(30).h(22).flex_none().text_size(11).text_color(t.dim).child(!s.commitList ? "Reading commits…" : this.query ? `No commit matches "${this.query}"` : "No commits on this branch yet"), 22);
         for (const c of list) push(v_flex().id(`commit-${s.root}-${c.sha}`).flex_none().px(10).py(4).gap(1).rounded(7).cursor_pointer()
           .hover((st) => st.bg(t.hover)).on_click((_e, cx) => this.openCommit(c, cx))
           .child(div().text_size(12).truncate().text_color(c.sha === WORKTREE ? t.accent : t.foreground).child(c.subject))
@@ -662,8 +700,8 @@ export default class Changes extends View {
       const before = listRows.length;
       this.filesInto(s, shown, t, listRows, `${this.scope}\n${this.picked?.sha ?? ""}\n${s.root}`);
       listHeight += (listRows.length - before) * 28;
-      const none = this.scope === "working" ? "No uncommitted changes" : this.scope === "branch" ? (info?.onBase ? `On ${info.base} itself: nothing to compare. Commits shows its history.` : "No changes on this branch") : "No files in this commit";
-      if (!shown.length && (multi || this.scope !== "working")) push(div().px(30).h(22).flex_none().text_size(11).text_color(t.dim).child(none), 22);
+      const none = this.query && this.filesOf(s).length ? `No file matches "${this.query}"` : this.scope === "working" ? "No uncommitted changes" : this.scope === "branch" ? (info?.onBase ? `On ${info.base} itself: nothing to compare. Commits shows its history.` : "No changes on this branch") : "No files in this commit";
+      if (!shown.length && (multi || this.scope !== "working" || this.query)) push(div().px(30).h(22).flex_none().text_size(11).text_color(t.dim).child(none), 22);
       if (s.limited && this.scope === "working") push(div().px(8).text_size(11).text_color(t.dim).child("Showing the first 1,000 changed files"), 20);
     }
     const empty = this.error || (this.loading && !secs.length ? "Loading changes…" : secs.length ? "No uncommitted changes" : "No folder");
@@ -686,6 +724,12 @@ export default class Changes extends View {
     return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focusedNow(this, "ks-changes") ? t.accent : t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {
         if (this.typing) { if (e.key === "escape") { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); } return; }
+        // Typing a search: Esc clears it, a second Esc goes back to the list.
+        if (this.searching) {
+          if (e.key === "escape") { if (this.search.value()) this.search.set_value(""); else this.handle.focus(); cx.stop_propagation(); cx.notify(); }
+          else if (e.key === "down") { this.handle.focus(); cx.stop_propagation(); cx.notify(); }
+          return;
+        }
         if (this.vimKey(e, cx)) { cx.stop_propagation(); cx.notify(); }
       })
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
@@ -697,6 +741,7 @@ export default class Changes extends View {
           .on_click(() => this.openBranchReview()).child("Review branch"))))
       .children(this.checkoutBar(t))
       .child(this.scopeBar(t))
+      .child(this.searchBar(t))
       .child(div().flex_1().min_h(44).max_h(Math.max(listHeight, 44)).relative().border_b(1).border_color(t.border)
         .child(v_flex().id("changes-list").absolute().inset_0().overflow_y_scroll().p(6).children(listRows)
           .when(!secs.length, (e) => e.child(div().p(8).text_color(this.error ? t.ansi1 : t.dim).child(empty))))

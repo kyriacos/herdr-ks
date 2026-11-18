@@ -63,6 +63,10 @@ The interface font is whatever you pick in Herdr's Settings (the layout sets non
 
 `cmd-shift-g`. What changed, with a highlighted diff and a commit box.
 
+**Search** (the box under Uncommitted / Branch / Commits, or `/`): every word must appear in a file's path; the
+list, the counts and `j`/`k` follow it, and folders with a match open. In Commits it narrows the commits by
+subject, sha or author. Enter opens the first match, Esc clears, ✕ too.
+
 **Which checkout it shows** (the bar under the title):
 
 | Choice | Shows |
