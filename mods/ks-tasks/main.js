@@ -22,6 +22,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { exec, appHome, spaces, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand } from "herdr";
 import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
+import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
 import { spaceName } from "./lib/spacenames.js";
 import { takeFocus, watchFocus, focusedNow, leave } from "./lib/panelkeys.js";
@@ -207,7 +208,7 @@ export default class Tasks extends View {
     // "today" | "board"; the window remembers its own (it opens on the board).
     this.viewKey = this.board ? "boardView" : "view"; this.view = load(this.viewKey, this.board ? "board" : "today");
     // This space's tasks, or all: the panel starts on this space, the window on all (each remembers its own).
-    this.scopeKey = this.board ? "boardScope" : "scope"; this.all = load(this.scopeKey, this.board);
+    this.scopeKey = this.board ? "boardScope" : "scope"; this.all = load(this.scopeKey, this.board || Boolean(pref("tasksAll")));
     if ((props() ?? {}).all) this.all = true; // opened from the sidebar's Tasks: every space
     this.scroll = ScrollHandle.new(); this.boardScroll = ScrollHandle.new();
     this.cur = { col: 0, row: 0 }; this.row = 0;

@@ -6,8 +6,10 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, theme, run, shared, setShared, openOverlay } from "herdr";
 import { dimmed } from "./lib/focus.js";
+import { pref } from "./lib/prefs.js";
 
-const BLOCK = "now-tasks", HEAD = 30, ROW = 40, MAX = 3;
+const BLOCK = "now-tasks", HEAD = 30, ROW = 40;
+const max = () => Math.max(1, Math.min(8, pref("nowTasksMax") ?? 3)); // how many it lists (settings)
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 const ago = (ms) => {
@@ -47,7 +49,7 @@ export default class NowTasks extends View {
 
   // The block's height: the header, and one row per task shown (plus a "more" line).
   fit() {
-    const v = this.view(), rows = Math.min(v.now.length, MAX);
+    const v = this.view(), MAX = max(), rows = Math.min(v.now.length, MAX);
     const px = this.collapsed ? HEAD : HEAD + (rows ? rows * ROW + (v.now.length > MAX ? 20 : 0) + 6 : 22);
     if (px !== this.px) { this.px = px; run("layout.resize", { id: BLOCK, px }); }
   }
@@ -65,7 +67,8 @@ export default class NowTasks extends View {
   renderInner(cx) {
     const r = shared("ks-tasks.rev") ?? 0;
     if (r !== this.rev) { if (this.rev !== null) this.read(cx); this.rev = r; }
-    const t = theme(), v = this.view();
+    const t = theme(), v = this.view(), MAX = max();
+    if (this.lastMax !== MAX) { this.lastMax = MAX; this.fit(); }
     const pill = (label, tone, filled = false) => div().flex_none().px(5).rounded(6).border_1().border_color(tone + "66").bg(filled ? tone + "24" : null).text_size(10).text_color(tone).child(label);
     return v_flex().id("nowtasks").size_full().min_h(0).bg(t.chrome).text_color(t.foreground)
       .child(h_flex().id("nowtasks-head").h(HEAD).flex_none().px(12).gap(6).items_center().cursor_pointer()

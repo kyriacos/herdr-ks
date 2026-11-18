@@ -386,10 +386,14 @@ The amount is set in the [settings](#settings) (− / + in 5% steps, or 20 / 35 
 ## Settings
 
 Every ks setting in one panel, like Herdr's Settings: the **⚙** at the right of the tab bar, the main menu's
-**herdr-ks settings…**, `cmd-shift-,`, or service `.`. Changes apply at once.
+**herdr-ks settings…**, `cmd-shift-,`, or service `.`. Changes apply at once, and each has a line saying what it
+does. Layout choices are kept in Herdr's shared state and put back after a reinstall.
 
 | Section | What you can change |
 |---|---|
+| Layout | Side panel left or right; which side panels get a tab bar button; the sidebar's sections shown or hidden, and their order (↑ ↓); reset to the defaults |
+| Tasks & notes | Tasks panel starts on this space or all; how many tasks the sidebar lists; toasts for agents' proposals; Notes starts on this space or all |
+| Spaces & agents | Name spaces by repo and branch; what each agent works on under its space; the processes chip under agents |
 | Focus mode | On / off, how visible dimmed parts stay |
 | Zen mode | Open it, backdrop opaque or translucent (and how much), theme color or dark, size |
 | Keys & modes | Every mode with its key, the shortcuts, and the key modes editor |

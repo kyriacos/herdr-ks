@@ -15,6 +15,7 @@ import { parseStatus, parseRevParse } from "./git-parse.js";
 import { docValue, quicklook, fingerprint } from "./pane-map.js";
 import { dimmed } from "./lib/focus.js";
 import { NAMES, spaceName, spaceTask, labelFor, generic } from "./lib/spacenames.js";
+import { pref } from "./lib/prefs.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -812,6 +813,8 @@ export default class Spaces extends View {
   // ks: "repo · branch" for every space nobody named: the worktrees the Changes panel saw its agent use (shared
   // "ks.session"), and the folders its agents run in. Into shared "ks.spaceNames" when that changed.
   nameSpaces(cx) {
+    // Off in the settings: Herdr's own names again.
+    if (!pref("autoSpaceNames")) { if (Object.keys(shared(NAMES) ?? {}).length) setShared(NAMES, {}); return; }
     if (this.naming) return;
     this.naming = true;
     cx.spawn(async (cx) => {
@@ -852,7 +855,7 @@ export default class Spaces extends View {
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (t[color] ?? t.accent);
     // ks: the name says repo · branch (lib/spacenames.js); under it, what its agent works on and git's ↑ ↓ ±.
-    const label = spaceName(w), task = spaceTask(w);
+    const label = spaceName(w), task = pref("spaceTaskLine") ? spaceTask(w) : "";
     const line = (g && (g.ahead || g.behind || g.dirty)) || task ? this.taskLine(task, g, t, w.id) : null;
     return this.draggable(v_flex()
       .relative()

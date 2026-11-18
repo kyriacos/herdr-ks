@@ -20,6 +20,7 @@ import { exec, appHome, spaces, theme, settings } from "herdr";
 import { dimmed } from "./lib/focus.js";
 import { spaceName, spaceTask } from "./lib/spacenames.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
+import { pref } from "./lib/prefs.js";
 import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles } from "./lib/attach.js";
 
 const FILE = () => `${appHome()}/data/ks-notes.json`;
@@ -48,7 +49,7 @@ async function writeNotes(notes) {
 
 export default class Notes extends View {
   init(_props, cx) {
-    this.notes = []; this.loaded = false; this.editing = null; this.all = load("all", false); this.undo = null;
+    this.notes = []; this.loaded = false; this.editing = null; this.all = load("all", Boolean(pref("notesAll"))); this.undo = null;
     this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.cursor = 0; this.pageRows = 8;
     this.editor = TextareaState.new({ placeholder: "Write anything. It's saved as you type.", rows: 6 });
     this.editor.set_auto_grow(4, 18);

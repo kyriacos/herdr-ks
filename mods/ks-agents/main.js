@@ -6,6 +6,7 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, exec, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, settings, nextCommand } from "herdr";
 import { readProcs, stop as stopProc } from "./procs.js";
+import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
 
 function find(node, id) {
@@ -95,7 +96,7 @@ export default class Agents extends View {
     this.procsOpen = new Set(JSON.parse(localStorage.getItem("procsOpen") ?? "[]"));
     this.procTick = 0;
     this.lookProcs(cx);
-    cx.timer.every(5000, (cx) => { if (this.procsOpen.size || ++this.procTick % 3 === 0) this.lookProcs(cx); });
+    cx.timer.every(5000, (cx) => { if (pref("agentProcs") && (this.procsOpen.size || ++this.procTick % 3 === 0)) this.lookProcs(cx); });
     cx.spawn(async (cx) => {
       for (;;) {
         const c = await nextCommand();
@@ -314,7 +315,7 @@ export default class Agents extends View {
     // ks: the chip that expands an agent's processes: how many (MCP servers aside).
     const procChip = (a) => {
       const list = this.procs[a.address] ?? [], n = list.filter((p) => !p.mcp).length, open = this.procsOpen.has(a.address);
-      if (!n && !open) return null;
+      if (!pref("agentProcs") || (!n && !open)) return null;
       const busy = list.some((p) => !p.mcp && p.ports.length);
       return h_flex().id(`procs-${a.address}`).h(18).px(4).gap(3).flex_none().items_center().rounded(4).text_size(10.5).cursor_pointer()
         .border_1().border_color(open ? t.accent : t.border).text_color(open ? t.foreground : busy ? t.accent : t.dim)

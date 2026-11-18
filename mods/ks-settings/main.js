@@ -3,14 +3,20 @@
 // mods already read, so changes apply at once:
 //   ks-zen.focus (focus mode), ks-zen.prefs (zen), ks-keys.config (key modes: shown here, edited in its editor),
 //   ks-tabs.confirm-close / ks-pane.confirm-close (asking before closing), ks.prefs (lib/prefs.js: undo time,
-//   resume card, idle main checkouts, PR toasts), ks.sessions (remembered Claude sessions), and the GitHub cache.
+//   resume card, idle main checkouts, PR toasts, layout and mod options), ks.sessions (remembered Claude sessions),
+//   and the GitHub cache. Layout: which sidebar sections and panel buttons show, the side panel's side and the
+//   sidebar's order (lib/arrange.js applies those with layout.set).
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { run, theme, props, closeOverlay, shared, setShared, layout, exec, appHome, notify } from "herdr";
 import { focusOn, focusLevel, setFocus } from "./lib/focus.js";
-import { prefs, setPref } from "./lib/prefs.js";
+import { prefs, setPref, DEFAULTS } from "./lib/prefs.js";
+import { SIDEBAR, PANELS, arrange, node } from "./lib/arrange.js";
 
 const SECTIONS = [
+  ["layout", "Layout"],
+  ["tasks", "Tasks & notes"],
+  ["spaces", "Spaces & agents"],
   ["focus", "Focus mode"],
   ["zen", "Zen mode"],
   ["keys", "Keys & modes"],
@@ -35,7 +41,7 @@ function find(node, id) {
 
 export default class Settings extends View {
   init(_props, cx) {
-    this.at = props()?.section ?? "focus";
+    this.at = props()?.section ?? "layout";
     this.cacheFiles = null;
     this.handle = cx.focus_handle();
     this.handle.focus();
@@ -91,6 +97,60 @@ export default class Settings extends View {
     const { btn, row, choice, meter, note, heading } = this.ui(t);
     const p = prefs();
     switch (id) {
+      case "layout": {
+        const order = [...(p.sidebarOrder ?? DEFAULTS.sidebarOrder)];
+        for (const [sid] of SIDEBAR) if (!order.includes(sid)) order.push(sid);
+        const info = Object.fromEntries(SIDEBAR.map(([sid, name, help]) => [sid, { name, help }]));
+        const move = (i, by) => { const o = [...order], j = i + by; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]]; setPref("sidebarOrder", o); arrange(); };
+        const shown = (sid) => { const n = node(sid); return Boolean(n && !n.hidden); };
+        const buttons = p.panelButtons ?? DEFAULTS.panelButtons;
+        const herdrPanels = shared("workspace.panels") ?? ["files", "changes"];
+        return v_flex().child(heading("Layout"))
+          .child(row("Side panel", "Files, Changes, PRs, Notes and Tasks open in the side panel, on this side of the terminals.",
+            ...choice("side", [["left", "Left"], ["right", "Right"]], p.panelSide ?? "right", (v) => { setPref("panelSide", v); arrange(); })))
+          .child(row("Side panels in the tab bar", "Which panels get a button at the top right. Their keys still open them either way.",
+            ...PANELS.map(([pid, name, help]) => btn(`pb-${pid}`, `${buttons.includes(pid) ? "✓ " : ""}${name}`,
+              () => setPref("panelButtons", buttons.includes(pid) ? buttons.filter((x) => x !== pid) : [...buttons, pid]), buttons.includes(pid)))))
+          .child(v_flex().pb(16).gap(4).children(PANELS.map(([pid, name, help]) => h_flex().gap(10).text_size(11.5)
+            .child(div().w(70).font_medium().text_color(buttons.includes(pid) ? t.foreground : t.dim).child(name))
+            .child(div().flex_1().text_color(t.dim).child(help + (["files", "changes"].includes(pid) && !herdrPanels.includes(pid) ? " (switched off in Herdr's settings)" : ""))))))
+          .child(div().pb(4).text_size(13).font_medium().child("Sidebar"))
+          .child(div().pb(10).text_size(11.5).text_color(t.dim).child("Its sections, top to bottom: show or hide each, and move them with ↑ ↓."))
+          .child(v_flex().pb(16).gap(6).children(order.filter((sid) => info[sid]).map((sid, i) => h_flex().gap(8).items_center()
+            .child(btn(`up-${sid}`, "↑", () => move(i, -1)))
+            .child(btn(`dn-${sid}`, "↓", () => move(i, 1)))
+            .child(btn(`vis-${sid}`, shown(sid) ? "Shown" : "Hidden", () => run(shown(sid) ? "layout.hide" : "layout.show", { id: sid }), shown(sid)))
+            .child(v_flex().flex_1().min_w(0)
+              .child(div().text_size(12.5).font_medium().child(info[sid].name))
+              .child(div().text_size(11).text_color(t.dim).child(info[sid].help))))))
+          .child(row("Back to the defaults", "Side panel on the right, every panel button, the sidebar in its first order and every section shown.",
+            btn("layout-reset", "Reset the layout choices", () => {
+              setPref("panelSide", DEFAULTS.panelSide); setPref("sidebarOrder", DEFAULTS.sidebarOrder); setPref("panelButtons", DEFAULTS.panelButtons);
+              for (const [sid] of SIDEBAR) run("layout.show", { id: sid });
+              arrange();
+            })));
+      }
+      case "tasks": {
+        return v_flex().child(heading("Tasks & notes"))
+          .child(row("Tasks: start on", "Which tasks the Tasks panel shows when it opens: this space's (made in it or its worktrees), or every space's. The board window always opens on all. The panel's Here / All (s) switches either way.",
+            ...choice("tall", [[false, "This space"], [true, "All spaces"]], Boolean(p.tasksAll), (v) => setPref("tasksAll", v))))
+          .child(row(`Sidebar Tasks lists ${p.nowTasksMax ?? 3} in progress`, "How many tasks from the board's Doing column the sidebar shows before \"+N more\".",
+            ...[1, 2, 3, 5].map((v) => btn(`ntm-${v}`, String(v), () => setPref("nowTasksMax", v), (p.nowTasksMax ?? 3) === v))))
+          .child(row("Agents' task proposals", "A toast when an agent proposes a task (ks-task). The tab bar's \"Tasks · N new\" shows either way.",
+            ...choice("ttoast", [[true, "On"], [false, "Off"]], p.taskToasts !== false, (v) => setPref("taskToasts", v))))
+          .child(row("Notes: start on", "This space's notes, or every note (grouped by space). The panel's This space / All (a) switches either way.",
+            ...choice("nall", [[false, "This space"], [true, "All"]], Boolean(p.notesAll), (v) => setPref("notesAll", v))))
+          .child(note("Tasks are kept in ~/.config/herdr-app/data/ks-tasks.json, notes in ks-notes.json, attachments in data/ks-attach (none of it in the repo). Agents use the ks-task command (the ks-tasks skill)."));
+      }
+      case "spaces": {
+        return v_flex().child(heading("Spaces & agents"))
+          .child(row("Name spaces by repo and branch", "A space is called \"branch · repo\" of the worktree its agent works in (\"repo · main\" on main), unless you renamed it. Off: Herdr's own names.",
+            ...choice("names", [[true, "On"], [false, "Off"]], p.autoSpaceNames !== false, (v) => setPref("autoSpaceNames", v))))
+          .child(row("What each agent works on", "Under each space's name, its agent's task (the tab's name, else the session's title) with git's ↑ ↓ ±.",
+            ...choice("tline", [[true, "Shown"], [false, "Hidden"]], p.spaceTaskLine !== false, (v) => setPref("spaceTaskLine", v))))
+          .child(row("Processes under agents", "The Agents list's \"N procs\" chip: dev servers and commands an agent started, with ports, CPU and Stop. Off also stops looking them up (ps, lsof).",
+            ...choice("procs", [[true, "On"], [false, "Off"]], p.agentProcs !== false, (v) => setPref("agentProcs", v))));
+      }
       case "focus": {
         const level = focusLevel();
         return v_flex().child(heading("Focus mode"))
@@ -120,7 +180,7 @@ export default class Settings extends View {
         const cfg = shared("ks-keys.config"), modes = cfg?.modes ?? null;
         const list = modes ? Object.entries(modes).map(([mid, m]) => [mid, m.name, m.off ? "off" : m.entry || "from another mode", m.sticky ? "sticky" : "one key"])
           : [["service", "service", "ctrl-;", "sticky"], ["vim", "vim", "service [", "sticky"], ["tmux", "tmux", "off (ctrl-b)", "one key"], ["move", "move", "service m", "sticky"], ["resize", "resize", "service r", "sticky"], ["tabs", "tabs", "service t", "sticky"], ["spaces", "spaces", "service S", "sticky"]];
-        const fixed = [["⌘⇧Z", "Zen mode"], ["⌘⇧F", "Focus mode"], ["⌘⇧T", "Undo the last close"], ["⌘⇧N", "New space + worktree"], ["⌘⇧E / ⌘⇧G / ⌘⇧U", "Files / Changes / PRs panel"], ["⌘⇧M", "Show / hide My PRs"], ["⌘K", "Key modes editor"], ["⌘⇧,", "These settings"]];
+        const fixed = [["⌘⇧Z", "Zen mode"], ["⌘⇧F", "Focus mode"], ["⌘⇧T", "Undo the last close"], ["⌘⇧N", "New space + worktree"], ["⌘⇧E / ⌘⇧G / ⌘⇧U", "Files / Changes / PRs panel"], ["⌘⇧J / ⌘⇧K", "Notes / Tasks panel"], ["⌘⇧M", "Show / hide My PRs"], ["⌘K", "Key modes editor"], ["⌘⇧,", "These settings"]];
         const vimOn = Boolean(modes?.window && !modes.window.off && modes.vim?.entry && !modes.vim.off);
         return v_flex().child(heading("Keys & modes"))
           .child(row("Vim keys", "Vim's ctrl-w window commands anywhere: h j k l go, H J K L swap, s v split, o zoom, c close, + - < > = resize what you're in, z zen. ctrl-\\ enters vim's normal mode (i or esc leaves). Takes ctrl-w from the shell: press it twice to delete a word, or use alt-backspace.",

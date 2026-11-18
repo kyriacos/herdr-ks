@@ -5,6 +5,7 @@ import { closeTab, closePane, tabName, tabProgram } from "./close.js";
 import * as sessions from "./lib/sessions.js";
 import * as closing from "./lib/closing.js";
 import { pref } from "./lib/prefs.js";
+import { arrange } from "./lib/arrange.js";
 import { menuView, shortcut } from "./menu.js";
 import { dimmed } from "./lib/focus.js";
 
@@ -32,6 +33,8 @@ export default class Tabs extends View {
     // ks: tasks agents proposed (bin/ks-task), counted on the Tasks button; read now, every 30 s, and at once when
     // ks-task wrote (the command `tasks-changed`).
     this.tasksChanged(cx, false);
+    // ks: the side panel's side and the sidebar's order, as set in ks-settings (lib/arrange.js).
+    cx.timer.after(1500, () => { try { arrange(); } catch (e) { console.log("ks-tabs: arrange failed", String(e)); } });
     cx.timer.every(30000, (cx) => this.tasksChanged(cx, false));
     // ks: close for real what has waited 30 s (lib/closing.js); redraw the Undo chip's countdown meanwhile.
     closing.finish();
@@ -73,7 +76,7 @@ export default class Tabs extends View {
       this.proposedIds = proposed.map((t) => t.id);
       if ((shared("ks-tasks.proposed") ?? 0) !== proposed.length) setShared("ks-tasks.proposed", proposed.length);
       if (fresh) setShared("ks-tasks.rev", Date.now());
-      if (fresh_.length) notify({ title: fresh_.length === 1 ? "Task proposed" : `${fresh_.length} tasks proposed`,
+      if (fresh_.length && pref("taskToasts")) notify({ title: fresh_.length === 1 ? "Task proposed" : `${fresh_.length} tasks proposed`,
         body: fresh_.map((t) => `${t.title}${t.by ? ` (${t.by})` : ""}`).join("\n").slice(0, 300), level: "info", timeout: 6000 });
       cx.notify();
     });
@@ -229,7 +232,9 @@ export default class Tabs extends View {
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
       : 10;
     const panel = find(root, "panel"), body = find(root, "panel-body");
-    const enabled = shared("workspace.panels") ?? ["files", "changes"];
+    // Herdr's own Files / Changes switch, and ks-settings' choice of panel buttons (lib/prefs.js).
+    const buttons = pref("panelButtons") ?? [];
+    const enabled = (shared("workspace.panels") ?? ["files", "changes"]).filter(id => buttons.includes(id));
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
@@ -259,11 +264,11 @@ export default class Tabs extends View {
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
       // ks: open pull requests for the session's worktrees (ks-prs).
-      .child(panelButton("prs", "PRs", "mods/ks-changes/changes.svg"))
+      .when(buttons.includes("prs"), el => el.child(panelButton("prs", "PRs", "mods/ks-changes/changes.svg")))
       // ks: a scratchpad per space that outlives the space (ks-notes).
-      .child(panelButton("notes", "Notes", "mods/ks-notes/note.svg"))
+      .when(buttons.includes("notes"), el => el.child(panelButton("notes", "Notes", "mods/ks-notes/note.svg")))
       // ks: a kanban board and a Today list (ks-tasks).
-      .child(panelButton("tasks", (shared("ks-tasks.proposed") ?? 0) > 0 ? `Tasks · ${shared("ks-tasks.proposed")} new` : "Tasks", "mods/ks-tasks/task.svg"))
+      .when(buttons.includes("tasks"), el => el.child(panelButton("tasks", (shared("ks-tasks.proposed") ?? 0) > 0 ? `Tasks · ${shared("ks-tasks.proposed")} new` : "Tasks", "mods/ks-tasks/task.svg")))
       // ks: every ks setting in one panel (ks-settings).
       .child(button("ks-settings", "⚙", () => openOverlay({ mod: "ks-settings", kind: "dialog", width: 860, height: 620 })))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/ks-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
