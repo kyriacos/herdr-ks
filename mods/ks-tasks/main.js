@@ -66,27 +66,51 @@ function orderAt(list, before, skip) {
   if (i < 0) return (l.length ? l[l.length - 1].order : 0) + 1;
   return i === 0 ? l[0].order - 1 : (l[i - 1].order + l[i].order) / 2;
 }
+// A task's history ({ at, by, text }): what happened to it and who did it, shown with its comments as one timeline
+// in its window. "you" for changes made here; ks-task writes the agent's name. The same thing again by the same
+// person within a few minutes (typing a description, say) updates the last entry instead of adding one.
+const COLNAME = (d, id) => d.columns.find((c) => c.id === id)?.name ?? "a deleted column";
+function log(x, text, by = "you") {
+  const h = (x.history ??= []), last = h[h.length - 1], now = Date.now();
+  if (last && last.text === text && last.by === by && now - last.at < 5 * 60000) last.at = now;
+  else h.push({ at: now, by, text });
+  if (h.length > 300) h.splice(0, h.length - 300);
+}
 const ops = {
-  create: (task) => (d) => { if (!find(d, task.id)) d.tasks.push(task); },
-  patch: (id, fields) => (d) => { const x = find(d, id); if (x) Object.assign(x, fields, { updated: Date.now() }); },
+  create: (task) => (d) => { if (!find(d, task.id)) { if (!task.history?.length) log(task, "Created", task.by || "you"); d.tasks.push(task); } },
+  patch: (id, fields) => (d) => {
+    const x = find(d, id); if (!x) return;
+    if ("title" in fields && fields.title !== x.title) log(x, "Renamed");
+    if ("body" in fields && fields.body !== x.body) log(x, "Edited the description");
+    if ("today" in fields && Boolean(fields.today) !== Boolean(x.today)) log(x, fields.today ? "Added to today" : "Taken off today");
+    if ("proposed" in fields && x.proposed && !fields.proposed) log(x, "Accepted");
+    Object.assign(x, fields, { updated: Date.now() });
+  },
   move: (id, col, before) => (d) => {
     const x = find(d, id); if (!x || !d.columns.some((c) => c.id === col)) return;
     x.order = orderAt(inCol(d, col), before, id);
-    if (x.column !== col) { x.column = col; x.doneAt = col === doneCol(d) ? Date.now() : null; }
+    if (x.column !== col) { log(x, `Moved from ${COLNAME(d, x.column)} to ${COLNAME(d, col)}`); x.column = col; x.doneAt = col === doneCol(d) ? Date.now() : null; }
     x.updated = Date.now();
   },
   // Today / backlog: `today` on or off, placed before `before` in that list.
   plan: (id, today, before, list) => (d) => {
     const x = find(d, id); if (!x) return;
+    if (Boolean(x.today) !== Boolean(today)) log(x, today ? "Added to today" : "Taken off today");
     x.today = today; x.order = orderAt(list.map((y) => find(d, y.id) ?? y), before, id);
-    if (x.column === doneCol(d)) { x.column = d.columns[today && d.columns[1] ? 1 : 0].id; x.doneAt = null; }
+    if (x.column === doneCol(d)) { const to = d.columns[today && d.columns[1] ? 1 : 0].id; log(x, `Moved from ${COLNAME(d, x.column)} to ${COLNAME(d, to)}`); x.column = to; x.doneAt = null; }
     x.updated = Date.now();
   },
   remove: (id) => (d) => { d.tasks = d.tasks.filter((x) => x.id !== id); },
-  attach: (id, list) => (d) => { const x = find(d, id); if (x) { x.attachments = [...(x.attachments ?? []), ...list.filter((a) => !(x.attachments ?? []).some((b) => b.id === a.id))]; x.updated = Date.now(); } },
-  unattach: (id, aid) => (d) => { const x = find(d, id); if (x) x.attachments = (x.attachments ?? []).filter((a) => a.id !== aid); },
+  attach: (id, list) => (d) => {
+    const x = find(d, id); if (!x) return;
+    const added = list.filter((a) => !(x.attachments ?? []).some((b) => b.id === a.id));
+    if (!added.length) return;
+    x.attachments = [...(x.attachments ?? []), ...added]; x.updated = Date.now();
+    log(x, `Attached ${added.map((a) => a.name).join(", ")}`);
+  },
+  unattach: (id, aid) => (d) => { const x = find(d, id); if (!x) return; const a = (x.attachments ?? []).find((y) => y.id === aid); if (a) log(x, `Removed ${a.name}`); x.attachments = (x.attachments ?? []).filter((y) => y.id !== aid); },
   comment: (id, c) => (d) => { const x = find(d, id); if (x && !(x.comments ?? []).some((y) => y.id === c.id)) { x.comments = [...(x.comments ?? []), c]; x.updated = Date.now(); } },
-  uncomment: (id, cid) => (d) => { const x = find(d, id); if (x) x.comments = (x.comments ?? []).filter((c) => c.id !== cid); },
+  uncomment: (id, cid) => (d) => { const x = find(d, id); if (!x) return; if ((x.comments ?? []).some((c) => c.id === cid)) log(x, "Deleted a comment"); x.comments = (x.comments ?? []).filter((c) => c.id !== cid); },
   addColumn: (col) => (d) => { if (!d.columns.some((c) => c.id === col.id)) d.columns.push(col); },
   renameColumn: (id, name) => (d) => { const c = d.columns.find((x) => x.id === id); if (c) c.name = name; },
   shiftColumn: (id, by) => (d) => {
@@ -98,7 +122,7 @@ const ops = {
   removeColumn: (id) => (d) => {
     if (d.columns.length < 2) return;
     d.columns = d.columns.filter((x) => x.id !== id);
-    for (const x of d.tasks) if (x.column === id) x.column = d.columns[0].id;
+    for (const x of d.tasks) if (x.column === id) { log(x, `Moved to ${d.columns[0].name} (its column was deleted)`); x.column = d.columns[0].id; }
   },
 };
 
@@ -669,6 +693,9 @@ export default class Tasks extends View {
     const section = (label, extra = null) => h_flex().mt(14).mb(6).gap(8).items_center()
       .child(div().text_size(11).font_semibold().text_color(t.muted).child(label)).child(div().flex_1().h(1).bg(t.border)).when(Boolean(extra), (e) => e.child(extra));
     const comments = [...(x.comments ?? [])].sort((a, b) => a.at - b.at);
+    // Activity: comments and history in one timeline, oldest first (a task made before history existed starts here).
+    const activity = [...comments.map((c) => ({ kind: "comment", at: c.at, c })), ...(x.history ?? []).map((h, i) => ({ kind: "event", at: h.at, h, i }))]
+      .sort((a, b) => a.at - b.at || (a.kind === "event" ? -1 : 1));
     return v_flex().id("task").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_drop((e, cx) => this.attachWith(cx, "Adding…", () => addPaths(e.paths)))
       .on_key_down((e, cx) => {
@@ -706,11 +733,18 @@ export default class Tasks extends View {
             ? attachRow(x.attachments, t, `ta-${x.id}`, { big: true, onRemove: (a, cx) => { this.apply(ops.unattach(x.id, a.id), cx); dropFiles([a]); } })
             : div().h(56).flex().items_center().justify_center().rounded(8).border_1().border_color(t.border).text_size(11.5).text_color(t.dim)
               .child("Drop files here, or Add files / Paste image"))
-          .child(section(`Comments${comments.length ? ` · ${comments.length}` : ""}`))
-          .children(comments.map((c) => v_flex().id(`cm-${c.id}`).mb(8).p(9).gap(4).rounded(8).border_1().border_color(t.border).bg(t.chrome)
-            .child(h_flex().gap(6).text_size(10.5).text_color(t.dim).child(div().flex_1().truncate().child(`${ago(c.at)}${c.by ? ` · ${c.by}` : ""}`))
-              .child(div().id(`cmx-${c.id}`).px(5).rounded(4).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.apply(ops.uncomment(x.id, c.id), cx)).child("Delete")))
-            .child(div().text_size(12.5).text_color(t.foreground).child(c.text))))
+          .child(section(`Activity${comments.length ? ` · ${plural(comments.length, "comment")}` : ""}`))
+          .when(!activity.length, (e) => e.child(div().mb(8).text_size(11.5).text_color(t.dim).child("No activity yet: moves, edits, attachments and comments show here.")))
+          .children(activity.map((a) => a.kind === "event"
+            // A history line: a dot on the timeline, what happened, who, when.
+            ? h_flex().id(`ev-${a.i}`).mb(6).pl(4).gap(8).items_center().text_size(11)
+              .child(div().size(6).flex_none().rounded(3).bg(t.border))
+              .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(a.h.text))
+              .child(div().flex_none().text_color(t.dim).child(`${a.h.by && a.h.by !== "you" ? `${a.h.by} · ` : ""}${ago(a.h.at)}`))
+            : v_flex().id(`cm-${a.c.id}`).mb(8).p(9).gap(4).rounded(8).border_1().border_color(t.border).bg(t.chrome)
+              .child(h_flex().gap(6).text_size(10.5).text_color(t.dim).child(div().flex_1().truncate().child(`${a.c.by ? `${a.c.by} · ` : ""}${ago(a.c.at)}`))
+                .child(div().id(`cmx-${a.c.id}`).px(5).rounded(4).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.apply(ops.uncomment(x.id, a.c.id), cx)).child("Delete")))
+              .child(div().text_size(12.5).text_color(t.foreground).child(a.c.text))))
           .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)
             .child(Textarea.new(this.note).w_full().text_size(12.5).text_color(t.foreground)))
           .child(h_flex().mt(6).gap(8).items_center()

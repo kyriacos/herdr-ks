@@ -173,6 +173,17 @@ def args(argv, flags, opts):
     return pos, f, o
 
 
+def log(t, text, who):
+    """A line in the task's history (the Tasks panel shows it with the comments); the same again within 5 minutes
+    by the same person updates the last one."""
+    h = t.setdefault("history", [])
+    if h and h[-1].get("text") == text and h[-1].get("by") == who and now() - h[-1].get("at", 0) < 300000:
+        h[-1]["at"] = now()
+    else:
+        h.append({"at": now(), "by": who, "text": text})
+    del h[:-300]
+
+
 def colname(d, cid):
     return next((c["name"] for c in d["columns"] if c["id"] == cid), cid)
 
@@ -209,6 +220,7 @@ def cmd_add(argv):
          "space": (terminal().get("labels") or {}).get("herdr.space"), "spaceName": w["label"], "folder": w["folder"], "created": ts, "updated": ts, "doneAt": None,
          "comments": [], "attachments": [], "by": who, "proposed": bool(agent and "--direct" not in f),
          "source": {"terminal": os.environ.get("HC_TERMINAL_ID") or os.environ.get("HERDR_PANE_ID"), "branch": w["branch"]}}
+    log(t, "Proposed" if t["proposed"] else "Created", who)
     d["tasks"].append(t)
     save(d)
     print(("proposed: " if t["proposed"] else "added: ") + line(d, t))
@@ -257,9 +269,17 @@ def cmd_show(argv):
         print("\n" + t["body"])
     for a in t.get("attachments", []):
         print(f'  attachment: {os.path.join(APP, a["rel"])}')
-    for c in sorted(t.get("comments", []), key=lambda c: c.get("at", 0)):
-        when = time.strftime("%d %b %H:%M", time.localtime(c.get("at", 0) / 1000))
-        print(f'\n  {when}{" · " + c["by"] if c.get("by") else ""}\n  ' + c.get("text", "").replace("\n", "\n  "))
+    # Activity: history and comments, oldest first.
+    items = [("event", h) for h in t.get("history", [])] + [("comment", c) for c in t.get("comments", [])]
+    if items:
+        print("\nActivity:")
+    for kind, x in sorted(items, key=lambda i: i[1].get("at", 0)):
+        when = time.strftime("%d %b %H:%M", time.localtime(x.get("at", 0) / 1000))
+        who = f' · {x["by"]}' if x.get("by") else ""
+        if kind == "event":
+            print(f'  {when}{who}  {x.get("text", "")}')
+        else:
+            print(f'  {when}{who}  comment:\n    ' + x.get("text", "").replace("\n", "\n    "))
 
 
 def comment(t, text, who):
@@ -282,8 +302,9 @@ def cmd_comment(argv):
     print(f"commented: {line(d, t)}")
 
 
-def move(d, t, c):
+def move(d, t, c, who=None):
     if t.get("column") != c["id"]:
+        log(t, f'Moved from {colname(d, t.get("column"))} to {c["name"]}', who or who_from({}))
         top = max([x.get("order", 0) for x in d["tasks"] if x.get("column") == c["id"]] or [0])
         t["column"], t["order"] = c["id"], top + 1
         t["doneAt"] = now() if c["id"] == d["columns"][-1]["id"] else None
@@ -299,9 +320,9 @@ def cmd_start(argv):
     if t.get("proposed"):
         die("that task is still proposed: it needs accepting in the Tasks panel (or by the user) first", 2)
     who = who_from(o)
-    move(d, t, doing_col(d))
+    move(d, t, doing_col(d), who)
     t["assignee"] = who
-    comment(t, "Started", who)
+    log(t, "Started", who)
     save(d)
     print(f"started: {line(d, t)}")
 
@@ -312,9 +333,12 @@ def cmd_done(argv):
         die("done needs an id")
     d = load()
     t = find(d, pos[0])
-    move(d, t, d["columns"][-1])
+    who = who_from(o)
+    move(d, t, d["columns"][-1], who)
     t["proposed"] = False
-    comment(t, " ".join(pos[1:]) or "Done", who_from(o))
+    log(t, "Done", who)
+    if pos[1:]:
+        comment(t, " ".join(pos[1:]), who)
     save(d)
     print(f"done: {line(d, t)}")
 
@@ -336,14 +360,19 @@ def cmd_update(argv):
         die("update needs an id")
     d = load()
     t = find(d, pos[0])
+    who = who_from({})
     if "--title" in o:
         t["title"] = o["--title"]
+        log(t, "Renamed", who)
     if "--body" in o:
         t["body"] = o["--body"]
-    if "--today" in f:
+        log(t, "Edited the description", who)
+    if "--today" in f and not t.get("today"):
         t["today"] = True
-    if "--not-today" in f:
+        log(t, "Added to today", who)
+    if "--not-today" in f and t.get("today"):
         t["today"] = False
+        log(t, "Taken off today", who)
     t["updated"] = now()
     save(d)
     print(f"updated: {line(d, t)}")
@@ -375,6 +404,7 @@ def cmd_attach(argv):
                     h = int(ln.split()[-1])
         t.setdefault("attachments", []).append({"id": aid, "name": name, "rel": rel, "kind": kind, "size": os.path.getsize(dest) if os.path.isfile(dest) else 0, "w": w, "h": h, "added": now()})
     t["updated"] = now()
+    log(t, "Attached " + ", ".join(a["name"] for a in t["attachments"][-(len(pos) - 1):]), who_from({}))
     save(d)
     print(f"attached {len(pos) - 1}: {line(d, t)}")
 
@@ -386,6 +416,8 @@ def cmd_accept(argv):
     d = load()
     for i in pos:
         t = find(d, i)
+        if t.get("proposed"):
+            log(t, "Accepted", who_from({}))
         t["proposed"], t["updated"] = False, now()
         print(f"accepted: {line(d, t)}")
     save(d)

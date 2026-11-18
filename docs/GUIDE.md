@@ -210,7 +210,9 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
 - **Today:** what you plan to do today, then the backlog (everything else that isn't done). The **☀** on a card
   (or `t`) moves it between the two; dragging works here too. The board's last column counts as done, and its tasks
   leave both lists.
-- **A task** (click it, or Enter): its title, description, column, Today, attachments and comments. Drop files onto
+- **A task** (click it, or Enter): its title, description, column, Today, attachments, and its **Activity**: the
+  comments and everything that happened to it (created, moved, renamed, added to today, attached, started, done),
+  with who did it, oldest first. `ks-task show ID` prints the same. Drop files onto
   it, or **Add files…** / **Paste image**; write a comment and **Comment** (or `cmd-enter`). Esc closes it.
 - Drop files onto a card to attach them to that task, or onto a column or list for a new task carrying them.
 - **+ Add task** at the end of each list (or `n`): type and Enter, and the box stays open for the next one.
