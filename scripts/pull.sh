@@ -8,7 +8,7 @@ name=ks
 
 cp "$app/layouts/$name".* "$dst/layouts/"
 for d in "$app"/mods/ks-*/; do
-  rsync -a --delete --exclude gpui-kit.d.ts --exclude jsconfig.json "$d" "$dst/mods/$(basename "$d")/"
+  rsync -a --delete --exclude gpui-kit.d.ts --exclude jsconfig.json --exclude lib/ "$d" "$dst/mods/$(basename "$d")/"
 done
 jq --arg s "layout:$name" '{($s): .[$s]}' "$app/keys.json" > "$dst/keys.json"
 echo "Pulled from $app"

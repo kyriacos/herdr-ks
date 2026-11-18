@@ -2,3 +2,23 @@
 gpui-kit.d.ts
 jsconfig.json
 herdr-shot.png
+
+# Copies of shared/, made by scripts/install.sh
+mods/*/lib/
+
+# Never in this repo (see AGENTS.md)
+.private-terms
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.keystore
+id_rsa*
+id_ed25519*
+.npmrc
+.netrc
+*.bak-*
