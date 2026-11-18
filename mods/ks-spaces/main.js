@@ -1,4 +1,4 @@
-// Workspace spaces, in Herdr Roundup's quiet look: a tinted initial, the name, and
+// Workspace spaces, in a quiet look: a tinted initial, the name, and
 // under it where its first terminal is now (repo · branch, ahead/behind, uncommitted
 // changes). A repo with worktrees sits on a card with them; spaces are grouped by
 // machine when more than one is known. On the right, how many agents run in it,
