@@ -51,6 +51,17 @@
           "type": "column",
           "children": [
             {
+              "id": "dashboard",
+              "type": "block",
+              "size": {
+                "px": 56
+              },
+              "min": 30,
+              "content": {
+                "mod": "ks-dashboard"
+              }
+            },
+            {
               "id": "now-tasks",
               "type": "block",
               "size": {

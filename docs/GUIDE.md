@@ -15,6 +15,7 @@ two repos (a backend and a frontend) at once, with you reviewing their work and 
 - [Floating review windows](#floating-review-windows)
 - [Notes](#notes)
 - [Tasks](#tasks)
+- [Dashboard](#dashboard)
 - [Pull requests: My PRs, the PR window, the PRs panel](#pull-requests)
 - [Resuming sessions after a reboot](#resuming-sessions-after-a-reboot)
 - [Closing with undo](#closing-with-undo)
@@ -239,6 +240,27 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   `ks-task --help` lists everything; it works from any terminal too.
 - Stored in `~/.config/herdr-app/data/ks-tasks.json`, attachments in `data/ks-attach/` (neither is in the repo).
 
+## Dashboard
+
+What you did today, this week and this month. **In the sidebar**, at the top: today in one line (PRs merged,
+lines added and removed, tasks done, Linear issue ids). Click it for the window (resizable, Esc or ✕ closes).
+
+- **Today / This week / This month** (`1` `2` `3`, or Tab): a one-line summary, tiles (PRs merged, lines, tasks
+  done, Linear issues), then the merged PRs (repo, number, size, branch, merge time, Linear ids; click opens it
+  on GitHub), the tasks finished on the board, and the Linear issue ids (click copies). `r` looks again.
+- **Linear issues** are the ids found in your merged PRs (titles, branch names, descriptions) and done tasks, such
+  as `ENG-123` or a branch `sam/eng-123-search-filters`. Nothing is read from Linear itself.
+- **Prompts** (left): **▶ Run** gathers the prompt's range and hands it, with the prompt's text, to `claude -p`
+  (no tools, not saved as a session) for a written summary. It starts with one: **Daily: what I merged**, today's
+  merged PRs with what each changed and why, grouped by repo, and possible follow-ups. It also runs on its own
+  once a day after 18:00 while Herdr is open. Today's latest summary shows under Today.
+- **Runs** (left): every run kept, newest first: when, which prompt, how many PRs. Click one for its summary and
+  the PRs it covered; **Delete run** removes it. Without `claude` a run keeps the data and says why there's no
+  summary.
+- Prompts are in `~/.config/herdr-app/data/ks-dashboard/prompts.json` (`id`, `name`, `range`: day, week or month,
+  `text`, `auto`: a time like `"18:00"` or null), runs in `runs/`. Edit the file to change or add prompts.
+- Needs `gh` signed in; summaries need Claude Code (`claude`).
+
 ## Pull requests
 
 Needs the GitHub CLI (`gh`) logged in.
@@ -424,7 +446,7 @@ does. Layout choices are kept in Herdr's shared state and put back after a reins
 
 | Section | What you can change |
 |---|---|
-| Layout | Side panel left or right; which side panels get a tab bar button; the sidebar's sections shown or hidden, and their order (↑ ↓); reset to the defaults |
+| Layout | Side panel left or right (the sidebar's sections include Dashboard); which side panels get a tab bar button; the sidebar's sections shown or hidden, and their order (↑ ↓); reset to the defaults |
 | Tasks | Panel starts on this space or all; how many tasks the sidebar lists; toasts for agents' proposals |
 | Notes | Panel starts on this space or all |
 | Spaces & agents | Name spaces by repo and branch; what each agent works on under its space; the processes chip under agents |
@@ -498,6 +520,7 @@ time the set of open spaces changes). **Clear everything** starts over.
 | Layout, mods, keys | `~/.config/herdr-app/` (`layouts/ks.json`, `mods/ks-*`, `keys.json` section `layout:ks`) |
 | Settings, choices, pending comments, session records, pending closes, key modes | Herdr's shared state, `~/.config/herdr-app/shared.json` |
 | GitHub cache | `~/.config/herdr-app/data/ks-cache/` |
+| Dashboard prompts and runs | `~/.config/herdr-app/data/ks-dashboard/` |
 | This repo | install with `scripts/install.sh [--switch]`, copy back live edits with `scripts/pull.sh` |
 
 ## Troubleshooting

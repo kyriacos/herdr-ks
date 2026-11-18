@@ -10,7 +10,7 @@ export const DEFAULTS = {
   prToasts: true,      // My PRs: a toast when CI turns, a review lands, a PR merges
   // Layout (applied by lib/arrange.js)
   panelSide: "right",  // the side panel: "right" or "left" of the terminals
-  sidebarOrder: ["now-tasks", "my-prs", "spaces", "agents"], // the sidebar's sections, top to bottom
+  sidebarOrder: ["dashboard", "now-tasks", "my-prs", "spaces", "agents"], // the sidebar's sections, top to bottom
   panelButtons: ["files", "changes", "prs", "notes", "tasks"], // side panels with a button in the tab bar
   // Mods
   nowTasksMax: 3,      // sidebar Tasks: how many in-progress tasks it lists
