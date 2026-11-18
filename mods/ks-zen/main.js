@@ -81,7 +81,10 @@ function zoomPanel() {
   const w = shared("ks.activeWindow");
   const wmod = w?.key && (PANEL_WINDOWS[w.key] ?? (w.key.endsWith("-window") ? w.mod : null));
   if (wmod) { setShared("ks.activeWindow", null); afterStrip(`${wmod}.unzoom`); return true; }
-  const p = shared("ks.activePanel"), root = layout();
+  // The panel with the keyboard: as its own copy says, or the one pane.go (ctrl-w l, service l) just moved to,
+  // which is known at once, before the panel itself notices.
+  const mark = shared("ks.panelFocus");
+  const p = shared("ks.activePanel") ?? (mark?.mod ? { mod: mark.mod } : null), root = layout();
   const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
   const showing = p?.mod && panel && !panel.hidden && body?.active === PANEL_BLOCKS[p.mod];
   if (p?.mod && !showing) { setShared("ks.activePanel", null); return false; }

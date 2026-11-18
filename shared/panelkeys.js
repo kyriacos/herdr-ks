@@ -9,11 +9,15 @@ import { nextCommand, run, shared, setShared, props, closeOverlay } from "herdr"
 // keyboard from the strip (a sticky mode keeps its keys), still shows its accent border, and gets "focus" when the
 // strip closes (ks-keys reads this; ks-keys clears it before moving elsewhere).
 export const MARK = "ks.panelFocus";
+// The panel that has the keyboard ({ mod }), for the window-level zoom keys (ks-zen).
+export const ACTIVE_PANEL = "ks.activePanel";
 const stripOpen = () => Boolean(shared("ks-keys.open"));
 
 // Herdr handed this panel the keyboard (pane.go): mark it, and focus it unless the key strip is open.
 export function gotFocus(view, cx, mod) {
   setShared(MARK, { mod, at: Date.now() });
+  // The zoom keys go to this panel from now on, without waiting for watchFocus's next look.
+  if (shared(ACTIVE_PANEL)?.mod !== mod) setShared(ACTIVE_PANEL, { mod });
   if (!stripOpen()) view.handle?.focus();
   cx.notify();
 }
@@ -34,7 +38,6 @@ export function takeFocus(view, cx, mod, other = null) {
 // The mark goes once the keyboard is elsewhere with no strip open (a click on a terminal, say).
 // It also keeps shared "ks.activePanel" ({ mod }) naming the panel that has the keyboard, so the window-level zoom
 // keys zoom it (ks-zen); kept while a key mode's strip is open over it.
-export const ACTIVE_PANEL = "ks.activePanel";
 export function watchFocus(view, cx, mod, extra = null) {
   let was = false;
   cx.timer.every(200, () => {
@@ -62,7 +65,7 @@ export function toStrip(e) {
   return true;
 }
 
-export const leave = (direction) => { setShared(MARK, null); run("pane.go", { direction }); };
+export const leave = (direction) => { setShared(MARK, null); setShared(ACTIVE_PANEL, null); run("pane.go", { direction }); };
 
 // List keys over `n` rows, with the row index in `view.cursor`. `open(i)` for Enter / o, `more(k, e)` for the
 // panel's own keys (return true when handled). Returns true when the key was taken.

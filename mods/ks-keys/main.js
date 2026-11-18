@@ -378,7 +378,7 @@ export default class Keys extends View {
         if (term) run("pane.focus", { terminal: term });
         cx.timer.after(150, () => run("terminal.search"));
       }
-      else if (a.command === "pane.go") { setShared(PANEL, null); run("pane.go", a.args); const g = focused(); if (g?.pane) { this.pane = g.pane; this.terminal = g.terminal ?? null; } }
+      else if (a.command === "pane.go") { setShared(PANEL, null); if (shared("ks.activePanel")) setShared("ks.activePanel", null); run("pane.go", a.args); const g = focused(); if (g?.pane) { this.pane = g.pane; this.terminal = g.terminal ?? null; } }
       else if (a.command === "tab.shift") {
         const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;
         if (i >= 0) run("tab.move", { id: sp.tabs[i].id, index: Math.max(1, Math.min(sp.tabs.length, i + 1 + (a.args.by ?? 1))) });
