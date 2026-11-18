@@ -94,7 +94,8 @@ def where():
     repo = os.path.basename(os.path.dirname(common)) if common.endswith("/.git") else os.path.basename(top)
     branch = sh("git", "rev-parse", "--abbrev-ref", "HEAD")
     short = branch.split("/")[-1] if branch else ""
-    label = f"{repo} · {short}" if short in ("", "main", "master", "HEAD") else f"{short} · {repo}"
+    # No branch (not a repo, a detached HEAD): just the name; on main: "repo · main"; else "branch · repo".
+    label = repo if short in ("", "HEAD") else f"{repo} · {short}" if short in ("main", "master") else f"{short} · {repo}"
     return {"folder": top, "repo": repo, "branch": branch, "label": label}
 
 

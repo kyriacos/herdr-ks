@@ -69,7 +69,7 @@ export default class NowTasks extends View {
     if (r !== this.rev) { if (this.rev !== null) this.read(cx); this.rev = r; }
     const t = theme(), v = this.view(), MAX = max();
     if (this.lastMax !== MAX) { this.lastMax = MAX; this.fit(); }
-    const pill = (label, tone, filled = false) => div().flex_none().px(5).rounded(6).border_1().border_color(tone + "66").bg(filled ? tone + "24" : null).text_size(10).text_color(tone).child(label);
+    const pill = (label, tone, filled = false) => div().flex_none().px(5).rounded(6).border_1().border_color(tone + "66").when(filled, (e) => e.bg(tone + "24")).text_size(10).text_color(tone).child(label);
     return v_flex().id("nowtasks").size_full().min_h(0).bg(t.chrome).text_color(t.foreground)
       .child(h_flex().id("nowtasks-head").h(HEAD).flex_none().px(12).gap(6).items_center().cursor_pointer()
         .tooltip("Open the board, all spaces").on_click(() => this.openBoard())
@@ -91,7 +91,7 @@ export default class NowTasks extends View {
             .child(div().flex_1().min_w(0).truncate().text_size(12).child(x.title || "Untitled"))
             .when(Boolean(x.today), (e) => e.child(div().flex_none().text_size(10).text_color(t.accent).child("☀"))))
           .child(div().pl(12).text_size(10.5).text_color(t.dim).truncate()
-            .child([x.assignee ? `@ ${x.assignee}` : "", x.spaceName ?? "", ago(x.updated)].filter(Boolean).join(" · ")))))
+            .child([x.assignee ? `@ ${x.assignee}` : "", String(x.spaceName ?? "").replace(/\s*·\s*$/, ""), ago(x.updated)].filter(Boolean).join(" · ")))))
         .when(v.now.length > MAX, (e) => e.child(div().id("nt-more").px(14).h(20).flex().items_center().text_size(10.5).text_color(t.dim).cursor_pointer()
           .hover((s) => s.text_color(t.foreground)).on_click(() => this.openBoard()).child(`+${v.now.length - MAX} more on the board`))));
   }
