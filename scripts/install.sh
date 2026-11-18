@@ -26,16 +26,19 @@ for d in "$src"/mods/ks-*/; do
   rsync -a --delete --exclude gpui-kit.d.ts --exclude jsconfig.json "$d" "$app/mods/$(basename "$d")/"
 done
 
-# keys.json: only the layout's own section is replaced (a backup is kept).
+# keys.json: only the layout's own section is replaced, and only when that changes it (then a backup is kept).
+# Rewriting it unchanged on every install made Herdr reload its keys and left a backup each time.
 keys="$app/keys.json"
 [ -f "$keys" ] || echo '{}' > "$keys"
-cp "$keys" "$keys.bak-$(date +%s)"
 # Entries ks-keys wrote (its entry keys, "ks-keys.*") are kept: they come from its editor, not from this repo.
+cp "$keys" "$keys.new"
 for s in "layout:$name"; do
   jq --slurpfile ours "$src/keys.json" --arg s "$s" \
-    '. + {($s): (($ours[0][$s] // {}) + ((.[$s] // {}) | with_entries(select((.value | type) == "string" and (.value | startswith("ks-keys."))))))}' "$keys" > "$keys.tmp"
-  mv "$keys.tmp" "$keys"
+    '. + {($s): (($ours[0][$s] // {}) + ((.[$s] // {}) | with_entries(select((.value | type) == "string" and (.value | startswith("ks-keys."))))))}' "$keys.new" > "$keys.tmp"
+  mv "$keys.tmp" "$keys.new"
 done
+if cmp -s "$keys" "$keys.new"; then rm -f "$keys.new"
+else cp "$keys" "$keys.bak-$(date +%s)"; mv "$keys.new" "$keys"; fi
 
 # Commands (bin/: ks-task) linked into ~/.local/bin, and Claude Code skills (skills/: ks-tasks) copied into
 # ~/.claude/skills, so every agent session can use them.
