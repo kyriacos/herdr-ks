@@ -108,7 +108,7 @@ export default class Pane extends View {
     return h_flex().flex_none().gap(4).items_center()
       .child(h_flex().id(`ph-resume-${p.pane}`).flex_none().h(20).px(7).gap(6).items_center().rounded(5)
         .bg(t.accent + "22").text_size(11).text_color(t.accent).hover((s) => s.bg(t.accent + "40"))
-        .tooltip(`claude --resume ${rec.sessionId}\nin ${folder(rec.cwd, home())}`)
+        .tooltip(`${rec.app === "codex" ? "codex resume" : "claude --resume"} ${rec.sessionId}\nin ${folder(rec.cwd, home())}`)
         .on_click((_e, cx) => { cx.stop_propagation(); sessions.resume(p.terminal, rec); })
         .child(div().font_semibold().child("↻ Resume")))
       // The title: the session's card inside the terminal (prompts, last reply, files), Enter resumes there.
@@ -118,7 +118,7 @@ export default class Pane extends View {
         .child(div().max_w(240).truncate().child(sessions.label(rec)))
         .child(div().text_color(t.dim).child(sessions.ago(rec.at ?? Date.now()))))
       .when(this.hovered, (el) => el
-        .child(small(`ph-pick-${p.pane}`, "Pick…", "Choose from this folder's Claude sessions", () => sessions.resume(p.terminal, rec, true)))
+        .child(small(`ph-pick-${p.pane}`, "Pick…", `Choose from ${sessions.nameOf(rec)}'s sessions`, () => sessions.resume(p.terminal, rec, true)))
         .child(small(`ph-forget-${p.pane}`, "✕", "Forget this session", () => sessions.forget(p.terminal))));
   }
 

@@ -84,7 +84,7 @@ export default class Tabs extends View {
     });
   }
 
-  // ks: which Claude Code session each agent terminal runs, every 20 s, into shared "ks.sessions" (see
+  // ks: which session (Claude Code, Codex) each agent terminal runs, every 20 s, into shared "ks.sessions" (see
   // lib/sessions.js), so a terminal lost to a reboot can resume it. The session log is read again when the
   // agent's pid changes, every 3 minutes (for its title), and every sweep until it has a conversation; shared state is written only when something changed.
   recordSessions(cx) {
@@ -95,7 +95,7 @@ export default class Tabs extends View {
       return r?.code === 0 ? r.stdout : null;
     };
     const sweep = async () => {
-      const live = agents().filter((a) => /claude/i.test(a.app ?? ""));
+      const live = agents().filter(sessions.appOf);
       const pids = {};
       for (const a of live) {
         const r = await hc(["get", a.address]).catch(() => null);
@@ -113,8 +113,8 @@ export default class Tabs extends View {
         const info = seen.get(pids[a.address])?.info;
         if (!info) continue;
         const old = before[a.address] ?? {}, pane = ps.find((p) => p.terminal === a.address)?.pane ?? old.pane ?? null;
-        const rec = { sessionId: info.sessionId, cwd: info.cwd, title: info.title ?? null, pane, tab: a.tab ?? old.tab ?? null, carded: old.carded ?? null };
-        const same = ["sessionId", "cwd", "title", "pane", "tab"].every((k) => rec[k] === old[k]);
+        const rec = { sessionId: info.sessionId, app: info.app ?? "claude", cwd: info.cwd, title: info.title ?? null, pane, tab: a.tab ?? old.tab ?? null, carded: old.carded ?? null };
+        const same = ["sessionId", "app", "cwd", "title", "pane", "tab"].every((k) => rec[k] === old[k]);
         // `at` (last seen running) is refreshed at most every 10 minutes, so a sweep doesn't write for nothing.
         if (!same || Date.now() - (old.at ?? 0) > 600000) { next[a.address] = { ...rec, at: Date.now() }; changed = true; }
       }
@@ -122,7 +122,7 @@ export default class Tabs extends View {
       // session's card in it once, with resume on Enter.
       const alive = new Set(live.map((a) => a.address));
       for (const [addr, rec] of Object.entries(next)) {
-        if (alive.has(addr) || !rec.sessionId || !pref("resumeCard")) continue;
+        if (alive.has(addr) || !rec.sessionId || !pref("resumeCard") || !sessions.hasCard(rec)) continue;
         const r = await hc(["get", addr]).catch(() => null);
         let info = null; try { info = JSON.parse(r.stdout); } catch {}
         if (!info || info.state !== "live" || !(info.created_ms > (rec.at ?? 0)) || rec.carded === info.created_ms) continue;
@@ -221,7 +221,7 @@ export default class Tabs extends View {
           .rounded(4).bg(t.accent + "26").text_size(10).font_semibold().text_color(t.accent).tooltip("A pane here is zoomed").child("⤢")))
         .when(lost.length > 0, el => el.child(div().id(`resume-${c.id}`).flex_none().h(18).px(6).flex().items_center().rounded(5)
           .bg(t.accent + "22").text_size(10.5).font_semibold().text_color(t.accent).hover(s => s.bg(t.accent + "40"))
-          .tooltip(`Resume ${lost.map(x => `"${sessions.label(x.rec)}"`).join(", ")} · Claude ran here ${sessions.ago(Math.max(...lost.map(x => x.rec.at ?? 0)))}`)
+          .tooltip(`Resume ${lost.map(x => `"${sessions.label(x.rec)}"`).join(", ")} · ${sessions.nameOf(lost[0].rec)} ran here ${sessions.ago(Math.max(...lost.map(x => x.rec.at ?? 0)))}`)
           .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); run("tab.select", { id: c.id }); for (const x of lost) sessions.resume(x.address, x.rec); })
           .child(lost.length > 1 ? `↻ Resume ${lost.length}` : "↻ Resume")))
         .when(c.status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))

@@ -36,7 +36,8 @@ title says which branch and folder you're looking at; click it to choose:
   most recent first (several worktrees of one repo each count). Click a section's header to fold it. Read from its session log: the files
   it last edited and the folders its commands `cd` or `git -C` into, not the folder it was started in
   (Claude Code keeps resetting that one). Rechecked every 10s. Also a one-click **Follow agent** button on
-  the bar; **Following ✕** stops it. Claude Code only; needs `python3` (macOS has one).
+  the bar; **Following ✕** stops it. Needs `python3` (macOS has one). Codex is followed the same way, from its own session log. Any other agent is followed by where its
+  process and the commands it runs are right now, so a section shows only while it works there.
 - Any worktree of the repo: pins the panel to it for this space.
 - *Matching branch in other repos* (on by default): other repos in the same parent folder (for example
   `backend` and `web` in `~/code/acme`) that have a checkout on the same branch show as extra
@@ -157,7 +158,7 @@ else the first prompt), kept in Herdr's shared state so it survives the restart.
   folder, branch, when it ran, the first and last prompts, Claude's last reply and the files it edited. **Enter**
   resumes it, **p** picks another session there, any other key keeps the shell.
 - **On the tab:** a **↻ Resume** chip (hover: which session, how long ago).
-- **In the pane header:** **↻ Resume** runs `claude --resume <id>` in the session's folder; clicking the title
+- **In the pane header:** **↻ Resume** runs `claude --resume <id>` (`codex resume <id>` for a Codex session; Codex has no card) in the session's folder; clicking the title
   shows the card again; on hover **Pick…** (Claude's own list of that folder's sessions) and **✕** (forget it).
 
 They also show after you quit Claude yourself (✕ dismisses). Records of closed tabs go after a week.
