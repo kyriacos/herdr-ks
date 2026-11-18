@@ -13,7 +13,7 @@
 // - The same mod draws the rename dialog: opened as an overlay with props { rename: {...} }.
 // - Closing asks first as "Ask before closing a pane" in the terminal's menu says; a tab's only pane
 //   as the tab menu's choice for tabs says (close.js, shared with ks-tabs). Ways to close: the ×,
-//   cmd-shift-w (`ks-tabs.close-pane`: the tab bar has one copy, every header would get it) and
+//   cmd-w (`ks-tabs.close-pane`: the tab bar has one copy, every header would get it) and
 //   Close pane in the terminal's right-click menu, which is this mod too (the layout's `terminal_menu`).
 
 import { View, div, svg, image } from "gpui-kit";

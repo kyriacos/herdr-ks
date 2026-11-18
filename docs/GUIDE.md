@@ -463,7 +463,7 @@ Only while the `ks` layout shows.
 | `cmd-shift-m` | Show or hide My PRs |
 | `cmd-shift-j` | Notes panel |
 | `cmd-shift-k` | Tasks panel |
-| `cmd-w` / `cmd-shift-w` | Close tab (asks, 30 s undo) / close pane |
+| `cmd-w` / `cmd-shift-w` | Close the focused pane (its tab too when it's the last pane, and the space when it's the last tab) / close the tab (asks, with undo) |
 | `cmd-shift-t` | Undo the last close |
 | `ctrl-;` | Service mode (configurable) |
 | `cmd-shift-z` | Zen mode |

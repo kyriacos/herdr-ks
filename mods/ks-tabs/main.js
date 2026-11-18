@@ -45,7 +45,7 @@ export default class Tabs extends View {
     // ks: close for real what has waited 30 s (lib/closing.js); redraw the Undo chip's countdown meanwhile.
     closing.finish();
     cx.timer.every(1000, (cx) => { if (closing.pending().length) { closing.finish(); cx.notify(); } });
-    // cmd-w: the shown tab, or `close:<id>` for another one. cmd-shift-w (`close-pane`): the focused pane,
+    // cmd-shift-w: the shown tab, or `close:<id>` for another one. cmd-w (`close-pane`): the focused pane,
     // here and not in ks-pane, as the tab bar has one copy and every pane header would get it.
     cx.spawn(async (cx) => {
       for (;;) {

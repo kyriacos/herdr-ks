@@ -1,6 +1,6 @@
 // When closing a tab or a pane asks first. Herdr's own tab.close asks only when the space would close
 // with it, and Herdr's Settings have no switch for it, so every way this layout closes one comes here:
-// a tab's × and menu and cmd-w (ks-tabs), a pane's × and menu (ks-pane) and cmd-shift-w (ks-tabs).
+// a tab's × and menu and cmd-shift-w (ks-tabs), a pane's × and menu (ks-pane) and cmd-w (ks-tabs).
 // Mods can't import from each other: this file is copied as-is into both, and scripts/sync.sh
 // refuses to install copies that differ.
 import { spaces, panes, agents, terminals, run, openOverlay, closeOverlay, shared, setShared, exec, hc } from "herdr";
@@ -136,7 +136,7 @@ export const paneName = (p) => givenName(p) || fallbackName(p);
 // A tab's only pane takes the tab with it, so closing it closes the tab, and asks as closing a tab
 // does: a pane's × shouldn't end a tab more quietly than cmd-w would. (tab.close, too: pane.close
 // has no `confirmed` and asks before a space goes anyway.)
-// cmd-shift-w comes through ks-tabs, not the pane headers: a key command reaches every shown
+// cmd-w comes through ks-tabs, not the pane headers: a key command reaches every shown
 // copy, and each header checking focus in turn would close one pane after the other as focus moves.
 export function closePane(pane) {
   const all = panes(), p = all.find(q => q.pane === pane);
