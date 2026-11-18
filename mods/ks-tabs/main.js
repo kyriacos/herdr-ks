@@ -187,6 +187,17 @@ export default class Tabs extends View {
     localStorage.setItem("panels", JSON.stringify(this.panels));
   }
 
+  // ks: a dragged tab let go: moved before or after the tab it was over (tab.move takes a 1-based index among
+  // all the space's tabs, counted without it).
+  dropTab(d, space, shown) {
+    if (d.over == null || d.over === d.i || !space) return;
+    const all = space.tabs, from = all.findIndex(x => x.id === d.id), at = all.findIndex(x => x.id === shown[d.over]?.id);
+    if (from < 0 || at < 0) return;
+    let to = at + (d.after ? 1 : 0);
+    if (from < to) to -= 1;
+    if (to !== from) run("tab.move", { id: d.id, index: to + 1 });
+  }
+
   // ks: focus mode dims this until hovered (lib/focus.js).
   render(cx) { return dimmed(this, this.renderInner(cx)); }
 
@@ -202,16 +213,28 @@ export default class Tabs extends View {
     // ks: a tab's terminals whose Claude session can be resumed (their agent is gone; the pane shows a shell).
     const resumables = (c) => allPanes.filter((p) => p.tab === c.id && p.terminal)
       .map((p) => ({ address: p.terminal, rec: sessions.resumable(p.terminal, !p.program?.agent) })).filter((x) => x.rec);
+    // ks: dragging a tab. A press arms it; after a few pixels the tab fades, a copy follows the pointer and an
+    // accent bar shows where it lands (before or after the tab under the pointer); letting go moves it there.
+    const dragging = this.drag?.moved ? this.drag : null;
+    const bar = (id) => div().id(id).flex_none().w(3).h(24).rounded(2).bg(t.accent);
     const item = (c, i) => {
       const program = tabProgram(c), name = tabName(c, program), lost = resumables(c);
-      return h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
-        .border(1).border_color(c.active ? t.border : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
+      const lifted = dragging?.i === i, over = dragging && dragging.over === i && dragging.i !== i;
+      const el = h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
+        .border(1).border_color(lifted ? t.accent + "66" : c.active ? t.border : t.chrome).when(lifted, e => e.border_dashed()).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
+        .opacity(lifted ? 0.4 : 1).when(Boolean(dragging), e => e.cursor_grabbing())
         .hover(s => s.bg(t.hover))
-        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
-        .on_mouse_up("left", () => {
-          const from = this.pressed; this.pressed = null;
-          if (from !== null && from !== i) run("tab.move", { id: shown[from].id, index: space.tabs.findIndex(x => x.id === c.id) + 1 });
-          else run("tab.select", { id: c.id });
+        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; this.drag = { i, id: c.id, name, x: e.position.x, moved: false, over: null, after: false }; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
+        .on_mouse_move((e, cx) => {
+          const d = this.drag;
+          if (!d?.moved) return;
+          const after = e.bounds && e.local_position ? e.local_position.x > e.bounds.width / 2 : false;
+          if (d.over !== i || d.after !== after) { d.over = i; d.after = after; cx.notify(); }
+        })
+        .on_mouse_up("left", (_e, cx) => {
+          const d = this.drag; this.drag = null; this.pressed = null;
+          if (d?.moved) { cx.stop_propagation(); this.dropTab(d, space, shown); cx.notify(); return; }
+          run("tab.select", { id: c.id });
         })
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "ks-tabs", kind: "popup", width: 220, height: 237, props: { menu: { id: c.id, space: space.id } } }); })
         .when(Boolean(program?.icon), el => el.child(program.tint ? svg(program.icon).size(14).text_color(t.muted) : image(program.icon).size(14)))
@@ -227,6 +250,9 @@ export default class Tabs extends View {
         .when(c.status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
         .when(c.status === "blocked" || c.status === "done", el => el.child(div().size(6).rounded(3).bg(t[c.status])))
         .when(c.active, el => el.child(div().id(`close-${c.id}`).text_color(t.dim).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); closeTab(c.id); }).child(svg("mods/pane/close.svg").size(12))));
+      // The landing bar, on the side of the tab under the pointer.
+      if (!over) return el;
+      return h_flex().flex_none().items_center().gap(3).when(!dragging.after, e => e.child(bar(`drop-${c.id}`))).child(el).when(dragging.after, e => e.child(bar(`drop-${c.id}`)));
     };
     const root = layout(), sidebar = find(root, "sidebar"), w = window();
     // Old saved rails and a dragged-narrow sidebar can be smaller than the window buttons.
@@ -249,9 +275,22 @@ export default class Tabs extends View {
         }).child(svg(icon).size(14)).child(label);
     };
     return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
-      .on_mouse_up("left", () => { this.pressed = null; })
+      .on_mouse_up("left", (_e, cx) => { const d = this.drag; this.pressed = null; this.drag = null; if (d?.moved) { this.dropTab(d, space, shown); cx.notify(); } })
+      .relative()
+      .on_mouse_move((e, cx) => {
+        const d = this.drag;
+        if (!d) return;
+        if (e.local_position) this.ptr = e.local_position;
+        if (!d.moved && Math.abs(e.position.x - d.x) > 5) d.moved = true;
+        if (d.moved) cx.notify();
+      })
+      .on_key_down((e, cx) => { if (e.key === "escape" && this.drag) { this.drag = null; this.pressed = null; cx.notify(); } })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.map(item)))
+      // ks: the dragged tab's copy, beside the pointer.
+      .when(Boolean(dragging && this.ptr), el => el.child(h_flex().absolute().left(this.ptr.x + 12).top(6).h(29).px(10).items_center().rounded(7)
+        .border_1().border_color(t.accent).bg(t.raised).shadow_md().text_size(12.8).text_color(t.foreground).opacity(0.95)
+        .child(div().max_w(170).truncate().child(dragging.name))))
       .when(closing.pending().length > 0, el => {
         const list = closing.pending(), last = list[list.length - 1], left = Math.max(0, Math.ceil((last.until - Date.now()) / 1000));
         return el.child(h_flex().id("undo-close").flex_none().h(24).px(8).gap(6).items_center().rounded(6)
