@@ -10,6 +10,8 @@ name=ks
 
 command -v jq >/dev/null || { echo "needs jq (brew install jq)" >&2; exit 1; }
 command -v rsync >/dev/null || { echo "needs rsync" >&2; exit 1; }
+# Every side panel handles the keyboard the same way (ctrl-w o, z, the zoom keys): stop if one lost a piece.
+"$src/scripts/check-panels.sh"
 [ -d "$app" ] || { echo "$app not found: install and start Herdr App first" >&2; exit 1; }
 
 # Mods can't import from each other: shared/ (highlighter, diff model, review comments) is copied into the

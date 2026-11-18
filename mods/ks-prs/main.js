@@ -8,7 +8,7 @@ import { spaces, panes, focused, exec, shared, theme, run, notify } from "herdr"
 import * as cache from "./lib/cache.js";
 import { summarize, runningColor, pillColors } from "./lib/ci.js";
 import { dimmed } from "./lib/focus.js";
-import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
+import { takeFocus, listKey, watchFocus, focusedNow, toStrip } from "./lib/panelkeys.js";
 import { isWindow, initWindow, windowCommand, zoomCommand, zoomKey, windowFrame, headerButton } from "./lib/panelwin.js";
 
 const FIELDS = "number,title,state,url,baseRefName,headRefName,isDraft,reviewDecision,additions,deletions,changedFiles,statusCheckRollup,author";
@@ -146,6 +146,7 @@ export default class Prs extends View {
       .track_focus(this.handle)
       .on_key_down((e, cx) => {
         const before = this.cursor, prs = this.prs;
+        if (toStrip(e)) { cx.stop_propagation(); return; } // a key strip opening: its key, not this panel's
         if (zoomKey(this, e, "ks-prs")) { cx.stop_propagation(); return; }
         if (!listKey(this, e, prs.length, (i) => this.review([prs[i]]), (k) => {
           if (k === "r") { this.refresh(cx, true); return true; }
