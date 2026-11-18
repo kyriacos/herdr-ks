@@ -95,6 +95,8 @@ const ops = {
   // Today / backlog: `today` on or off, placed before `before` in that list.
   plan: (id, today, before, list) => (d) => {
     const x = find(d, id); if (!x) return;
+    // A proposed task dragged into Today or Backlog: that's accepting it.
+    if (x.proposed) { log(x, "Accepted"); x.proposed = false; }
     if (Boolean(x.today) !== Boolean(today)) log(x, today ? "Added to today" : "Taken off today");
     x.today = today; x.order = orderAt(list.map((y) => find(d, y.id) ?? y), before, id);
     if (x.column === doneCol(d)) { const to = d.columns[today && d.columns[1] ? 1 : 0].id; log(x, `Moved from ${COLNAME(d, x.column)} to ${COLNAME(d, to)}`); x.column = to; x.doneAt = null; }
@@ -520,16 +522,17 @@ export default class Tasks extends View {
 
   renderToday(t, focused) {
     const l = this.lists(), at = focused ? this.row : -1;
-    const head = (label, n, hint) => h_flex().flex_none().mt(10).mb(2).gap(6).items_center().text_size(11)
+    const head = (label, n, hint, where = null) => h_flex().flex_none().mt(10).mb(2).gap(6).items_center().text_size(11)
+      .when(Boolean(where), (e) => e.on_mouse_move((ev, cx) => this.overList(where, ev, cx)))
       .child(div().font_semibold().text_color(t.muted).child(label)).child(div().text_color(t.dim).child(String(n)))
       .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(hint));
     return v_flex().id("tasks-today").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).px(10).pb(16)
       .when(l.proposed.length > 0, (e) => e
         .child(head("Proposed by agents", l.proposed.length, "a or ✓ accepts · x or ✕ dismisses"))
         .child(v_flex().gap(6).children(l.proposed.map((x, i) => this.card(x, t, "@proposed", l.proposed, at === i)))))
-      .child(head("Today", l.today.length, l.today.length ? "" : "nothing planned yet"))
+      .child(head("Today", l.today.length, l.today.length ? "" : "nothing planned yet: drag a task here", "@today"))
       .child(this.dropList("@today", l.today, t, at - l.proposed.length))
-      .child(head("Backlog", l.backlog.length, "☀ or t: do it today"))
+      .child(head("Backlog", l.backlog.length, "☀ or t: do it today", "@backlog"))
       .child(this.dropList("@backlog", l.backlog, t, at - l.proposed.length - l.today.length))
       .when(l.done > 0, (e) => e.child(div().mt(12).text_size(10.5).text_color(t.dim).child(`${plural(l.done, "task")} done (in ${this.data.columns[this.data.columns.length - 1]?.name})`)));
   }
@@ -541,7 +544,10 @@ export default class Tasks extends View {
     const deleting = this.confirmDelete === c.id;
     // The column a dragged card would land in lights up.
     const target = this.drag?.moved && this.over?.where === c.id;
+    // The whole column takes a dragged card (an empty one has no cards to point at), at its end unless over a card.
     return v_flex().id(`col-${c.id}`).flex_none().w(W).h_full().min_h(0).rounded(9).bg(target ? t.accent + "12" : t.chrome).border_1().border_color(target ? t.accent : on ? t.accent + "88" : t.border)
+      .on_mouse_move((e, cx) => this.overList(c.id, e, cx))
+      .on_drop((e, cx) => { cx.stop_propagation(); if (!this.droppedOn) this.dropNew(c.id, e.paths, cx); })
       .child(h_flex().flex_none().h(36).px(10).gap(6).items_center().border_b(1).border_color(t.border)
         .when(!renaming, (e) => e
           .child(div().id(`colname-${c.id}`).flex_1().min_w(0).truncate().font_semibold().text_size(12).cursor_pointer()
