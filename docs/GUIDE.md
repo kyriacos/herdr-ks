@@ -1,7 +1,7 @@
 # herdr-ks guide
 
 What you get with the `ks` layout for [Herdr App](https://herdr.dev), and how to use each part. The README
-covers setup and where things live; this is the tour.
+covers setup; [CONTRIBUTING.md](../CONTRIBUTING.md) covers how the repo is built; this is the tour.
 
 `ks` is built for one way of working: several Claude Code agents, each in its own git worktree, often across
 two repos (a backend and a frontend) at once, with you reviewing their work and sending feedback back to them.
