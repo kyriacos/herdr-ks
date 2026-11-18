@@ -4,6 +4,8 @@
 //   - the board window ({ board: true }): the same, full size;
 //   - a task ({ task: id }): a dialog with its title, description, column, Today, attachments and comments.
 //
+// Agents add tasks with bin/ks-task (the ks-tasks skill): they arrive proposed, at the top of Today, to accept
+// (✓, a) or dismiss (✕, x); the tab bar's Tasks button counts them.
 // Undo / redo (u / U, cmd-z / cmd-shift-z, ↶ ↷): every change made here, back to when the panel opened.
 // Board: columns you add, rename, reorder and delete; drag a card onto another column (or between two cards), or
 // H / L (move to the column left / right), J / K (up / down in its column).
@@ -244,9 +246,12 @@ export default class Tasks extends View {
   // Today: what's for today, then the backlog, neither done. Each sorted by order.
   lists() {
     const d = this.data, done = doneCol(d), open = d.tasks.filter((x) => x.column !== done).sort((a, b) => a.order - b.order);
-    return { today: open.filter((x) => x.today), backlog: open.filter((x) => !x.today), done: d.tasks.filter((x) => x.column === done).length };
+    // Proposed (by an agent, bin/ks-task): waiting for you, apart from both lists until accepted.
+    const mine = open.filter((x) => !x.proposed);
+    return { proposed: open.filter((x) => x.proposed), today: mine.filter((x) => x.today), backlog: mine.filter((x) => !x.today), done: d.tasks.filter((x) => x.column === done).length };
   }
-  flat() { const l = this.lists(); return [...l.today, ...l.backlog]; }
+  flat() { const l = this.lists(); return [...l.proposed, ...l.today, ...l.backlog]; }
+  accept(task, cx) { this.apply(ops.patch(task.id, { proposed: false }), cx); this.say(`Accepted "${task.title || "Untitled"}"`, "undo", cx); }
   selected() {
     if (this.view === "today") return this.flat()[this.row] ?? null;
     const c = this.data.columns[this.cur.col];
@@ -356,6 +361,7 @@ export default class Tasks extends View {
     else if ((k === "enter" || k === "o") && sel) this.openTask(sel.id);
     else if (k === "n") this.startAdd(today ? "@today" : col?.id, cx);
     else if (k === "t" && sel) this.toggleToday(sel, cx);
+    else if (k === "a" && sel?.proposed) this.accept(sel, cx);
     else if (k === "x" && sel) this.remove(sel, cx);
     else if (k === "u") this.step(true, cx);
     else if (k === "U") this.step(false, cx);
@@ -389,6 +395,7 @@ export default class Tasks extends View {
     const meta = [];
     const colName = this.view === "today" ? this.data.columns.find((c) => c.id === task.column)?.name : null;
     if (colName) meta.push(colName);
+    if (task.assignee) meta.push(`@ ${task.assignee}`);
     if (n) meta.push(plural(n, "comment"));
     if (files.length) meta.push(plural(files.length, "file"));
     return v_flex().flex_none()
@@ -412,6 +419,14 @@ export default class Tasks extends View {
             .hover((s) => s.bg(t.hover).text_color(t.ansi1)).tooltip("Delete (x), with undo")
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
             .on_click((_e, cx) => { cx.stop_propagation(); this.remove(task, cx); }).child("×")))
+        // Proposed by an agent: who, and accept / dismiss right here.
+        .when(Boolean(task.proposed), (e) => e.child(h_flex().gap(6).items_center().text_size(10.5)
+          .child(div().flex_none().px(5).rounded(5).bg(t.accent + "1f").border_1().border_color(t.accent + "66").text_color(t.accent).child("proposed"))
+          .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(task.by ? `by ${task.by}` : ""))
+          .child(div().id(`acc-${task.id}`).flex_none().px(6).rounded(4).text_color(t.ansi2).cursor_pointer().hover((s) => s.bg(t.hover))
+            .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.accept(task, cx); }).child("✓ Accept"))
+          .child(div().id(`dis-${task.id}`).flex_none().px(6).rounded(4).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover))
+            .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.remove(task, cx); }).child("✕ Dismiss"))))
         .when(pics.length > 0, (e) => e.child(attachRow(pics, t, `cp-${task.id}`)))
         .when(meta.length > 0 || Boolean(task.spaceName), (e) => e.child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
           .when(Boolean(task.spaceName), (e) => e.child(div().flex_none().px(5).rounded(5).border_1().border_color(t.border).max_w(140).truncate().text_color(t.muted).child(task.spaceName)))
@@ -444,10 +459,13 @@ export default class Tasks extends View {
       .child(div().font_semibold().text_color(t.muted).child(label)).child(div().text_color(t.dim).child(String(n)))
       .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(hint));
     return v_flex().id("tasks-today").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).px(10).pb(16)
+      .when(l.proposed.length > 0, (e) => e
+        .child(head("Proposed by agents", l.proposed.length, "a or ✓ accepts · x or ✕ dismisses"))
+        .child(v_flex().gap(6).children(l.proposed.map((x, i) => this.card(x, t, "@proposed", l.proposed, at === i)))))
       .child(head("Today", l.today.length, l.today.length ? "" : "nothing planned yet"))
-      .child(this.dropList("@today", l.today, t, at))
+      .child(this.dropList("@today", l.today, t, at - l.proposed.length))
       .child(head("Backlog", l.backlog.length, "☀ or t: do it today"))
-      .child(this.dropList("@backlog", l.backlog, t, at - l.today.length))
+      .child(this.dropList("@backlog", l.backlog, t, at - l.proposed.length - l.today.length))
       .when(l.done > 0, (e) => e.child(div().mt(12).text_size(10.5).text_color(t.dim).child(`${plural(l.done, "task")} done (in ${this.data.columns[this.data.columns.length - 1]?.name})`)));
   }
 
@@ -642,7 +660,11 @@ export default class Tasks extends View {
             .child(pill("tt", x.today ? "☀ Today" : "☀ Add to today", Boolean(x.today), (cx) => this.apply(ops.patch(x.id, { today: !x.today }), cx))))
           .child(h_flex().mt(8).gap(8).text_size(10.5).text_color(t.dim)
             .when(Boolean(x.spaceName), (e) => e.child(div().px(5).rounded(5).border_1().border_color(t.border).text_color(t.muted).child(x.spaceName)))
-            .child(div().child(`created ${ago(x.created)} · updated ${ago(x.updated)}${this.dirty ? " · saving…" : ""}`)))
+            .child(div().child(`${x.by ? `by ${x.by} · ` : ""}created ${ago(x.created)} · updated ${ago(x.updated)}${x.assignee ? ` · @ ${x.assignee}` : ""}${this.dirty ? " · saving…" : ""}`)))
+          .when(Boolean(x.proposed), (e) => e.child(h_flex().mt(10).px(10).h(32).gap(8).items_center().rounded(7).bg(t.accent + "1f").text_size(11.5).text_color(t.accent)
+            .child(div().flex_1().truncate().child("Proposed by an agent: accept it to keep it (an agent may then start on it)"))
+            .child(div().id("tp-acc").px(7).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => this.apply(ops.patch(x.id, { proposed: false }), cx)).child("Accept"))
+            .child(div().id("tp-dis").px(7).rounded(4).cursor_pointer().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => { this.apply(ops.remove(x.id), cx); close(cx); }).child("Dismiss"))))
           .child(section("Description"))
           .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)
             .child(Textarea.new(this.body).w_full().text_size(12.5).text_color(t.foreground).font_family(mono)))
@@ -657,7 +679,7 @@ export default class Tasks extends View {
               .child("Drop files here, or Add files / Paste image"))
           .child(section(`Comments${comments.length ? ` · ${comments.length}` : ""}`))
           .children(comments.map((c) => v_flex().id(`cm-${c.id}`).mb(8).p(9).gap(4).rounded(8).border_1().border_color(t.border).bg(t.chrome)
-            .child(h_flex().gap(6).text_size(10.5).text_color(t.dim).child(div().flex_1().child(ago(c.at)))
+            .child(h_flex().gap(6).text_size(10.5).text_color(t.dim).child(div().flex_1().truncate().child(`${ago(c.at)}${c.by ? ` · ${c.by}` : ""}`))
               .child(div().id(`cmx-${c.id}`).px(5).rounded(4).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.apply(ops.uncomment(x.id, c.id), cx)).child("Delete")))
             .child(div().text_size(12.5).text_color(t.foreground).child(c.text))))
           .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)

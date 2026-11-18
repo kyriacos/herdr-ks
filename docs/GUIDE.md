@@ -205,6 +205,12 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   `U`, `cmd-z` / `cmd-shift-z`, or **↶ ↷** in the header. A card's **×** deletes it, with Undo.
 - Keys: `j`/`k`, `gg`/`G`, `h`/`l` between columns, Enter/`o` open, `t` today, `x` delete, `u`/`U` undo / redo,
   `b` Today / Board, `B` the window.
+- **Agents:** any Claude session can use the `ks-task` command (the `ks-tasks` skill tells it how). Ask it to "add a
+  task", "track this", "what's on my board"; it also proposes follow-ups it notices. What an agent adds on its own
+  arrives **proposed**: at the top of Today, with ✓ Accept (`a`) and ✕ Dismiss (`x`), and the tab bar's button
+  shows "Tasks · N new" with a notification. Tasks you asked it to add land directly. An agent can `start` only an
+  accepted task (it moves to Doing, marked with its name), leaves progress `comment`s, and marks it `done`.
+  `ks-task --help` lists everything; it works from any terminal too.
 - Stored in `~/.config/herdr-app/data/ks-tasks.json`, attachments in `data/ks-attach/` (neither is in the repo).
 
 ## Pull requests

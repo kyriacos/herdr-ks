@@ -37,6 +37,12 @@ for s in "layout:$name"; do
   mv "$keys.tmp" "$keys"
 done
 
+# Commands (bin/: ks-task) linked into ~/.local/bin, and Claude Code skills (skills/: ks-tasks) copied into
+# ~/.claude/skills, so every agent session can use them.
+mkdir -p "$HOME/.local/bin"
+for f in "$src"/bin/*; do [ -f "$f" ] && chmod +x "$f" && ln -sf "$f" "$HOME/.local/bin/$(basename "$f")"; done
+for d in "$src"/skills/*/; do [ -d "$d" ] && mkdir -p "$HOME/.claude/skills" && rsync -a --delete "$d" "$HOME/.claude/skills/$(basename "$d")/"; done
+
 for d in "$app"/mods/ks-*/; do herdr-app check "$d"; done
 [ "${1:-}" = "--switch" ] && herdr-app do layout.switch "{\"name\":\"$name\"}" >/dev/null
 

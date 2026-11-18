@@ -1,0 +1,425 @@
+#!/usr/bin/env python3
+"""ks-task: the ks layout's local task board (the Tasks panel in Herdr App), from the command line.
+
+Agents use it (see the ks-tasks skill) to propose tasks, follow the ones they work on and leave progress notes;
+anyone can use it from a terminal. Tasks an agent adds arrive as *proposed*: the Tasks panel shows them at the top
+for you to accept or dismiss. A task you accepted (or made yourself) is what an agent may start on.
+
+  ks-task add "title" [--body TEXT] [--column NAME] [--today] [--by NAME] [--direct]
+  ks-task list [--all] [--column NAME] [--mine] [--proposed] [--json] [SEARCH...]
+  ks-task show ID [--json]
+  ks-task comment ID "text" [--by NAME]
+  ks-task start ID [--by NAME]          move to the in-progress column, noted as yours
+  ks-task done ID ["closing note"]      move to the last (done) column
+  ks-task move ID COLUMN
+  ks-task update ID [--title T] [--body B] [--today | --not-today]
+  ks-task attach ID PATH...
+  ks-task accept ID...                  a proposed task becomes a real one (only when the user says so)
+  ks-task dismiss ID...                 drop a proposed task
+  ks-task columns
+
+Stored in <app home>/data/ks-tasks.json (HERDR_APP_HOME, default ~/.config/herdr-app). Writes are atomic
+(write then rename), and the panel picks changes up within a few seconds (at once when Herdr App is running).
+IDs can be shortened to any unique prefix.
+"""
+import json, os, random, shutil, subprocess, sys, time
+
+APP = os.environ.get("HERDR_APP_HOME") or os.path.expanduser("~/.config/herdr-app")
+FILE = os.path.join(APP, "data", "ks-tasks.json")
+ATTACH = os.path.join(APP, "data", "ks-attach")
+COLUMNS = [{"id": "backlog", "name": "Backlog"}, {"id": "todo", "name": "To do"}, {"id": "doing", "name": "Doing"}, {"id": "done", "name": "Done"}]
+
+
+def die(msg, code=1):
+    print(f"ks-task: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def now():
+    return int(time.time() * 1000)
+
+
+def b36(n):
+    s, d = "", "0123456789abcdefghijklmnopqrstuvwxyz"
+    while n:
+        n, r = divmod(n, 36)
+        s = d[r] + s
+    return s or "0"
+
+
+def uid(p):
+    return p + b36(now()) + b36(random.randint(0, 10 ** 5))
+
+
+def load():
+    try:
+        with open(FILE) as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        d = {}
+    except json.JSONDecodeError:
+        die(f"{FILE} isn't valid JSON; not touching it")
+    d.setdefault("columns", [dict(c) for c in COLUMNS])
+    if not d["columns"]:
+        d["columns"] = [dict(c) for c in COLUMNS]
+    d.setdefault("tasks", [])
+    return d
+
+
+def save(d):
+    os.makedirs(os.path.dirname(FILE), exist_ok=True)
+    tmp = FILE + f".tmp{os.getpid()}"
+    with open(tmp, "w") as f:
+        json.dump({"columns": d["columns"], "tasks": d["tasks"]}, f, indent=1)
+    os.replace(tmp, FILE)
+    # Tell Herdr App, when it's running, so the panel and the tab bar's count update at once.
+    try:
+        subprocess.run(["herdr-app", "do", "ks-tabs.tasks-changed"], capture_output=True, timeout=3)
+    except Exception:
+        pass
+
+
+def sh(*cmd):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def where():
+    """The repo and branch of the current folder, labelled as the ks sidebar names spaces."""
+    top = sh("git", "rev-parse", "--show-toplevel") or os.getcwd()
+    common = sh("git", "rev-parse", "--path-format=absolute", "--git-common-dir")
+    repo = os.path.basename(os.path.dirname(common)) if common.endswith("/.git") else os.path.basename(top)
+    branch = sh("git", "rev-parse", "--abbrev-ref", "HEAD")
+    short = branch.split("/")[-1] if branch else ""
+    label = f"{repo} · {short}" if short in ("", "main", "master", "HEAD") else f"{short} · {repo}"
+    return {"folder": top, "repo": repo, "branch": branch, "label": label}
+
+
+_TERM = None
+
+
+def terminal():
+    """This Herdr terminal (`hc get`): its title (a Claude session's task name) and space. {} outside Herdr."""
+    global _TERM
+    if _TERM is None:
+        t = os.environ.get("HC_TERMINAL_ID") or os.environ.get("HERDR_PANE_ID")
+        try:
+            _TERM = json.loads(sh("hc", "get", t)) if t else {}
+        except Exception:
+            _TERM = {}
+    return _TERM
+
+
+def agent_name():
+    """Who's asking: the terminal's title, else the folder."""
+    title = (terminal().get("title") or "").strip(" ✳⠂⠐*·")
+    return title or "agent in " + os.path.basename(os.getcwd())
+
+
+def by_agent():
+    """Run by a coding agent (Claude Code sets CLAUDECODE in its shells)."""
+    return bool(os.environ.get("CLAUDECODE"))
+
+
+def column(d, name):
+    if not name:
+        return None
+    n = name.lower()
+    for c in d["columns"]:
+        if c["id"].lower() == n or c["name"].lower() == n:
+            return c
+    hits = [c for c in d["columns"] if c["name"].lower().startswith(n)]
+    if len(hits) == 1:
+        return hits[0]
+    die(f'no column "{name}"; columns: {", ".join(c["name"] for c in d["columns"])}')
+
+
+def doing_col(d):
+    for c in d["columns"]:
+        if any(w in c["name"].lower() for w in ("doing", "progress", "working", "active")):
+            return c
+    return d["columns"][max(0, len(d["columns"]) - 2)]
+
+
+def find(d, ident):
+    hits = [t for t in d["tasks"] if t["id"] == ident] or [t for t in d["tasks"] if t["id"].startswith(ident)]
+    if not hits:
+        die(f"no task {ident}")
+    if len(hits) > 1:
+        die(f"{ident} matches {len(hits)} tasks; give more of the id")
+    return hits[0]
+
+
+def args(argv, flags, opts):
+    """argv -> (positional, {flag: True}, {opt: value})."""
+    pos, f, o, i = [], {}, {}, 0
+    while i < len(argv):
+        a = argv[i]
+        if a in flags:
+            f[a] = True
+        elif a in opts:
+            if i + 1 >= len(argv):
+                die(f"{a} needs a value")
+            o[a] = argv[i + 1]
+            i += 1
+        elif a.startswith("--"):
+            die(f"unknown option {a}")
+        else:
+            pos.append(a)
+        i += 1
+    return pos, f, o
+
+
+def colname(d, cid):
+    return next((c["name"] for c in d["columns"] if c["id"] == cid), cid)
+
+
+def line(d, t):
+    tags = []
+    if t.get("proposed"):
+        tags.append("proposed")
+    if t.get("today"):
+        tags.append("today")
+    if t.get("assignee"):
+        tags.append("@" + t["assignee"][:30])
+    extra = f"  ({', '.join(tags)})" if tags else ""
+    return f'{t["id"]}  [{colname(d, t.get("column"))}] {t.get("title") or "Untitled"}{extra}'
+
+
+def cmd_add(argv):
+    pos, f, o = args(argv, {"--today", "--direct"}, {"--body", "--column", "--by"})
+    if not pos:
+        die('add needs a title: ks-task add "title"')
+    d, w, ts = load(), where(), now()
+    col = column(d, o.get("--column")) or d["columns"][0]
+    title = " ".join(pos).strip()
+    # The same open title twice (an agent retrying): the existing one, not a copy.
+    done = d["columns"][-1]["id"]
+    dup = next((t for t in d["tasks"] if (t.get("title") or "").strip().lower() == title.lower() and t.get("column") != done), None)
+    if dup:
+        print(f"exists: {line(d, dup)}")
+        return
+    agent = by_agent() or "--by" in o
+    who = o.get("--by") or (agent_name() if agent else os.environ.get("USER", "you"))
+    order = max([t.get("order", 0) for t in d["tasks"] if t.get("column") == col["id"]] or [0]) + 1
+    t = {"id": uid("t"), "title": title, "body": o.get("--body", ""), "column": col["id"], "today": "--today" in f, "order": order,
+         "space": (terminal().get("labels") or {}).get("herdr.space"), "spaceName": w["label"], "folder": w["folder"], "created": ts, "updated": ts, "doneAt": None,
+         "comments": [], "attachments": [], "by": who, "proposed": bool(agent and "--direct" not in f),
+         "source": {"terminal": os.environ.get("HC_TERMINAL_ID") or os.environ.get("HERDR_PANE_ID"), "branch": w["branch"]}}
+    d["tasks"].append(t)
+    save(d)
+    print(("proposed: " if t["proposed"] else "added: ") + line(d, t))
+
+
+def cmd_list(argv):
+    pos, f, o = args(argv, {"--all", "--mine", "--proposed", "--json"}, {"--column"})
+    d = load()
+    done = d["columns"][-1]["id"]
+    ts = [t for t in d["tasks"] if "--all" in f or t.get("column") != done]
+    if "--column" in o:
+        c = column(d, o["--column"])
+        ts = [t for t in ts if t.get("column") == c["id"]]
+    if "--proposed" in f:
+        ts = [t for t in ts if t.get("proposed")]
+    if "--mine" in f:
+        folder = where()["folder"]
+        ts = [t for t in ts if t.get("folder") == folder]
+    for w in [p.lower() for p in pos]:
+        ts = [t for t in ts if w in f'{t.get("title", "")} {t.get("body", "")} {t.get("spaceName", "")}'.lower()]
+    order = {c["id"]: i for i, c in enumerate(d["columns"])}
+    ts.sort(key=lambda t: (order.get(t.get("column"), 99), not t.get("today"), t.get("order", 0)))
+    if "--json" in f:
+        print(json.dumps(ts, indent=1))
+        return
+    if not ts:
+        print("no tasks")
+    for t in ts:
+        print(line(d, t))
+
+
+def cmd_show(argv):
+    pos, f, _ = args(argv, {"--json"}, {})
+    if not pos:
+        die("show needs an id")
+    d = load()
+    t = find(d, pos[0])
+    if "--json" in f:
+        print(json.dumps(t, indent=1))
+        return
+    print(line(d, t))
+    meta = [x for x in [t.get("spaceName"), f'by {t["by"]}' if t.get("by") else ""] if x]
+    if meta:
+        print("  " + " · ".join(meta))
+    if t.get("body"):
+        print("\n" + t["body"])
+    for a in t.get("attachments", []):
+        print(f'  attachment: {os.path.join(APP, a["rel"])}')
+    for c in sorted(t.get("comments", []), key=lambda c: c.get("at", 0)):
+        when = time.strftime("%d %b %H:%M", time.localtime(c.get("at", 0) / 1000))
+        print(f'\n  {when}{" · " + c["by"] if c.get("by") else ""}\n  ' + c.get("text", "").replace("\n", "\n  "))
+
+
+def comment(t, text, who):
+    t.setdefault("comments", []).append({"id": uid("m"), "text": text, "at": now(), "by": who})
+    t["updated"] = now()
+
+
+def who_from(o):
+    return o.get("--by") or (agent_name() if by_agent() else os.environ.get("USER", "you"))
+
+
+def cmd_comment(argv):
+    pos, _, o = args(argv, set(), {"--by"})
+    if len(pos) < 2:
+        die('comment needs an id and text: ks-task comment ID "text"')
+    d = load()
+    t = find(d, pos[0])
+    comment(t, " ".join(pos[1:]), who_from(o))
+    save(d)
+    print(f"commented: {line(d, t)}")
+
+
+def move(d, t, c):
+    if t.get("column") != c["id"]:
+        top = max([x.get("order", 0) for x in d["tasks"] if x.get("column") == c["id"]] or [0])
+        t["column"], t["order"] = c["id"], top + 1
+        t["doneAt"] = now() if c["id"] == d["columns"][-1]["id"] else None
+    t["updated"] = now()
+
+
+def cmd_start(argv):
+    pos, _, o = args(argv, set(), {"--by"})
+    if not pos:
+        die("start needs an id")
+    d = load()
+    t = find(d, pos[0])
+    if t.get("proposed"):
+        die("that task is still proposed: it needs accepting in the Tasks panel (or by the user) first", 2)
+    who = who_from(o)
+    move(d, t, doing_col(d))
+    t["assignee"] = who
+    comment(t, "Started", who)
+    save(d)
+    print(f"started: {line(d, t)}")
+
+
+def cmd_done(argv):
+    pos, _, o = args(argv, set(), {"--by"})
+    if not pos:
+        die("done needs an id")
+    d = load()
+    t = find(d, pos[0])
+    move(d, t, d["columns"][-1])
+    t["proposed"] = False
+    comment(t, " ".join(pos[1:]) or "Done", who_from(o))
+    save(d)
+    print(f"done: {line(d, t)}")
+
+
+def cmd_move(argv):
+    pos, _, _ = args(argv, set(), {})
+    if len(pos) < 2:
+        die("move needs an id and a column")
+    d = load()
+    t = find(d, pos[0])
+    move(d, t, column(d, " ".join(pos[1:])))
+    save(d)
+    print(f"moved: {line(d, t)}")
+
+
+def cmd_update(argv):
+    pos, f, o = args(argv, {"--today", "--not-today"}, {"--title", "--body"})
+    if not pos:
+        die("update needs an id")
+    d = load()
+    t = find(d, pos[0])
+    if "--title" in o:
+        t["title"] = o["--title"]
+    if "--body" in o:
+        t["body"] = o["--body"]
+    if "--today" in f:
+        t["today"] = True
+    if "--not-today" in f:
+        t["today"] = False
+    t["updated"] = now()
+    save(d)
+    print(f"updated: {line(d, t)}")
+
+
+def cmd_attach(argv):
+    pos, _, _ = args(argv, set(), {})
+    if len(pos) < 2:
+        die("attach needs an id and a file")
+    d = load()
+    t = find(d, pos[0])
+    os.makedirs(ATTACH, exist_ok=True)
+    for p in pos[1:]:
+        if not os.path.exists(p):
+            die(f"no file {p}")
+        aid = uid("a")
+        name = "".join(ch if ch.isalnum() or ch in "._- " else "_" for ch in os.path.basename(p.rstrip("/")))[-80:] or "file"
+        rel = f"data/ks-attach/{aid}-{name}"
+        dest = os.path.join(APP, rel)
+        (shutil.copytree if os.path.isdir(p) else shutil.copy2)(p, dest)
+        kind = "image" if name.lower().rsplit(".", 1)[-1] in ("png", "jpg", "jpeg", "gif", "webp", "heic", "bmp", "tif", "tiff", "svg") else "file"
+        w = h = 0
+        if kind == "image":
+            out = sh("sips", "-g", "pixelWidth", "-g", "pixelHeight", dest)
+            for ln in out.splitlines():
+                if "pixelWidth" in ln:
+                    w = int(ln.split()[-1])
+                if "pixelHeight" in ln:
+                    h = int(ln.split()[-1])
+        t.setdefault("attachments", []).append({"id": aid, "name": name, "rel": rel, "kind": kind, "size": os.path.getsize(dest) if os.path.isfile(dest) else 0, "w": w, "h": h, "added": now()})
+    t["updated"] = now()
+    save(d)
+    print(f"attached {len(pos) - 1}: {line(d, t)}")
+
+
+def cmd_accept(argv):
+    pos, _, _ = args(argv, set(), {})
+    if not pos:
+        die("accept needs an id")
+    d = load()
+    for i in pos:
+        t = find(d, i)
+        t["proposed"], t["updated"] = False, now()
+        print(f"accepted: {line(d, t)}")
+    save(d)
+
+
+def cmd_dismiss(argv):
+    pos, _, _ = args(argv, set(), {})
+    if not pos:
+        die("dismiss needs an id")
+    d = load()
+    for i in pos:
+        t = find(d, i)
+        if not t.get("proposed"):
+            die(f"{t['id']} isn't proposed; dismiss only drops proposals (move it to a column instead)")
+        d["tasks"] = [x for x in d["tasks"] if x["id"] != t["id"]]
+        print(f"dismissed: {line(d, t)}")
+    save(d)
+
+
+def cmd_columns(_argv):
+    d = load()
+    for c in d["columns"]:
+        n = sum(1 for t in d["tasks"] if t.get("column") == c["id"])
+        print(f'{c["name"]}  ({n})')
+
+
+CMDS = {"add": cmd_add, "list": cmd_list, "ls": cmd_list, "show": cmd_show, "comment": cmd_comment, "start": cmd_start, "done": cmd_done,
+        "move": cmd_move, "accept": cmd_accept, "dismiss": cmd_dismiss, "update": cmd_update, "attach": cmd_attach, "columns": cmd_columns}
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        sys.exit(0)
+    fn = CMDS.get(sys.argv[1])
+    if not fn:
+        die(f"unknown command {sys.argv[1]} (ks-task --help)")
+    fn(sys.argv[2:])

@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, run, openOverlay, theme, window, shared, setShared, layout, settings, focused, props, nextCommand, agents, panes, terminals, hc, exec, appHome } from "herdr";
+import { spaces, run, openOverlay, theme, window, shared, setShared, layout, settings, focused, props, nextCommand, agents, panes, terminals, hc, exec, appHome, notify } from "herdr";
 import { closeTab, closePane, tabName, tabProgram } from "./close.js";
 import * as sessions from "./lib/sessions.js";
 import * as closing from "./lib/closing.js";
@@ -29,6 +29,10 @@ export default class Tabs extends View {
     }
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
     this.recordSessions(cx);
+    // ks: tasks agents proposed (bin/ks-task), counted on the Tasks button; read now, every 30 s, and at once when
+    // ks-task wrote (the command `tasks-changed`).
+    this.tasksChanged(cx, false);
+    cx.timer.every(30000, (cx) => this.tasksChanged(cx, false));
     // ks: close for real what has waited 30 s (lib/closing.js); redraw the Undo chip's countdown meanwhile.
     closing.finish();
     cx.timer.every(1000, (cx) => { if (closing.pending().length) { closing.finish(); cx.notify(); } });
@@ -45,6 +49,7 @@ export default class Tabs extends View {
         else if (command === "close-space") { const sp = spaces().find(s => s.active); if (sp) closing.askSpace(sp.id); }
         else if (command === "undo") closing.undo(null);
         else if (command.startsWith("undo:")) closing.undo(command.slice("undo:".length));
+        else if (command === "tasks-changed") this.tasksChanged(cx, true);
         // Local change: panel:files / panel:changes (cmd-shift-e / cmd-shift-g) toggle the side panel like its buttons.
         else if (command.startsWith("panel:")) {
           const id = command.slice("panel:".length), root = layout(), panel = find(root, "panel"), body = find(root, "panel-body");
@@ -53,6 +58,24 @@ export default class Tabs extends View {
         }
         cx.notify();
       }
+    });
+  }
+
+  // ks: how many tasks wait for you to accept them (shared "ks-tasks.proposed"); a new one is announced. `fresh`:
+  // ks-task just wrote, so the Tasks panel reads the file again too (shared "ks-tasks.rev").
+  tasksChanged(cx, fresh) {
+    cx.spawn(async (cx) => {
+      const r = await exec("cat", [`${appHome()}/data/ks-tasks.json`]).catch(() => null);
+      let tasks = [];
+      try { tasks = JSON.parse(r?.stdout || "{}").tasks ?? []; } catch { return; }
+      const proposed = tasks.filter((t) => t.proposed), seen = new Set(this.proposedIds ?? []);
+      const fresh_ = this.proposedIds ? proposed.filter((t) => !seen.has(t.id)) : [];
+      this.proposedIds = proposed.map((t) => t.id);
+      if ((shared("ks-tasks.proposed") ?? 0) !== proposed.length) setShared("ks-tasks.proposed", proposed.length);
+      if (fresh) setShared("ks-tasks.rev", Date.now());
+      if (fresh_.length) notify({ title: fresh_.length === 1 ? "Task proposed" : `${fresh_.length} tasks proposed`,
+        body: fresh_.map((t) => `${t.title}${t.by ? ` (${t.by})` : ""}`).join("\n").slice(0, 300), level: "info", timeout: 6000 });
+      cx.notify();
     });
   }
 
@@ -240,7 +263,7 @@ export default class Tabs extends View {
       // ks: a scratchpad per space that outlives the space (ks-notes).
       .child(panelButton("notes", "Notes", "mods/ks-notes/note.svg"))
       // ks: a kanban board and a Today list (ks-tasks).
-      .child(panelButton("tasks", "Tasks", "mods/ks-tasks/task.svg"))
+      .child(panelButton("tasks", (shared("ks-tasks.proposed") ?? 0) > 0 ? `Tasks · ${shared("ks-tasks.proposed")} new` : "Tasks", "mods/ks-tasks/task.svg"))
       // ks: every ks setting in one panel (ks-settings).
       .child(button("ks-settings", "⚙", () => openOverlay({ mod: "ks-settings", kind: "dialog", width: 860, height: 620 })))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/ks-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
