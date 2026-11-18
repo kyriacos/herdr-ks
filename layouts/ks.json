@@ -51,6 +51,17 @@
           "type": "column",
           "children": [
             {
+              "id": "now-tasks",
+              "type": "block",
+              "size": {
+                "px": 60
+              },
+              "min": 30,
+              "content": {
+                "mod": "ks-nowtasks"
+              }
+            },
+            {
               "id": "my-prs",
               "type": "block",
               "size": {

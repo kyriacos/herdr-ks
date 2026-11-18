@@ -188,7 +188,14 @@ A scratchpad in the side panel: **Notes** in the tab bar, or `cmd-shift-j`.
 
 ## Tasks
 
-A kanban board and a Today list: **Tasks** in the tab bar, or `cmd-shift-k`. **⤢** (or `B`) opens the board in a
+A kanban board and a Today list: **Tasks** in the tab bar, or `cmd-shift-k`. **Here / All** (`s`): the panel
+shows this space's tasks (made in it, or in its worktrees), the board window every space's.
+
+**In the sidebar**, above My PRs: what's in progress now (the board's Doing column, every space, up to three),
+with how many are planned for today and how many agents proposed. Click a task to open it, the header for the
+board on all spaces; the chevron folds it.
+
+**⤢** (or `B`) opens the board in a
 window of its own; drag its corners to resize it (or use the key modes' resize keys), and it keeps that size.
 
 - **Board:** columns of your own. **+ Column** adds one; click a column's name (or `r`) to rename it, with **‹ ›**

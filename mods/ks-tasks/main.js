@@ -30,6 +30,7 @@ import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles } from "./lib/at
 const FILE = () => `${appHome()}/data/ks-tasks.json`;
 const REV = "ks-tasks.rev";
 const BOARD = "ks-tasks-board"; // the board window's overlay key
+const SIZE = "ks-tasks.boardSize"; // its last size (px), shared so the sidebar's Tasks opens it the same
 const COLUMNS = [{ id: "backlog", name: "Backlog" }, { id: "todo", name: "To do" }, { id: "doing", name: "Doing" }, { id: "done", name: "Done" }];
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
@@ -194,7 +195,7 @@ export default class Tasks extends View {
     openOverlay({ mod: "ks-tasks", kind: "dialog", key: `ks-task-${id}`, width: 680, height: 720, props: { task: id } });
   }
   // The board window: its last size (px, from dragging a corner or the key modes' resize keys), else 64% x 66%.
-  openBoard(size = load("boardSize", null), at = null) {
+  openBoard(size = shared(SIZE) ?? null, at = null) {
     const p = { board: true };
     openOverlay({ mod: "ks-tasks", kind: "window", key: BOARD, width: size?.width ?? 0.64, height: size?.height ?? 0.66, ...(at ? { at } : {}), props: p });
   }
@@ -205,6 +206,9 @@ export default class Tasks extends View {
   initList(cx) {
     // "today" | "board"; the window remembers its own (it opens on the board).
     this.viewKey = this.board ? "boardView" : "view"; this.view = load(this.viewKey, this.board ? "board" : "today");
+    // This space's tasks, or all: the panel starts on this space, the window on all (each remembers its own).
+    this.scopeKey = this.board ? "boardScope" : "scope"; this.all = load(this.scopeKey, this.board);
+    if ((props() ?? {}).all) this.all = true; // opened from the sidebar's Tasks: every space
     this.scroll = ScrollHandle.new(); this.boardScroll = ScrollHandle.new();
     this.cur = { col: 0, row: 0 }; this.row = 0;
     this.drag = null; this.over = null;
@@ -232,7 +236,7 @@ export default class Tasks extends View {
           if (!r) continue;
           const cur = this.size ?? { width: 1100, height: 700 }, step = 40 * (r.dir || 1);
           const size = r.reset ? null : { width: Math.max(560, Math.round(cur.width + (r.kind === "tall" ? 0 : step))), height: Math.max(360, Math.round(cur.height + (r.kind === "wide" ? 0 : step))) };
-          save("boardSize", size); this.openBoard(size); raiseStrip();
+          setShared(SIZE, size); this.openBoard(size); raiseStrip();
         }
       });
     }
@@ -241,21 +245,34 @@ export default class Tasks extends View {
     if (c === "board") this.openBoard();
     else if (c === "new") { this.setView(this.view, cx); this.startAdd(this.view === "today" ? "@today" : this.data.columns[this.cur.col]?.id, cx); }
   }
+  setAll(on, cx) { this.all = on; save(this.scopeKey, on); this.row = 0; this.cur.row = 0; cx.notify(); }
+  // A task is this space's when it was made in it, or in one of its worktrees (or under them): so a closed space's
+  // tasks come back with a new space in the same folder.
+  here(task) {
+    const sp = spaces().find((x) => x.active);
+    if (!sp) return true;
+    if (task.space && task.space === sp.id) return true;
+    const roots = [sp.folder, ...(shared("ks.session")?.[sp.id] ?? []).map((r) => r.root)].filter(Boolean).map((r) => r.toLowerCase().replace(/\/+$/, ""));
+    const f = String(task.folder ?? "").toLowerCase().replace(/\/+$/, "");
+    return Boolean(f) && roots.some((r) => f === r || f.startsWith(r + "/"));
+  }
+  shows(task) { return this.all || this.here(task); }
+  colTasks(id) { return inCol(this.data, id).filter((x) => this.shows(x)); }
   setView(v, cx) { this.view = v; save(this.viewKey, v); this.adding = null; cx.notify(); }
 
   // Today: what's for today, then the backlog, neither done. Each sorted by order.
   lists() {
-    const d = this.data, done = doneCol(d), open = d.tasks.filter((x) => x.column !== done).sort((a, b) => a.order - b.order);
+    const d = this.data, done = doneCol(d), open = d.tasks.filter((x) => x.column !== done && this.shows(x)).sort((a, b) => a.order - b.order);
     // Proposed (by an agent, bin/ks-task): waiting for you, apart from both lists until accepted.
     const mine = open.filter((x) => !x.proposed);
-    return { proposed: open.filter((x) => x.proposed), today: mine.filter((x) => x.today), backlog: mine.filter((x) => !x.today), done: d.tasks.filter((x) => x.column === done).length };
+    return { proposed: open.filter((x) => x.proposed), today: mine.filter((x) => x.today), backlog: mine.filter((x) => !x.today), done: d.tasks.filter((x) => x.column === done && this.shows(x)).length };
   }
   flat() { const l = this.lists(); return [...l.proposed, ...l.today, ...l.backlog]; }
   accept(task, cx) { this.apply(ops.patch(task.id, { proposed: false }), cx); this.say(`Accepted "${task.title || "Untitled"}"`, "undo", cx); }
   selected() {
     if (this.view === "today") return this.flat()[this.row] ?? null;
     const c = this.data.columns[this.cur.col];
-    return c ? inCol(this.data, c.id)[this.cur.row] ?? null : null;
+    return c ? this.colTasks(c.id)[this.cur.row] ?? null : null;
   }
 
   startAdd(where, cx) { if (!where) return; this.adding = where; this.add.set_value(""); this.add.focus(); cx.notify(); }
@@ -263,7 +280,7 @@ export default class Tasks extends View {
     const title = this.add.value().trim(), where = this.adding;
     if (!title || !where) { this.adding = null; this.handle.focus(); cx.notify(); return; }
     const fields = where === "@today" ? { today: true, column: this.data.columns[1]?.id ?? this.data.columns[0]?.id } : where === "@backlog" ? { column: this.data.columns[0]?.id } : { column: where };
-    const list = where.startsWith("@") ? this.lists()[where.slice(1)] : inCol(this.data, where);
+    const list = where.startsWith("@") ? this.lists()[where.slice(1)] : this.colTasks(where);
     this.apply(ops.create(this.newTask({ title, ...fields, order: (list.length ? list[list.length - 1].order : 0) + 1 })), cx);
     this.add.set_value(""); // stays open for the next one
   }
@@ -349,9 +366,9 @@ export default class Tasks extends View {
     if (m.platform || m.alt || m.control) return;
     if (this.drag && k === "escape") { this.drag = null; this.over = null; cx.stop_propagation(); cx.notify(); return; }
     const today = this.view === "today", flat = today ? this.flat() : null;
-    const col = this.data.columns[this.cur.col], list = col ? inCol(this.data, col.id) : [];
+    const col = this.data.columns[this.cur.col], list = col ? this.colTasks(col.id) : [];
     const go = (r) => { if (today) this.row = Math.max(0, Math.min(flat.length - 1, r)); else this.cur.row = Math.max(0, Math.min(list.length - 1, r)); };
-    const goCol = (c) => { this.cur.col = Math.max(0, Math.min(this.data.columns.length - 1, c)); this.cur.row = Math.min(this.cur.row, Math.max(0, inCol(this.data, this.data.columns[this.cur.col].id).length - 1)); };
+    const goCol = (c) => { this.cur.col = Math.max(0, Math.min(this.data.columns.length - 1, c)); this.cur.row = Math.min(this.cur.row, Math.max(0, this.colTasks(this.data.columns[this.cur.col].id).length - 1)); };
     const at = today ? this.row : this.cur.row;
     if (k === "j" || k === "down") go(at + 1);
     else if (k === "k" || k === "up") go(at - 1);
@@ -363,6 +380,7 @@ export default class Tasks extends View {
     else if (k === "t" && sel) this.toggleToday(sel, cx);
     else if (k === "a" && sel?.proposed) this.accept(sel, cx);
     else if (k === "x" && sel) this.remove(sel, cx);
+    else if (k === "s") this.setAll(!this.all, cx);
     else if (k === "u") this.step(true, cx);
     else if (k === "U") this.step(false, cx);
     else if (k === "b" || k === "tab") this.setView(today ? "board" : "today", cx);
@@ -371,7 +389,7 @@ export default class Tasks extends View {
     else if (!today && (k === "h" || k === "left") && this.cur.col > 0) goCol(this.cur.col - 1);
     else if (!today && (k === "L" || k === "H") && sel) {
       const to = this.data.columns[this.cur.col + (k === "L" ? 1 : -1)];
-      if (to) { this.apply(ops.move(sel.id, to.id, null), cx); goCol(this.cur.col + (k === "L" ? 1 : -1)); this.cur.row = inCol(this.data, to.id).length - 1; }
+      if (to) { this.apply(ops.move(sel.id, to.id, null), cx); goCol(this.cur.col + (k === "L" ? 1 : -1)); this.cur.row = this.colTasks(to.id).length - 1; }
     }
     else if (!today && (k === "J" || k === "K") && sel) {
       const i = list.findIndex((x) => x.id === sel.id), before = k === "J" ? list[i + 2]?.id ?? null : list[i - 1]?.id;
@@ -470,7 +488,7 @@ export default class Tasks extends View {
   }
 
   column(c, i, t, focused, W) {
-    const list = inCol(this.data, c.id), on = focused && this.cur.col === i, renaming = this.renaming === c.id;
+    const list = this.colTasks(c.id), on = focused && this.cur.col === i, renaming = this.renaming === c.id;
     const small = (id, label, act, tone = t.muted, tip = null) => div().id(id).flex_none().px(5).rounded(4).text_size(11).text_color(tone).cursor_pointer()
       .hover((s) => s.bg(t.hover).text_color(t.foreground)).when(Boolean(tip), (e) => e.tooltip(tip)).on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label);
     const deleting = this.confirmDelete === c.id;
@@ -534,13 +552,16 @@ export default class Tasks extends View {
       .on_mouse_move((e, cx) => { if (this.board && e.bounds) this.winRect = e.bounds; this.moveRoot(e, cx); })
       .on_mouse_up("left", (_e, cx) => this.release(cx))
       .when(this.board, (e) => e.relative()
-        .on_size_change((size) => { if (size?.width && (size.width !== this.size?.width || size.height !== this.size?.height)) { this.size = size; save("boardSize", { width: Math.round(size.width), height: Math.round(size.height) }); } })
+        .on_size_change((size) => { if (size?.width && (size.width !== this.size?.width || size.height !== this.size?.height)) { this.size = size; setShared(SIZE, { width: Math.round(size.width), height: Math.round(size.height) }); } })
         .children(this.grips(t)))
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().font_semibold().child(this.board ? "Tasks board" : "Tasks"))
         .child(h_flex().gap(1).p(1).rounded(6).border_1().border_color(t.border)
           .child(seg("v-today", `Today · ${l.today.length}`, this.view === "today", (cx) => this.setView("today", cx)))
           .child(seg("v-board", "Board", this.view === "board", (cx) => this.setView("board", cx))))
+        .child(h_flex().gap(1).p(1).rounded(6).border_1().border_color(t.border)
+          .child(seg("s-here", this.board ? "This space" : "Here", !this.all, (cx) => this.setAll(false, cx)))
+          .child(seg("s-all", `All · ${this.data.tasks.filter((x) => x.column !== doneCol(this.data)).length}`, this.all, (cx) => this.setAll(true, cx))))
         .child(div().flex_1())
         .child(btn("tasks-undo-btn", "↶", (cx) => this.step(true, cx), this.history.length ? `Undo ${this.history[this.history.length - 1].label} (u, cmd-z)` : "Nothing to undo"))
         .child(btn("tasks-redo-btn", "↷", (cx) => this.step(false, cx), this.future.length ? `Redo ${this.future[this.future.length - 1].label} (U, cmd-shift-z)` : "Nothing to redo"))
@@ -558,7 +579,7 @@ export default class Tasks extends View {
         .child(this.view === "today" ? this.renderToday(t, focused) : this.renderBoard(t, focused))
         .when(this.view === "today", (e) => e.child(Scrollbar.vertical("tasks-today").absolute().inset_0())))
       .child(h_flex().flex_none().h(24).px(12).items_center().border_t(1).border_color(t.border).text_size(10.5).text_color(t.dim).truncate()
-        .child(this.view === "today" ? "j/k move · Enter open · t today · n new · x delete · b board · drop files on a card or list"
+        .child(this.view === "today" ? "j/k move · Enter open · t today · n new · x delete · s here / all · b board · drop files"
           : "h/l j/k move · H/L to column · J/K reorder · r rename column · drag cards · drop files"));
   }
 
