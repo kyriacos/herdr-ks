@@ -20,13 +20,22 @@ export const DEFAULTS = {
   autoSpaceNames: true, // spaces called "branch · repo" of the worktree their agent works in
   spaceTaskLine: true, // under each space, what its agent works on
   worktreeRoot: "~/code/worktrees", // new worktrees go to <this>/<repo>/<branch>
+  repoFolders: "~/code", // where your clones live, comma-separated; looked through two levels deep
   agentProcs: true,    // the Agents list's "N procs" chip and the process lookups behind it
 };
 export const prefs = () => ({ ...DEFAULTS, ...(shared(KEY) ?? {}) });
 export const pref = (k) => prefs()[k];
-// The worktree folder as a full path (~ is the home folder).
-export const worktreeRoot = (home) => {
-  const p = String(pref("worktreeRoot") || DEFAULTS.worktreeRoot).trim().replace(/\/+$/, "") || DEFAULTS.worktreeRoot;
-  return p === "~" ? home : p.startsWith("~/") ? home + p.slice(1) : p;
+// A typed folder as a full path (~ is the home folder), without a trailing slash.
+export const expandHome = (p, home) => { const s = String(p ?? "").trim().replace(/\/+$/, ""); return s === "~" ? home : s.startsWith("~/") ? home + s.slice(1) : s; };
+// The worktree folder as a full path.
+export const worktreeRoot = (home) => expandHome(pref("worktreeRoot"), home) || expandHome(DEFAULTS.worktreeRoot, home);
+// A branch as a folder name: "sam/search-filters" -> "sam-search-filters".
+export const branchFolder = (branch) => String(branch ?? "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+// Where a new worktree of `repo` on `branch` goes. The New worktree dialog and the PR window both use it.
+export const worktreePath = (home, repo, branch) => `${worktreeRoot(home)}/${repo}/${branchFolder(branch)}`;
+// The folders clones are looked for in, as full paths.
+export const repoFolders = (home) => {
+  const list = String(pref("repoFolders") || DEFAULTS.repoFolders).split(",").map((p) => expandHome(p, home)).filter(Boolean);
+  return list.length ? list : [expandHome(DEFAULTS.repoFolders, home)];
 };
 export const setPref = (k, v) => setShared(KEY, { ...(shared(KEY) ?? {}), [k]: v });

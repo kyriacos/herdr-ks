@@ -7,7 +7,7 @@
 //   and the GitHub cache. Layout: which sidebar sections and panel buttons show, the side panel's side and the
 //   sidebar's order (lib/arrange.js applies those with layout.set).
 import { View, div } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { run, theme, props, closeOverlay, shared, setShared, layout, exec, appHome, notify } from "herdr";
 import { focusOn, focusLevel, setFocus } from "./lib/focus.js";
 import { prefs, setPref, DEFAULTS } from "./lib/prefs.js";
@@ -44,6 +44,10 @@ export default class Settings extends View {
   init(_props, cx) {
     this.at = props()?.section ?? "layout";
     this.cacheFiles = null;
+    this.rootInput = InputState.new({ value: prefs().worktreeRoot, placeholder: DEFAULTS.worktreeRoot });
+    this.reposInput = InputState.new({ value: prefs().repoFolders, placeholder: DEFAULTS.repoFolders });
+    this.reposInput.on("change", () => setPref("repoFolders", this.reposInput.value().trim() || DEFAULTS.repoFolders));
+    this.rootInput.on("change", () => setPref("worktreeRoot", this.rootInput.value().trim() || DEFAULTS.worktreeRoot));
     this.handle = cx.focus_handle();
     this.handle.focus();
     this.countCache(cx);
@@ -151,6 +155,8 @@ export default class Settings extends View {
         return v_flex().child(heading("Spaces & agents"))
           .child(row("Name spaces by repo and branch", "A space is called \"branch · repo\" of the worktree its agent works in (\"repo · main\" on main), unless you renamed it. Off: Herdr's own names.",
             ...choice("names", [[true, "On"], [false, "Off"]], p.autoSpaceNames !== false, (v) => setPref("autoSpaceNames", v))))
+          .child(row("Worktree folder", "New worktrees go to <folder>/<repo>/<branch>: the New worktree dialog's default, and where a PR's worktree is made. ~ is your home folder.",
+            Input.new(this.rootInput).w(360).h(30).px(10).items_center().rounded(6).border(1).border_color(t.input).bg(t.background).text_color(t.foreground)))
           .child(row("What each agent works on", "Under each space's name, its agent's task (the tab's name, else the session's title) with git's ↑ ↓ ±.",
             ...choice("tline", [[true, "Shown"], [false, "Hidden"]], p.spaceTaskLine !== false, (v) => setPref("spaceTaskLine", v))))
           .child(row("Processes under agents", "The Agents list's \"N procs\" chip: dev servers and commands an agent started, with ports, CPU and Stop. Off also stops looking them up (ps, lsof).",
@@ -221,6 +227,8 @@ export default class Settings extends View {
         return v_flex().child(heading("Pull requests"))
           .child(row("My PRs in the sidebar", "Your open GitHub PRs with CI, review and merge state. ⌘⇧M.",
             ...choice("myprs", [[true, "Shown"], [false, "Hidden"]], Boolean(myprs && !myprs.hidden), (v) => run(v ? "layout.show" : "layout.hide", { id: "my-prs" }))))
+          .child(row("Repo folders", "Where your clones live, comma-separated (~/code, ~/work). The PR window looks here, two levels deep, for the repo of a PR no open space is in.",
+            Input.new(this.reposInput).w(360).h(30).px(10).items_center().rounded(6).border(1).border_color(t.input).bg(t.background).text_color(t.foreground)))
           .child(row("Notifications", "A toast when a PR's CI turns red or green, it's approved, changes are requested, or it's merged or closed.",
             ...choice("toasts", [[true, "On"], [false, "Off"]], p.prToasts, (v) => setPref("prToasts", v))));
       }
@@ -238,7 +246,7 @@ export default class Settings extends View {
             }))));
       case "about":
         return v_flex().child(heading("About"))
-          .child(note("herdr-ks: the ks layout for Herdr App, built from Herdr Roundup (Apache-2.0)."))
+          .child(note("herdr-ks: the ks layout for Herdr App, inspired by Herdr Roundup. Apache-2.0."))
           .child(div().h(12))
           .child(row("Guide", "Everything the layout does and how to use it.",
             btn("guide", "Open the guide", () => exec("open", ["https://github.com/kyriacos/herdr-ks/blob/main/docs/GUIDE.md"]).catch(() => null))))

@@ -4,7 +4,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar } from "gpui-base";
 import { run, props, closeOverlay, theme, spaces, panes, exec, home } from "herdr";
-import { worktreeRoot } from "./lib/prefs.js";
+import { worktreeRoot, branchFolder } from "./lib/prefs.js";
 
 // Where a space is now: its first terminal's live folder, else where it was made.
 function place(s, all = panes()) {
@@ -22,7 +22,7 @@ const tilde = (path, userHome) => {
   const [p, h] = [path, userHome].map((s) => s.replace(/\\/g, "/"));
   return p.startsWith(h) ? `~${p.slice(h.length)}` : path;
 };
-const slug = (branch) => branch.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+const slug = branchFolder;
 const ago = (s) => {
   const d = Date.now() / 1000 - s;
   return d < 3600 ? `${Math.max(1, Math.round(d / 60))}m` : d < 86400 ? `${Math.round(d / 3600)}h` : d < 86400 * 60 ? `${Math.round(d / 86400)}d` : `${Math.round(d / 86400 / 30)}mo`;
@@ -122,7 +122,7 @@ export default class Worktree extends View {
     this.input.on("focus", (_e, cx) => { this.inputFocused = true; cx.notify(); });
     this.input.on("blur", (_e, cx) => { this.inputFocused = false; cx.notify(); });
     this.handle = cx.focus_handle();
-    // Roundup: "new" asks for the repo and the target folder too.
+    // ks: "new" asks for the repo and the target folder too.
     this.making = !props()?.action || props().action === "new";
     this.destEdited = false; this.field = "branch";
     this.repoInput = InputState.new({ placeholder: "repo folder, e.g. ~/code/acme/web" });
@@ -177,7 +177,7 @@ export default class Worktree extends View {
     return spaces().find((s) => s.id === p.space) ?? (p.folder ? { folder: p.folder, machine: p.machine ?? null, name: "" } : spaces().find((s) => s.active));
   }
 
-  // Roundup: the target folder follows repo and branch until typed in.
+  // ks: the target folder follows repo and branch until typed in.
   syncDest() {
     if (this.destEdited || !this.repo) return;
     const b = slug(this.text.trim());
@@ -350,7 +350,7 @@ export default class Worktree extends View {
       .child(h_flex().justify_end().text_size(11).text_color(t.dim).child("\u2191\u2193 choose \u00b7 \u21b5 open \u00b7 esc close"));
   }
 
-  // Roundup: New worktree, from any repo into any folder, as a new space.
+  // ks: New worktree, from any repo into any folder, as a new space.
   renderNew(t) {
     const r = this.repo;
     const field = (name, label, input, hint) => v_flex().gap(4)

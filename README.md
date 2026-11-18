@@ -1,9 +1,8 @@
 # herdr-ks
 
-My Herdr App setup: a layout called `ks`, built from the [Herdr Roundup](https://github.com/carstenlucke/herdr-roundup)
-layout (v0.10.0, Apache-2.0, see `LICENSE` and `THIRD_PARTY_NOTICES.md`) with changes for working across git
-worktrees and two repos. It is a separate layout with its own `ks-*` mods: an installed Herdr-Roundup
-stays untouched next to it.
+A layout for [Herdr App](https://herdr.dev) called `ks`, for working with several coding agents across git
+worktrees and more than one repo. It installs as its own layout with its own `ks-*` mods, and leaves the rest
+of your Herdr setup alone.
 
 **[Read the guide](docs/GUIDE.md)** for a tour of everything it does and how to use it.
 
@@ -21,7 +20,8 @@ or edit three fields, `tab` moves between them:
 
 1. Repository: any repo folder (pre-filled with the one you're in).
 2. Branch: an existing branch is checked out; a new name creates the branch from the repo's current HEAD.
-3. Folder: where the checkout goes, default `~/code/worktrees/<repo>/<branch>`; any path, `~` works.
+3. Folder: where the checkout goes, default `~/code/worktrees/<repo>/<branch>` (the folder is set in
+   Settings > Spaces & agents); any path, `~` works.
 
 Enter creates the worktree and opens a new space in it.
 
@@ -122,8 +122,10 @@ link) as context. The agent working on the PR (in one of its worktrees) is named
 other agents are kept apart, folded under "Other agents, not working on this PR", and picking one turns the
 button into **Send anyway** with a warning. With no agent on the PR, the button becomes **Start a session &
 send**: Claude Code starts in the PR's worktree (a new tab in the space showing it, else a new space) with the
-message as its first task; with no local checkout, **Create worktree, start & send** makes the worktree first
-(`~/code/worktrees/<repo>/<branch>`, from the local branch or `origin`).
+message as its first task; with no local checkout, **Create worktree, start & send** makes the worktree first, from your clone of the
+repo (looked for next to the session's repos, then in the folders set in Settings > Pull requests > Repo
+folders, default `~/code`)
+(`~/code/worktrees/<repo>/<branch>` unless you changed the folder, from the local branch or `origin`).
 
 **PRs panel** (`cmd-shift-u`, or **PRs** next to Files and Changes). The open pull requests of this
 session's worktrees: the ones the Changes panel shows, so while it follows an agent, every worktree the agent
@@ -134,7 +136,7 @@ Worktrees without an open PR are listed below. Needs the GitHub CLI (`gh`) logge
 The review compares the local worktree, so it also shows work not pushed yet.
 
 **Files panel** (`cmd-shift-e`). The folder tree of the space with git status, search, and previews of
-Markdown, PDF, images, CSV and JSON (upstream Roundup). It shows the same checkout as the Changes panel when
+Markdown, PDF, images, CSV and JSON. It shows the same checkout as the Changes panel when
 that one is pinned or follows an agent. When the session has several worktrees (the ones the Changes panel
 shows), a **worktree bar** under the header has a chip for each (repo, folder, branch): click one to browse
 it, **Auto** to follow the Changes panel / the focused terminal again. Remembered per space. Right-click a file for **Review & comment**.
@@ -194,8 +196,11 @@ before closing and the undo time, the session card, My PRs, panels, the GitHub c
    It copies the layout and the `ks-*` mods into `~/.config/herdr-app`, replaces only the
    `layout:ks` section of `keys.json` (the old file is kept as `keys.json.bak-<time>`), checks
    every mod and switches the window to the layout. Nothing else in your Herdr setup is touched.
-4. Optional: create `~/code/worktrees` if you want the default worktree folder (git creates it on
-   the first worktree anyway).
+4. Optional: pick where new worktrees go in Settings > Spaces & agents > Worktree folder
+   (default `~/code/worktrees`; git creates it on the first worktree), and say where your clones live in
+   Settings > Pull requests > Repo folders (default `~/code`).
+5. Optional, if you will commit to this repo: `git config core.hooksPath .githooks` turns on the leak check
+   (see `AGENTS.md`).
 
 `ctrl-shift-l` switches back to another layout. To remove it, delete `layouts/ks.*`, the
 `mods/ks-*` folders and the `layout:ks` section of `keys.json` in `~/.config/herdr-app`.
@@ -215,18 +220,18 @@ copy them back here, then review with `git diff` and commit.
 | Panel sizes, hidden columns (clicks) | `~/.config/herdr-app/layouts/.state/` (not in this repo) |
 | Mods' own state (Changes pins, ...) | `~/.config/herdr-app/data/<mod>/` (not in this repo) |
 
-## Changes from upstream Roundup
+## What lives where
 
-Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references too). On top of that:
+Every mod is named `ks-<name>`. The main parts:
 
 | Change | Files |
 |---|---|
 | Sidebar: every space in a repo's main checkout joins the repo's card, not only the first | `mods/ks-spaces/main.js` |
 | New Changes panel (clone of Herdr's `changes`): checkout bar to follow focus, pin any worktree, or **Follow agent** (a Claude Code agent's real working folder, read from `~/.claude/sessions` and its session log); falls back to the space folder outside git; **matching repos**: sibling repos (same parent folder) with a checkout on the same branch show as extra sections, one commit button each | `mods/ks-changes/` (`agent_where.py` finds the agent's checkouts), layout uses it |
-| New worktree dialog (clone of Herdr's `worktree`): **New space + worktree** from any repo into any folder, default `~/code/worktrees/<repo>/<branch>` | `mods/ks-worktree/`, `mods/ks-menu/main.js` |
+| New worktree dialog (clone of Herdr's `worktree`): **New space + worktree** from any repo into any folder, default `~/code/worktrees/<repo>/<branch>` (a setting) | `mods/ks-worktree/`, `mods/ks-menu/main.js` |
 | Panel commands `panel:files` / `panel:changes` | `mods/ks-tabs/main.js` |
 | Review tab: one file or a whole branch (vs merge-base, over several repos), inline / side by side, highlighted, line and file comments sent to an agent, vim keys | `mods/ks-review/` (new) |
-| Shared code: highlighter, diff model and wrapping, comment store, branch/commit/worktree git, GitHub (`gh`) and a file cache; copied into `lib/` of the mods using it by `install.sh` | `shared/` |
+| Shared code: highlighter, diff model and wrapping, comment store, branch/commit/worktree git, GitHub (`gh`), preferences and a file cache; `install.sh` copies it into each mod's `lib/` (not in git) | `shared/` |
 | Changes panel: Uncommitted / Branch / Commits, tree / flat, Wrap / Expand / Review / Open file above the diff | `mods/ks-changes/main.js` |
 | Files panel: "Review & comment" menu entry; follows the Changes panel's pinned or agent checkout | `mods/ks-files/input.js`, `main.js`, `location.js` |
 | Fonts | Herdr's Settings (`settings.json`); the layout sets none |
@@ -260,9 +265,31 @@ Every mod is upstream's `roundup-<name>` renamed to `ks-<name>` (all references 
 | cmd-shift-f | Focus mode |
 | cmd-shift-, | herdr-ks settings |
 
-## Upstream updates
+## Updates
 
-The automatic update check is off in this layout (`mods/ks-workspace-chrome/update.js`, `due()`):
-it looks for Herdr Roundup releases, and installing one updates the separate Herdr-Roundup layout, not
-this one. To take improvements from a new Roundup release, clone it and compare its `mods/roundup-<name>`
-with `mods/ks-<name>` here, then copy over what you want and run `scripts/install.sh`.
+The logo menu checks this repo's [releases](https://github.com/kyriacos/herdr-ks/releases) once a day
+(**Daily** / **Only when I ask** in the same menu) and shows a toast when a newer one is out. **Update with an
+agent** opens a tab with an agent that reads the release notes, tells you what would change and what local
+edits would be lost, and runs `scripts/install.sh` at the new tag only after you agree. By hand: `git pull`
+in your clone, then `scripts/install.sh`.
+
+## Goes well with
+
+[cockpit](https://github.com/quaresc/cockpit) shows every agent you run with its ticket, pull request, CI run
+and deploy, and gives agents tools to draw charts, diffs and plans in a pane beside the session. It is a
+separate project and optional; `ks` works without it. In Claude Code:
+
+```
+/plugin install cockpit --marketplace quaresc/cockpit
+/cockpit:setup
+```
+
+## Contributing
+
+Read `AGENTS.md` first, whether you are a person or an agent: it says what must never be committed here
+and how the leak check works.
+
+## Thanks
+
+Inspired by [Herdr Roundup](https://github.com/carstenlucke/herdr-roundup): thank you for the starting point.
+Licences and notices for everything this repo builds on are in `LICENSE` and `THIRD_PARTY_NOTICES.md`.

@@ -1,4 +1,4 @@
-// What this copy of Herdr Roundup is and what the update check found: the head of the menu, and the card on hover.
+// What this copy of herdr-ks is and what the update check found: the head of the menu, and the card on hover.
 // Fixed line heights, so the menu's popup can be sized to it (infoHeight).
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";

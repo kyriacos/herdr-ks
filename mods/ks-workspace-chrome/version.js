@@ -1,6 +1,7 @@
 // What update.js decides without asking anyone: version order, a release tag's version, which release a
 // command names and the agent's brief. No `herdr` import, so tests run it in node.
-export const PAGE = "https://github.com/carstenlucke/herdr-roundup/releases";
+export const REPO = "https://github.com/kyriacos/herdr-ks";
+export const PAGE = "https://github.com/kyriacos/herdr-ks/releases";
 // A version this layout releases: major.minor.patch, a pre-release with an alpha, beta or rc suffix
 // ("0.10.0-beta.2"), numbers without leading zeros (as SemVer has them). Anything else in a tag isn't offered.
 export const VERSION = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:alpha|beta|rc)(?:\.(?:0|[1-9]\d*))?))?$/;
@@ -65,15 +66,15 @@ export function pick(version, latest) {
 
 // What the agent is told. It reads the release and checks for local changes before it touches anything.
 // `home` is the app's folder (appHome(), with HERDR_APP_HOME not the usual one): every path names it, and
-// sync.sh and `herdr-app status` get the variable, which the agent's shell may not have.
+// install.sh and `herdr-app status` get the variable, which the agent's shell may not have.
 export function brief(installed, release, home) {
   const env = `HERDR_APP_HOME=${JSON.stringify(home)} `;
   const pre = isPre(release.version) ? ` It is a pre-release: say so before you start.` : "";
-  return `Update the Herdr layout Herdr Roundup from v${installed} to v${release.version}.${pre} Herdr's app folder is ${home}. ` +
-    `First read ${home}/AGENTS.md. ` +
-    `Clone https://github.com/carstenlucke/herdr-roundup at tag v${release.version} into a new empty folder (mktemp -d). ` +
-    `Read its release notes (${release.url}) and README. Before changing anything, tell me what changes, whether keys in the ` +
-    `\`layout:Herdr-Roundup\` section of ${home}/keys.json that I changed myself would be replaced, and whether the ` +
-    `installed \`ks-*\` mods in ${home}/mods differ from tag v${installed} (local edits that would be lost). ` +
-    `Only after I agree, run \`${env}scripts/sync.sh\` in the clone, then confirm \`${env}herdr-app status\` shows no errors.`;
+  return `Update the Herdr layout herdr-ks from v${installed} to v${release.version}.${pre} Herdr's app folder is ${home}. ` +
+    `Find my clone of ${REPO} (ask me where it is if you can't; clone it into a new empty folder only if I have none). ` +
+    `Read the release notes (${release.url}) and the README at tag v${release.version}. Before changing anything, tell me what changes, ` +
+    `whether the clone has uncommitted work, whether keys in the \`layout:ks\` section of ${home}/keys.json that I changed myself ` +
+    `would be replaced, and whether the installed \`ks-*\` mods in ${home}/mods differ from tag v${installed} (local edits that would be lost). ` +
+    `Only after I agree, check out tag v${release.version} in the clone, run \`${env}scripts/install.sh\` there, then confirm ` +
+    `\`${env}herdr-app status\` shows no errors.`;
 }

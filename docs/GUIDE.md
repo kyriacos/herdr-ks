@@ -247,7 +247,10 @@ agent** sends your note with the PR as context; the agent on that PR is named an
 are folded away under "Other agents, not working on this PR" (**Send anyway**). With no agent on it, the
 button reads **Start a session & send**: Claude Code starts in the PR's worktree (a new tab in the space showing
 it, else a new space) with your message as its first task. With no local checkout of the branch, it reads
-**Create worktree, start & send** and makes the worktree first (`~/code/worktrees/<repo>/<branch>` unless you changed the folder).
+**Create worktree, start & send** and makes the worktree first (`~/code/worktrees/<repo>/<branch>` unless you changed the folder; slashes in the branch become dashes, as in
+the New worktree dialog). The repo's clone is looked for next to the repos your session already has open, then
+in the folders listed in Settings > Pull requests > Repo folders (default `~/code`, comma-separated, two
+levels deep). If it says "No local clone", add the clone's parent folder there.
 Movable, resizable from the corners.
 
 **PRs panel** (`cmd-shift-u`): open PRs of the session's worktrees with CI, review state and size; **Review**

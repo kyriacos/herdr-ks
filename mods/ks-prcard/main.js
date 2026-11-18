@@ -12,7 +12,7 @@ import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { onPasteImage, attachRow, imageLines } from "./lib/attach.js";
 import { candidates, git } from "./lib/branch.js";
 import * as cache from "./lib/cache.js";
-import { pref, worktreeRoot } from "./lib/prefs.js";
+import { pref, worktreePath, repoFolders, branchFolder } from "./lib/prefs.js";
 import { fetchPr, prKey } from "./lib/github.js";
 
 const same = (a, b) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
@@ -20,12 +20,12 @@ const inside = (p, dir) => Boolean(p && dir && (same(p, dir) || p.toLowerCase().
 const ago = (iso) => { const s = (Date.now() - Date.parse(iso)) / 1000; return s < 3600 ? `${Math.max(1, Math.round(s / 60))}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`; };
 
 
-// Every checkout of `repoName` (main checkout first): from the repos next to the session's worktrees, else from ~/code.
+// Every checkout of `repoName` (main checkout first): from the repos next to the session's worktrees, else from the repo folders (Settings > Pull requests), two levels deep.
 async function repoCheckouts(repoName) {
   const session = Object.values(shared("ks.session") ?? {}).flat().filter((w) => !w.on).map((w) => w.root);
   let list = session.length ? await candidates(session, null).catch(() => []) : [];
   if (!list.some((c) => same(c.repo, repoName))) {
-    const r = await exec("sh", ["-c", 'for d in "$1"/*/ "$1"/*/*/; do [ -d "$d.git" ] && [ "$(basename "$d")" = "$2" ] && printf "%s\\n" "${d%/}"; done', "sh", `${await home()}/code`, repoName]).catch(() => null);
+    const r = await exec("sh", ["-c", 'name=$1; shift; for f in "$@"; do for d in "$f"/*/ "$f"/*/*/; do [ -d "$d.git" ] && [ "$(basename "$d")" = "$name" ] && printf "%s\\n" "${d%/}"; done; done', "sh", repoName, ...repoFolders(await home())]).catch(() => null);
     const roots = (r?.stdout ?? "").split("\n").filter(Boolean);
     if (roots.length) list = [...list, ...await candidates(roots, null).catch(() => [])];
   }
@@ -43,8 +43,8 @@ async function localWorktrees(repoName, branch) {
 // from the repo's main checkout: the local branch if there is one, else the remote's. { root } or { error }.
 async function makeWorktree(repoName, branch) {
   const main = (await repoCheckouts(repoName))[0]?.root;
-  if (!main) return { error: `No local clone of ${repoName} under ~/code.` };
-  const path = `${worktreeRoot(await home())}/${repoName}/${branch}`;
+  if (!main) return { error: `No local clone of ${repoName} in ${pref("repoFolders")}. Add its parent folder in Settings > Pull requests > Repo folders.` };
+  const path = worktreePath(await home(), repoName, branch);
   const g = (args) => exec("git", ["-C", main, ...args]).catch((e) => ({ code: 1, stderr: String(e) }));
   await g(["fetch", "origin", branch]);
   const local = (await g(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`])).code === 0;
@@ -257,7 +257,7 @@ export default class PrCard extends View {
     const noAgent = this.places !== null && !onPr.length, w0 = (this.places ?? [])[0];
     const startWhere = !noAgent ? "" : w0
       ? `Send starts Claude Code in ${w0.root.split("/").pop()} (${w0.spaces[0] ? `a new tab in space ${w0.spaces[0].name}` : "a new space"}), with your message as its first task.`
-      : `No local checkout of ${pr.headRefName}: send makes a worktree in ${pref("worktreeRoot")}/${this.repo.split("/").pop()}/${pr.headRefName}, opens a space there and starts Claude Code with your message.`;
+      : `No local checkout of ${pr.headRefName}: send makes a worktree in ${pref("worktreeRoot")}/${this.repo.split("/").pop()}/${branchFolder(pr.headRefName)}, opens a space there and starts Claude Code with your message.`;
     const starting = !target && noAgent;
 
     const body = v_flex().id("prcard-body").absolute().inset_0().overflow_y_scroll().px(14).pb(14)

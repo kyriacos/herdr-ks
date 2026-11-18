@@ -131,7 +131,7 @@ export default class Menu extends View {
     const it = items(props(), this.git)[i];
     if (!it) return;
     closeOverlay(props()?.overlay);
-    // Local change: Roundup's worktree dialog (any repo, any folder) instead of Herdr's.
+    // Local change: the ks worktree dialog (any repo, any folder) instead of Herdr's.
     if (it[1] === "worktree") openOverlay({ mod: "ks-worktree", kind: "dialog", ...(it[2].action === "open" ? { width: 560, height: 480 } : it[2].action === "new" ? { width: 480, height: 340 } : { width: 440, height: 260 }), props: it[2] });
     // ks: closing a space or tab asks, then waits 30 s with Undo (lib/closing.js).
     else if (it[1] === "space.close") closing.askSpace(it[2].id);

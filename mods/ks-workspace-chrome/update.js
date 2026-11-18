@@ -8,17 +8,18 @@ export { newer, isPre } from "./version.js";
 
 // The release list, newest first (drafts aren't listed without a token), for both channels: `releases/latest`
 // would hand the stable one a pre-release tagged without GitHub's flag. Page by page, at most PAGES of PER_PAGE.
-export const RELEASE_LIST = "https://api.github.com/repos/carstenlucke/herdr-roundup/releases?per_page=30";
+export const RELEASE_LIST = "https://api.github.com/repos/kyriacos/herdr-ks/releases?per_page=30";
 export const PER_PAGE = 30, PAGES = 5;
 const DAY = 24 * 60 * 60 * 1000;
 
-// State under this mod's name (`ks-workspace-chrome.update.<key>`), shared so the menu's popup sees it too:
+// State under this mod's name (`ks-workspace-chrome.release.<key>`; not ".update.", which an older copy filled
+// with another project's releases), shared so the menu's popup sees it too:
 // lastCheck (ms, set before asking), checked (ms of the last answer), latest ({ version, url }),
 // dismissed (a skipped version), notified (the version the toast was shown for), auto (false: only when asked),
 // error (why the last check failed, null after one that didn't), prerelease (true: alpha, beta and rc releases too),
 // checking (true while the brand copy's check runs).
-export const get = (key) => shared(`ks-workspace-chrome.update.${key}`);
-export const put = (key, value) => setShared(`ks-workspace-chrome.update.${key}`, value);
+export const get = (key) => shared(`ks-workspace-chrome.release.${key}`);
+export const put = (key, value) => setShared(`ks-workspace-chrome.release.${key}`, value);
 
 // Whether pre-releases are subscribed (off unless switched on in the menu).
 export const prerelease = () => get("prerelease") === true;
@@ -41,7 +42,7 @@ export async function latest(pre = false) {
     const url = page === 1 ? RELEASE_LIST : `${RELEASE_LIST}&page=${page}`;
     let response;
     try {
-      response = await fetch(url, { headers: { Accept: "application/vnd.github+json", "User-Agent": "herdr-roundup" } });
+      response = await fetch(url, { headers: { Accept: "application/vnd.github+json", "User-Agent": "herdr-ks" } });
     } catch {
       return { ok: false, why: "No connection to api.github.com" };
     }
@@ -66,13 +67,11 @@ const pick = (version) => pickFrom(version, get("latest"));
 
 // Whether the automatic check is due: on, and the last request more than a day ago (failures count, so a
 // broken connection doesn't ask every hour).
-// ks layout: no automatic check. It looks for Herdr Roundup releases, which update the separate
-// Herdr-Roundup layout, not this one. The logo menu can still check by hand.
-export const due = () => false;
+export const due = () => get("auto") !== false && Date.now() - (get("lastCheck") ?? 0) > DAY;
 
 function announce(installed, release) {
   notify({
-    level: "info", title: `Herdr Roundup ${release.version} is out`, body: `You have ${installed} · Click to update with an agent`,
+    level: "info", title: `herdr-ks ${release.version} is out`, body: `You have ${installed} · Click to update with an agent`,
     action: { name: `ks-workspace-chrome.update@${release.version}` },
   });
   put("notified", release.version);
@@ -100,7 +99,7 @@ export async function check(installed, manual) {
       announce(installed, r);
     } else if (get("dismissed") !== r.version && get("notified") !== r.version) announce(installed, r);
   } else if (manual) {
-    notify({ level: "success", title: "Herdr Roundup is up to date",
+    notify({ level: "success", title: "herdr-ks is up to date",
       body: (r.version === installed ? `${installed} is the latest release` : `You have ${installed}, the latest release is ${r.version}`) +
         (pre ? ", pre-releases included" : "") });
   }
@@ -115,13 +114,13 @@ export async function install(installed, version) {
   const release = pick(version);
   // A pre-release only while subscribed: a toast from before the switch went off offers nothing.
   if (!release || !newer(release.version, installed) || (isPre(release.version) && !prerelease())) {
-    notify({ level: "info", title: "Nothing to update", body: `Herdr Roundup ${installed} is the latest release known` });
+    notify({ level: "info", title: "Nothing to update", body: `herdr-ks ${installed} is the latest release known` });
     return;
   }
   const agent = (await knownAgents().catch(() => [])).find(a => a.installed);
   if (!agent) {
     notify({ level: "warning", title: "No agent to update with",
-      body: `Tell your agent: update Herdr Roundup to ${release.version} as its README says` });
+      body: `Tell your agent: update herdr-ks to ${release.version} as its README says` });
     return;
   }
   const home = appHome();
@@ -131,8 +130,8 @@ export async function install(installed, version) {
   try {
     if (space) {
       if (!space.active) run("space.select", { id: space.id });
-      run("tab.new", { ...tab, name: "Update Herdr Roundup", space: space.id });
-    } else run("space.new", { ...tab, machine: "", tab: "Update Herdr Roundup" });
+      run("tab.new", { ...tab, name: "Update herdr-ks", space: space.id });
+    } else run("space.new", { ...tab, machine: "", tab: "Update herdr-ks" });
   } catch (e) {
     notify({ level: "warning", title: "Couldn't open the update tab", body: String(e?.message ?? e) });
   }

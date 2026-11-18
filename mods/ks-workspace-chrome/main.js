@@ -134,7 +134,7 @@ export default class WorkspaceChrome extends View {
   card(t, installed) {
     return v_flex().mt(4).w(236).p(12).rounded(10).border(1).border_color(t.border).bg(t.popover).shadow_lg()
       .child(info(t, { installed, herdr: herdrVersion(this.file), checking: this.checking }))
-      .child(div().mt(9).pt(7).border_t(1).border_color(t.border).text_size(11.5).text_color(available(installed) ? t.accent : t.dim).child("Click the title for upstream Roundup update options"));
+      .child(div().mt(9).pt(7).border_t(1).border_color(t.border).text_size(11.5).text_color(available(installed) ? t.accent : t.dim).child("Click the title for update options"));
   }
   brand(t, sidebar, pad) {
     const installed = this.file?.version, release = available(installed);

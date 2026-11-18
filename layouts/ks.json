@@ -4,7 +4,7 @@
     "name": "main",
     "version": "0.1.14"
   },
-  "version": "0.10.0",
+  "version": "0.1.0",
   "terminal_menu": "ks-pane",
   "type": "row",
   "titlebar": "none",
