@@ -67,15 +67,25 @@ const PANEL_WINDOWS = { "ks-tasks-board": "ks-tasks" };
 const PANEL_BLOCKS = { "ks-files": "files", "ks-changes": "changes", "ks-prs": "prs", "ks-notes": "notes", "ks-tasks": "tasks" };
 const findNode = (n, id) => { if (n?.id === id) return n; for (const c of n?.children ?? []) { const f = findNode(c, id); if (f) return f; } return null; };
 function tryRun(command) { try { run(command); return true; } catch (e) { console.log("ks-zen:", command, String(e)); return false; } }
+// The key strip (ctrl-w, service) holds the keyboard while it's open, and hands it back to what had it when it closes:
+// a window opened (or closed) before that would lose the keyboard to it. So the target is picked now and the command
+// sent once the strip is gone.
+function afterStrip(command) {
+  if (!shared("ks-keys.open")) { tryRun(command); return; }
+  let tries = 0;
+  const wait = () => { if (shared("ks-keys.open") && ++tries < 30) LATER(60, wait); else LATER(90, () => tryRun(command)); };
+  wait();
+}
+let LATER = (_ms, f) => f(); // set by the view to its timer
 function zoomPanel() {
   const w = shared("ks.activeWindow");
   const wmod = w?.key && (PANEL_WINDOWS[w.key] ?? (w.key.endsWith("-window") ? w.mod : null));
-  if (wmod) { setShared("ks.activeWindow", null); if (tryRun(`${wmod}.unzoom`)) return true; }
+  if (wmod) { setShared("ks.activeWindow", null); afterStrip(`${wmod}.unzoom`); return true; }
   const p = shared("ks.activePanel"), root = layout();
   const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
   const showing = p?.mod && panel && !panel.hidden && body?.active === PANEL_BLOCKS[p.mod];
   if (p?.mod && !showing) { setShared("ks.activePanel", null); return false; }
-  if (showing) return tryRun(`${p.mod}.zoom`);
+  if (showing) { afterStrip(`${p.mod}.zoom`); return true; }
   return false;
 }
 function zoomTab(pane) {
@@ -237,6 +247,7 @@ export default class Zen extends View {
     if (zen()) setShared(ZEN, null);
     // Once: a width saved before the narrower default comes down to it (it read as too wide).
     if (!(shared(PREFS) ?? {}).narrowed) setShared(PREFS, { ...prefs(), share: Math.min(prefs().share, SHARE), narrowed: true });
+    LATER = (ms, f) => cx.timer.after(ms, () => f());
     cx.spawn(async (cx) => {
       for (;;) {
         const c = await nextCommand();

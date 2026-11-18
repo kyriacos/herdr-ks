@@ -9,6 +9,20 @@ export const ACTIVE = "ks.activeWindow";
 // Closing a window that has the keyboard: it stops being the active one first. A window that just goes away can't
 // clear it itself (its timer goes with it), and a stale one would send the zoom and resize keys nowhere.
 export function forget(key) { if (shared(ACTIVE)?.key === key) setShared(ACTIVE, null); }
+const PANEL_MARK = "ks.panelFocus";
+// A window just opened: it's the active one at once, it holds on to the keyboard for a moment (whatever closes
+// around it, a key strip say, hands the keyboard back elsewhere), and no panel is waiting to get it back.
+export function claim(view, cx, key, mod) {
+  setShared(ACTIVE, { key, mod });
+  if (shared(PANEL_MARK)) setShared(PANEL_MARK, null);
+  for (const ms of [0, 120, 300, 600]) cx.timer.after(ms, () => view.handle?.focus());
+}
+// A side panel's window closed: the keyboard goes back to that panel (now, or when a key strip closes).
+export function backToPanel(key, mod) {
+  forget(key);
+  setShared(PANEL_MARK, { mod, at: Date.now() });
+  if (!shared("ks-keys.open")) run(`${mod}.focus`);
+}
 export const REQUEST = "ks.windowResize";
 
 // Keeps "ks.activeWindow" naming this window while its focus handle has the keyboard, and clears it when it loses

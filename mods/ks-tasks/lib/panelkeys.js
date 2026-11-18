@@ -73,7 +73,13 @@ export function listKey(view, e, n, open, more = null) {
   if ((k === "enter" || (k === "o" && !shift)) && n > 0) { open(at); return true; }
   if (more && more(k, e)) return true;
   // In its own window (lib/panelwin.js) there's nothing beside it: Esc closes the window.
-  if (view.windowed) { if (k === "escape") { const w = shared("ks.activeWindow"); if (w?.key?.endsWith("-window")) setShared("ks.activeWindow", null); closeOverlay(props()?.overlay); return true; } return false; }
+  if (view.windowed) {
+    if (k !== "escape") return false;
+    const mod = (props() ?? {}).mod;
+    closeOverlay(props()?.overlay);
+    if (mod) { if (shared("ks.activeWindow")?.key === `${mod}-window`) setShared("ks.activeWindow", null); setShared(MARK, { mod, at: Date.now() }); run(`${mod}.focus`); }
+    return true;
+  }
   if (k === "h" && !shift) { leave("left"); return true; }
   if (k === "l" && !shift) { leave("right"); return true; }
   if (k === "escape") { leave("left"); return true; }

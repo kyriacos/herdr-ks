@@ -36,7 +36,7 @@ import { listNote, footerLines, linkTip, statusColor, changeColors, gitReason, n
 // checks that the two copies match.
 import { FLOAT, openTab, timerOf, floatSpec, newToken, isOpen, unanswered, placed, floatShows } from "./open-file.js";
 import { leave, watchFocus, focusedNow, gotFocus } from "./lib/panelkeys.js";
-import { isWindow, initWindow, windowCommand, zoomCommand, zoomKey, windowFrame, headerButton } from "./lib/panelwin.js";
+import { isWindow, initWindow, windowCommand, zoomCommand, zoomKey, windowFrame, headerButton, closeWindow } from "./lib/panelwin.js";
 import { dimmed } from "./lib/focus.js";
 
 const NAME = "ks-files";
@@ -943,7 +943,7 @@ export default class Files extends View {
 
   // ks: focus mode dims this until hovered (lib/focus.js).
   render(cx) { return this.windowed ? windowFrame(this, this.renderInner(cx), theme(), "ks-files") : dimmed(this, this.renderInner(cx)); }
-  closeWindowNow() { if (shared("ks.activeWindow")?.key === "ks-files-window") setShared("ks.activeWindow", null); closeOverlay(props().overlay); }
+  closeWindowNow() { closeWindow("ks-files"); }
 
   renderInner(cx) {
     if (this.menu) return this.renderMenu();

@@ -13,12 +13,12 @@
 // Source of truth: shared/panelwin.js; scripts/install.sh copies it into each mod's lib/.
 import { div } from "gpui-kit";
 import { openOverlay, closeOverlay, props, shared, setShared, nextCommand, settings } from "herdr";
-import { trackActive, takeRequest, raiseStrip, forget } from "./windows.js";
+import { trackActive, takeRequest, raiseStrip, claim, backToPanel } from "./windows.js";
 
 const keyOf = (mod) => `${mod}-window`;
 const sizeKey = (mod) => `${mod}.windowSize`;
 export const isWindow = () => Boolean((props() ?? {}).window);
-export const closeWindow = (mod = (props() ?? {}).mod) => { if (mod) forget(keyOf(mod)); closeOverlay(props()?.overlay); };
+export const closeWindow = (mod = (props() ?? {}).mod) => { const o = props()?.overlay; closeOverlay(o); if (mod) backToPanel(keyOf(mod), mod); };
 
 export function openPanelWindow(mod, size = shared(sizeKey(mod)) ?? null) {
   openOverlay({ mod, kind: "window", key: keyOf(mod), width: size?.width ?? 0.62, height: size?.height ?? 0.74, props: { window: true, mod } });
@@ -28,7 +28,7 @@ export function openPanelWindow(mod, size = shared(sizeKey(mod)) ?? null) {
 // own nextCommand loop (it then calls windowCommand with each command).
 export function initWindow(view, cx, mod, listen = true) {
   view.windowed = true;
-  view.handle?.focus(); cx.timer.after(150, () => view.handle?.focus());
+  claim(view, cx, keyOf(mod), mod);
   trackActive(view, cx, keyOf(mod), mod);
   if (listen) cx.spawn(async () => { for (;;) { const c = await nextCommand(); windowCommand(view, c, mod) || zoomCommand(view, c, mod); } });
 }

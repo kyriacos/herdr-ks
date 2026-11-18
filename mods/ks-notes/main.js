@@ -17,7 +17,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { exec, appHome, spaces, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand } from "herdr";
-import { trackActive, takeRequest, raiseStrip, forget } from "./lib/windows.js";
+import { trackActive, takeRequest, raiseStrip, claim, backToPanel } from "./lib/windows.js";
 import { dimmed } from "./lib/focus.js";
 import { spaceName, spaceTask } from "./lib/spacenames.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
@@ -77,7 +77,7 @@ export default class Notes extends View {
       takeFocus(this, cx, "ks-notes", (c) => { if (c === "zoom" || c === "window") openNotesWindow(); });
       watchFocus(this, cx, "ks-notes", () => this.editing !== null || this.searching);
     } else {
-      this.handle.focus(); cx.timer.after(150, () => this.handle.focus());
+      claim(this, cx, WINDOW, "ks-notes");
       // The key modes' resize keys while it has the keyboard (lib/windows.js); corners via ks-resize. Size kept.
       trackActive(this, cx, WINDOW, "ks-notes");
       cx.spawn(async () => {
@@ -257,7 +257,7 @@ export default class Notes extends View {
         .when((n.attachments ?? []).length > 0, (e) => e.child(div().flex_none().max_h(48).overflow_hidden().child(attachRow(n.attachments, t, `na-${n.id}`)))));
   }
 
-  closeWindow() { forget(WINDOW); closeOverlay(props().overlay); }
+  closeWindow() { closeOverlay(props().overlay); backToPanel(WINDOW, "ks-notes"); }
   render(cx) { return this.window ? this.renderInner(cx) : dimmed(this, this.renderInner(cx)); }
 
   // Corner grips (the window): ks-resize draws the outline while you drag and reopens the window at that size.

@@ -21,7 +21,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { exec, appHome, spaces, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand } from "herdr";
-import { trackActive, takeRequest, raiseStrip, forget } from "./lib/windows.js";
+import { trackActive, takeRequest, raiseStrip, claim, backToPanel } from "./lib/windows.js";
 import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
 import { spaceName } from "./lib/spacenames.js";
@@ -196,7 +196,7 @@ export default class Tasks extends View {
     openOverlay({ mod: "ks-tasks", kind: "dialog", key: `ks-task-${id}`, width: 680, height: 720, props: { task: id } });
   }
   // The board window: its last size (px, from dragging a corner or the key modes' resize keys), else 64% x 66%.
-  closeBoard() { forget(BOARD); closeOverlay(props().overlay); }
+  closeBoard() { closeOverlay(props().overlay); backToPanel(BOARD, "ks-tasks"); }
   openBoard(size = shared(SIZE) ?? null, at = null) {
     const p = { board: true };
     openOverlay({ mod: "ks-tasks", kind: "window", key: BOARD, width: size?.width ?? 0.64, height: size?.height ?? 0.66, ...(at ? { at } : {}), props: p });
@@ -227,7 +227,7 @@ export default class Tasks extends View {
     this.history = []; this.future = []; this.toast = null;
     if (!this.board) { takeFocus(this, cx, "ks-tasks", (c, cx) => this.command(c, cx)); watchFocus(this, cx, "ks-tasks", () => this.typing); }
     else {
-      this.handle.focus(); cx.timer.after(150, () => this.handle.focus());
+      claim(this, cx, BOARD, "ks-tasks");
       // Resizable like the review and PR windows: the key modes' resize keys while it has the keyboard (lib/windows.js),
       // and its corners (ks-resize reopens it at the new size). Either way the size is kept for next time.
       trackActive(this, cx, BOARD, "ks-tasks");
