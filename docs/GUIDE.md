@@ -3,7 +3,7 @@
 What you get with the `ks` layout for [Herdr App](https://herdr.dev), and how to use each part. The README
 covers setup; [CONTRIBUTING.md](../CONTRIBUTING.md) covers how the repo is built; this is the tour.
 
-`ks` is built for one way of working: several Claude Code agents, each in its own git worktree, often across
+`ks` is built for one way of working: several coding agents (Claude Code first, Codex and others too), each in its own git worktree, often across
 two repos (a backend and a frontend) at once, with you reviewing their work and sending feedback back to them.
 
 - [The window](#the-window)
@@ -16,7 +16,7 @@ two repos (a backend and a frontend) at once, with you reviewing their work and 
 - [Notes](#notes)
 - [Tasks](#tasks)
 - [Pull requests: My PRs, the PR window, the PRs panel](#pull-requests)
-- [Resuming Claude sessions after a reboot](#resuming-claude-sessions-after-a-reboot)
+- [Resuming sessions after a reboot](#resuming-sessions-after-a-reboot)
 - [Closing with undo](#closing-with-undo)
 - [Key modes (service and vim)](#key-modes)
 - [Zen mode](#zen-mode)
@@ -72,7 +72,7 @@ subject, sha or author. Enter opens the first match, Esc clears, ✕ too.
 | Choice | Shows |
 |---|---|
 | Follow focused terminal (default) | The folder of the terminal you're in |
-| **Follow agent** | Every checkout the tab's Claude Code agent worked in this session, most recent first, one foldable section each. Read from its session log (files it edited, folders it `cd`/`git -C`'d into), rechecked every 10 s |
+| **Follow agent** | Every checkout the tab's agent worked in this session, most recent first, one foldable section each. Claude Code and Codex: read from the session log (files it edited, folders it `cd`/`git -C`'d into). Any other agent: where its process and its commands are right now. Rechecked every 10 s |
 | A worktree | Pinned for this space |
 | Matching branch in other repos (on) | Sibling repos (same parent folder) on the same branch show as extra sections, each with its own commit button |
 
@@ -257,11 +257,11 @@ Movable, resizable from the corners.
 (against the PR's own base, so a stacked PR shows only its files), **Review all**, **Open on GitHub**, and
 worktrees without a PR.
 
-## Resuming Claude sessions after a reboot
+## Resuming sessions after a reboot
 
-A reboot or logout brings every terminal back as a plain shell in its last folder; Herdr never re-runs Claude.
-`ks` remembers which Claude Code session each terminal ran (id, the folder it was started in, its title) and
-offers it back:
+A reboot or logout brings every terminal back as a plain shell in its last folder; Herdr never re-runs the agent.
+`ks` remembers which Claude Code or Codex session each terminal ran (id, the folder it was started in, its
+title) and offers it back. The card is for Claude Code sessions; a Codex session gets the Resume buttons:
 
 - **Inside the terminal**, once, after a reboot: a card with the session's title, folder, branch, when it ran,
   the first and last prompts, Claude's last reply and the files it edited. **Enter** resumes, **p** picks
@@ -415,7 +415,7 @@ does. Layout choices are kept in Herdr's shared state and put back after a reins
 | Zen mode | Open it, backdrop opaque or translucent (and how much), theme color or dark, size |
 | Keys & modes | Every mode with its key, the shortcuts, and the key modes editor |
 | Tabs & closing | Ask before closing a tab / a pane (never, while an agent works, always), how long a close can be undone (10–120 s) |
-| Claude sessions | Show the last session's card after a reboot; forget every remembered session |
+| Claude sessions (Codex sessions too) | Show the last session's card after a reboot; forget every remembered session |
 | Pull requests | My PRs shown or hidden, its notifications on or off |
 | Panels | Hide idle main checkouts |
 | Storage | Clear the GitHub cache |

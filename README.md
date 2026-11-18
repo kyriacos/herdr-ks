@@ -19,7 +19,7 @@ It installs next to whatever you already use in Herdr and changes nothing else.
 - **Send comments to the agent.** Comment on any line, then send them all in one message. [More](docs/GUIDE.md#comments-and-sending-them-to-an-agent)
 - **Pull requests in view.** Your open PRs with CI, review and merge state; message the agent on a PR, or start one. [More](docs/GUIDE.md#pull-requests)
 - **Notes and tasks.** A scratchpad and a kanban board per space, which agents can add to with `ks-task`. [More](docs/GUIDE.md#tasks)
-- **Nothing lost.** Sessions resume after a reboot, and a closed tab or space can be undone for 30 s. [More](docs/GUIDE.md#resuming-claude-sessions-after-a-reboot)
+- **Nothing lost.** Sessions resume after a reboot, and a closed tab or space can be undone for 30 s. [More](docs/GUIDE.md#resuming-sessions-after-a-reboot)
 - **Keyboard first.** tmux-style and vim-style key modes, zen mode and focus mode. [More](docs/GUIDE.md#key-modes)
 
 The [guide](docs/GUIDE.md) is the full tour.
@@ -37,7 +37,7 @@ scripts/install.sh --switch
 ```
 
 The script copies the layout and its `ks-*` mods into `~/.config/herdr-app`, adds its own section to
-`keys.json` (a backup is kept), checks every mod and switches the window to the layout.
+`keys.json` (the old file is backed up when it changes), checks every mod and switches the window to the layout.
 
 Then, in Settings (⚙ in the tab bar, or `cmd-shift-,`):
 

@@ -39,11 +39,11 @@ scripts/install.sh                    # copy into Herdr App and check every mod
 | `ks-spaces` | Spaces in the sidebar, grouped by repo and worktree |
 | `ks-agents` | The agents list, with the processes under each agent |
 | `ks-myprs`, `ks-nowtasks` | Sidebar sections: your open PRs, tasks in progress |
-| `ks-tabs` | The tab bar, panel buttons, closing with undo, session records |
+| `ks-tabs` | The tab bar, panel buttons, closing with undo, session records (`session_of.py`: Claude Code and Codex) |
 | `ks-pane` | A terminal's header and its menu, with Resume |
 | `ks-status` | The status bar |
 | `ks-files`, `ks-preview` | The Files panel and file previews |
-| `ks-changes` | The Changes panel (`agent_where.py` finds where an agent works) |
+| `ks-changes` | The Changes panel (`agent_where.py` finds where an agent works: Claude Code, Codex, or any process) |
 | `ks-review`, `ks-send` | Review tabs and windows, and the dialog that sends comments to an agent |
 | `ks-prs`, `ks-prcard` | The PRs panel and the PR window |
 | `ks-notes`, `ks-tasks` | The Notes and Tasks panels |
