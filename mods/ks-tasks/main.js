@@ -601,8 +601,11 @@ export default class Tasks extends View {
     const t = theme(), focused = this.board ? this.handle.is_focused() || this.typing : focusedNow(this, "ks-tasks", () => this.typing);
     const seg = (id, label, on, act) => div().id(id).h(22).px(8).flex().items_center().rounded(5).cursor_pointer().text_size(11)
       .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted).hover((s) => s.bg(t.hover)).on_click((_e, cx) => act(cx)).child(label);
-    const btn = (id, label, act, tip) => div().id(id).h(24).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).text_size(11).text_color(t.muted)
-      .cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip).on_click((_e, cx) => act(cx)).child(label);
+    // `off`: nothing to do (undo / redo with an empty history): dimmed, and clicks do nothing.
+    const btn = (id, label, act, tip, off = false) => div().id(id).h(24).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).text_size(11)
+      .tooltip(tip).child(label)
+      .when(off, (e) => e.text_color(t.dim).opacity(0.45))
+      .when(!off, (e) => e.text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => act(cx)));
     const l = this.lists(), toast = this.toast && Date.now() < this.toast.until ? this.toast : null;
     return v_flex().id("tasks").size_full().min_h(0).rounded(this.board ? 0 : 10).overflow_hidden().bg(t.background)
       .border_1().border_color(!this.board && focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
@@ -623,8 +626,8 @@ export default class Tasks extends View {
           .child(seg("s-here", this.board ? "This space" : "Here", !this.all, (cx) => this.setAll(false, cx)))
           .child(seg("s-all", `All · ${this.data.tasks.filter((x) => x.column !== doneCol(this.data)).length}`, this.all, (cx) => this.setAll(true, cx))))
         .child(div().flex_1())
-        .child(btn("tasks-undo-btn", "↶", (cx) => this.step(true, cx), this.history.length ? `Undo ${this.history[this.history.length - 1].label} (u, cmd-z)` : "Nothing to undo"))
-        .child(btn("tasks-redo-btn", "↷", (cx) => this.step(false, cx), this.future.length ? `Redo ${this.future[this.future.length - 1].label} (U, cmd-shift-z)` : "Nothing to redo"))
+        .child(btn("tasks-undo-btn", "↶", (cx) => this.step(true, cx), this.history.length ? `Undo ${this.history[this.history.length - 1].label} (u, cmd-z)` : "Nothing to undo", !this.history.length))
+        .child(btn("tasks-redo-btn", "↷", (cx) => this.step(false, cx), this.future.length ? `Redo ${this.future[this.future.length - 1].label} (U, cmd-shift-z)` : "Nothing to redo", !this.future.length))
         .when(!this.board, (e) => e.child(btn("tasks-big", "⤢", () => this.openBoard(), "Open the board in a window (z)")))
         .child(div().id("tasks-new").h(24).px(9).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground).text_size(11).cursor_pointer()
           .hover((s) => s.opacity(0.85)).on_click((_e, cx) => this.startAdd(this.view === "today" ? "@today" : this.data.columns[this.cur.col]?.id, cx)).child("+ New"))
