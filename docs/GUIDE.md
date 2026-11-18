@@ -392,7 +392,8 @@ does. Layout choices are kept in Herdr's shared state and put back after a reins
 | Section | What you can change |
 |---|---|
 | Layout | Side panel left or right; which side panels get a tab bar button; the sidebar's sections shown or hidden, and their order (↑ ↓); reset to the defaults |
-| Tasks & notes | Tasks panel starts on this space or all; how many tasks the sidebar lists; toasts for agents' proposals; Notes starts on this space or all |
+| Tasks | Panel starts on this space or all; how many tasks the sidebar lists; toasts for agents' proposals |
+| Notes | Panel starts on this space or all |
 | Spaces & agents | Name spaces by repo and branch; what each agent works on under its space; the processes chip under agents |
 | Focus mode | On / off, how visible dimmed parts stay |
 | Zen mode | Open it, backdrop opaque or translucent (and how much), theme color or dark, size |

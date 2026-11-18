@@ -15,7 +15,8 @@ import { SIDEBAR, PANELS, arrange, node } from "./lib/arrange.js";
 
 const SECTIONS = [
   ["layout", "Layout"],
-  ["tasks", "Tasks & notes"],
+  ["tasks", "Tasks"],
+  ["notes", "Notes"],
   ["spaces", "Spaces & agents"],
   ["focus", "Focus mode"],
   ["zen", "Zen mode"],
@@ -131,16 +132,20 @@ export default class Settings extends View {
             })));
       }
       case "tasks": {
-        return v_flex().child(heading("Tasks & notes"))
-          .child(row("Tasks: start on", "Which tasks the Tasks panel shows when it opens: this space's (made in it or its worktrees), or every space's. The board window always opens on all. The panel's Here / All (s) switches either way.",
+        return v_flex().child(heading("Tasks"))
+          .child(row("Start on", "Which tasks the Tasks panel shows when it opens: this space's (made in it or its worktrees), or every space's. The board window always opens on all. The panel's Here / All (s) switches either way.",
             ...choice("tall", [[false, "This space"], [true, "All spaces"]], Boolean(p.tasksAll), (v) => setPref("tasksAll", v))))
           .child(row(`Sidebar Tasks lists ${p.nowTasksMax ?? 3} in progress`, "How many tasks from the board's Doing column the sidebar shows before \"+N more\".",
             ...[1, 2, 3, 5].map((v) => btn(`ntm-${v}`, String(v), () => setPref("nowTasksMax", v), (p.nowTasksMax ?? 3) === v))))
           .child(row("Agents' task proposals", "A toast when an agent proposes a task (ks-task). The tab bar's \"Tasks · N new\" shows either way.",
             ...choice("ttoast", [[true, "On"], [false, "Off"]], p.taskToasts !== false, (v) => setPref("taskToasts", v))))
-          .child(row("Notes: start on", "This space's notes, or every note (grouped by space). The panel's This space / All (a) switches either way.",
+          .child(note("Kept in ~/.config/herdr-app/data/ks-tasks.json, attachments in data/ks-attach (neither is in the repo). Agents use the ks-task command (the ks-tasks skill)."));
+      }
+      case "notes": {
+        return v_flex().child(heading("Notes"))
+          .child(row("Start on", "This space's notes, or every note (grouped by space). The panel's This space / All (a) switches either way.",
             ...choice("nall", [[false, "This space"], [true, "All"]], Boolean(p.notesAll), (v) => setPref("notesAll", v))))
-          .child(note("Tasks are kept in ~/.config/herdr-app/data/ks-tasks.json, notes in ks-notes.json, attachments in data/ks-attach (none of it in the repo). Agents use the ks-task command (the ks-tasks skill)."));
+          .child(note("Kept in ~/.config/herdr-app/data/ks-notes.json, attachments in data/ks-attach (neither is in the repo)."));
       }
       case "spaces": {
         return v_flex().child(heading("Spaces & agents"))
