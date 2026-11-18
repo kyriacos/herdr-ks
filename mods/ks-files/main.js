@@ -943,7 +943,7 @@ export default class Files extends View {
 
   // ks: focus mode dims this until hovered (lib/focus.js).
   render(cx) { return this.windowed ? windowFrame(this, this.renderInner(cx), theme(), "ks-files") : dimmed(this, this.renderInner(cx)); }
-  closeWindowNow() { closeOverlay(props().overlay); }
+  closeWindowNow() { if (shared("ks.activeWindow")?.key === "ks-files-window") setShared("ks.activeWindow", null); closeOverlay(props().overlay); }
 
   renderInner(cx) {
     if (this.menu) return this.renderMenu();

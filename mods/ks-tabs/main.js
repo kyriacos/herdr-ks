@@ -33,6 +33,8 @@ export default class Tabs extends View {
     // ks: tasks agents proposed (bin/ks-task), counted on the Tasks button; read now, every 30 s, and at once when
     // ks-task wrote (the command `tasks-changed`).
     this.tasksChanged(cx, false);
+    // Marks of what had the keyboard, from before a restart or reinstall: nothing has it yet.
+    setShared("ks.activeWindow", null); setShared("ks.activePanel", null);
     // ks: the side panel's side and the sidebar's order, as set in ks-settings (lib/arrange.js).
     cx.timer.after(1500, () => { try { arrange(); } catch (e) { console.log("ks-tabs: arrange failed", String(e)); } });
     cx.timer.every(30000, (cx) => this.tasksChanged(cx, false));

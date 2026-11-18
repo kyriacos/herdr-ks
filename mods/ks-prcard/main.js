@@ -12,6 +12,7 @@ import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { onPasteImage, attachRow, imageLines } from "./lib/attach.js";
 import { candidates, git } from "./lib/branch.js";
 import * as cache from "./lib/cache.js";
+import { pref, worktreeRoot } from "./lib/prefs.js";
 import { fetchPr, prKey } from "./lib/github.js";
 
 const same = (a, b) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
@@ -38,12 +39,12 @@ async function localWorktrees(repoName, branch) {
   return (await repoCheckouts(repoName)).filter((c) => c.branch === branch);
 }
 
-// A worktree of the PR's branch where the new-worktree dialog would put it (~/code/worktrees/<repo>/<branch>),
+// A worktree of the PR's branch where the new-worktree dialog would put it (<worktree folder>/<repo>/<branch>),
 // from the repo's main checkout: the local branch if there is one, else the remote's. { root } or { error }.
 async function makeWorktree(repoName, branch) {
   const main = (await repoCheckouts(repoName))[0]?.root;
   if (!main) return { error: `No local clone of ${repoName} under ~/code.` };
-  const path = `${await home()}/code/worktrees/${repoName}/${branch}`;
+  const path = `${worktreeRoot(await home())}/${repoName}/${branch}`;
   const g = (args) => exec("git", ["-C", main, ...args]).catch((e) => ({ code: 1, stderr: String(e) }));
   await g(["fetch", "origin", branch]);
   const local = (await g(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`])).code === 0;
@@ -256,7 +257,7 @@ export default class PrCard extends View {
     const noAgent = this.places !== null && !onPr.length, w0 = (this.places ?? [])[0];
     const startWhere = !noAgent ? "" : w0
       ? `Send starts Claude Code in ${w0.root.split("/").pop()} (${w0.spaces[0] ? `a new tab in space ${w0.spaces[0].name}` : "a new space"}), with your message as its first task.`
-      : `No local checkout of ${pr.headRefName}: send makes a worktree in ~/code/worktrees/${this.repo.split("/").pop()}/${pr.headRefName}, opens a space there and starts Claude Code with your message.`;
+      : `No local checkout of ${pr.headRefName}: send makes a worktree in ${pref("worktreeRoot")}/${this.repo.split("/").pop()}/${pr.headRefName}, opens a space there and starts Claude Code with your message.`;
     const starting = !target && noAgent;
 
     const body = v_flex().id("prcard-body").absolute().inset_0().overflow_y_scroll().px(14).pb(14)

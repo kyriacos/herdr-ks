@@ -4,6 +4,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar } from "gpui-base";
 import { run, props, closeOverlay, theme, spaces, panes, exec, home } from "herdr";
+import { worktreeRoot } from "./lib/prefs.js";
 
 // Where a space is now: its first terminal's live folder, else where it was made.
 function place(s, all = panes()) {
@@ -13,8 +14,8 @@ function place(s, all = panes()) {
 }
 
 // Checkouts go to <ROOT>/<repo>/<branch, slashes as dashes>.
-// Roundup (local): the default worktree folder. Any folder can be typed in the dialog.
-const ROOT = (home) => `${home}/code/worktrees`;
+// ROOT is the "worktreeRoot" preference (Settings > Spaces & agents). Any folder can be typed in the dialog.
+const ROOT = (home) => worktreeRoot(home);
 const expand = (p, h) => (p === "~" ? h : p.startsWith("~/") ? h + p.slice(1) : p).replace(/\/+$/, "");
 // Home as ~ (git says C:/Users/x where Windows says C:\Users\x).
 const tilde = (path, userHome) => {

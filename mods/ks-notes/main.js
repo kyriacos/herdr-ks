@@ -17,7 +17,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { exec, appHome, spaces, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand } from "herdr";
-import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
+import { trackActive, takeRequest, raiseStrip, forget } from "./lib/windows.js";
 import { dimmed } from "./lib/focus.js";
 import { spaceName, spaceTask } from "./lib/spacenames.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
@@ -83,7 +83,7 @@ export default class Notes extends View {
       cx.spawn(async () => {
         for (;;) {
           const c = await nextCommand();
-          if (c === "unzoom") { closeOverlay(props().overlay); continue; }
+          if (c === "unzoom") { this.closeWindow(); continue; }
           if (c !== "winresize") continue;
           const r = takeRequest(this, WINDOW);
           if (!r) continue;
@@ -257,6 +257,7 @@ export default class Notes extends View {
         .when((n.attachments ?? []).length > 0, (e) => e.child(div().flex_none().max_h(48).overflow_hidden().child(attachRow(n.attachments, t, `na-${n.id}`)))));
   }
 
+  closeWindow() { forget(WINDOW); closeOverlay(props().overlay); }
   render(cx) { return this.window ? this.renderInner(cx) : dimmed(this, this.renderInner(cx)); }
 
   // Corner grips (the window): ks-resize draws the outline while you drag and reopens the window at that size.
@@ -318,14 +319,14 @@ export default class Notes extends View {
           return;
         }
         if (e.key === "/" ) { this.search.focus(); cx.stop_propagation(); return; }
-        if (this.window && e.key === "escape") { closeOverlay(props().overlay); cx.stop_propagation(); return; }
+        if (this.window && e.key === "escape") { this.closeWindow(); cx.stop_propagation(); return; }
         if (e.key === "s" && this.__g) { this.__g = false; this.setGrouped(!this.grouped, cx); cx.stop_propagation(); return; }
         if (!listKey(this, e, list.length, (i) => this.edit(list[i], cx), (k) => {
           if (k === "n") { this.create(cx); return true; }
           if (k === "x" && list[this.cursor]) { this.remove(list[this.cursor], cx); return true; }
           if (k === "u") { this.restore(cx); return true; }
           if (k === "a") { this.setAll(!this.all, cx); return true; }
-          if (k === "z") { if (this.window) closeOverlay(props().overlay); else openNotesWindow(); return true; }
+          if (k === "z") { if (this.window) this.closeWindow(); else openNotesWindow(); return true; }
           return false;
         })) return;
         cx.stop_propagation(); cx.notify();
@@ -341,7 +342,7 @@ export default class Notes extends View {
         .child(div().id("notes-new").h(24).px(9).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground).text_size(11).cursor_pointer()
           .hover((s) => s.opacity(0.85)).on_click((_e, cx) => this.create(cx)).child("+ New"))
         .when(this.window, (e) => e.child(div().id("notes-x").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
-          .hover((s) => s.bg(t.hover)).tooltip("Close (Esc)").on_click(() => closeOverlay(props().overlay)).child("✕"))))
+          .hover((s) => s.bg(t.hover)).tooltip("Close (Esc)").on_click(() => this.closeWindow()).child("✕"))))
       // Search, and (All) grouping and the space chips.
       .child(v_flex().flex_none().px(10).py(6).gap(6).border_b(1).border_color(t.border)
         .child(h_flex().gap(6).items_center()

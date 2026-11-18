@@ -6,6 +6,9 @@
 import { shared, setShared, run } from "herdr";
 
 export const ACTIVE = "ks.activeWindow";
+// Closing a window that has the keyboard: it stops being the active one first. A window that just goes away can't
+// clear it itself (its timer goes with it), and a stale one would send the zoom and resize keys nowhere.
+export function forget(key) { if (shared(ACTIVE)?.key === key) setShared(ACTIVE, null); }
 export const REQUEST = "ks.windowResize";
 
 // Keeps "ks.activeWindow" naming this window while its focus handle has the keyboard, and clears it when it loses

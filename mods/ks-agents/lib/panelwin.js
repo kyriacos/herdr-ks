@@ -13,15 +13,15 @@
 // Source of truth: shared/panelwin.js; scripts/install.sh copies it into each mod's lib/.
 import { div } from "gpui-kit";
 import { openOverlay, closeOverlay, props, shared, setShared, nextCommand, settings } from "herdr";
-import { trackActive, takeRequest, raiseStrip } from "./windows.js";
+import { trackActive, takeRequest, raiseStrip, forget } from "./windows.js";
 
 const keyOf = (mod) => `${mod}-window`;
 const sizeKey = (mod) => `${mod}.windowSize`;
 export const isWindow = () => Boolean((props() ?? {}).window);
-export const closeWindow = () => closeOverlay(props()?.overlay);
+export const closeWindow = (mod = (props() ?? {}).mod) => { if (mod) forget(keyOf(mod)); closeOverlay(props()?.overlay); };
 
 export function openPanelWindow(mod, size = shared(sizeKey(mod)) ?? null) {
-  openOverlay({ mod, kind: "window", key: keyOf(mod), width: size?.width ?? 0.62, height: size?.height ?? 0.74, props: { window: true } });
+  openOverlay({ mod, kind: "window", key: keyOf(mod), width: size?.width ?? 0.62, height: size?.height ?? 0.74, props: { window: true, mod } });
 }
 
 // The window copy: takes the keyboard, and follows the key modes' resize keys. `listen` false when the mod has its
@@ -35,14 +35,14 @@ export function initWindow(view, cx, mod, listen = true) {
 // "zoom": the panel opens its window; "unzoom": the window closes. True when it was one of them.
 export function zoomCommand(view, c, mod) {
   if (c === "zoom") { if (!view.windowed) openPanelWindow(mod); return true; }
-  if (c === "unzoom") { if (view.windowed) closeWindow(); return true; }
+  if (c === "unzoom") { if (view.windowed) closeWindow(mod); return true; }
   return false;
 }
 // The z key, in the panel or the window. True when taken.
 export function zoomKey(view, e, mod) {
   const m = e.modifiers ?? {};
   if (e.key !== "z" || m.shift || m.control || m.platform || m.alt) return false;
-  if (view.windowed) closeWindow(); else openPanelWindow(mod);
+  if (view.windowed) closeWindow(mod); else openPanelWindow(mod);
   return true;
 }
 // "winresize": reopened bigger or smaller (or at the default size). True when it was that.
@@ -76,7 +76,7 @@ function grips(view, t, mod) {
       cx.stop_propagation();
       if (!view.winRect) return;
       openOverlay({ mod: "ks-resize", kind: "window", frame: "none", key: "ks-resize", width: 1, height: 1, at: { x: 0, y: 0 },
-        props: { rect: view.winRect, corner, zoom: settings().zoom || 1, reopen: { mod, key: keyOf(mod), props: { window: true } } } });
+        props: { rect: view.winRect, corner, zoom: settings().zoom || 1, reopen: { mod, key: keyOf(mod), props: { window: true, mod } } } });
     })
     .when(corner === "br", (e) => e.child(div().absolute().right(3).bottom(3).size(7).border_r_2().border_b_2().border_color(t.dim)));
   return ["tl", "tr", "bl", "br"].map(g);
@@ -86,6 +86,6 @@ function grips(view, t, mod) {
 export const expandButton = (t, mod) => div().id(`${mod}-expand`).flex_none().h(24).px(8).flex().items_center().rounded(6).border_1().border_color(t.border)
   .text_size(11).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Open in a window (z)")
   .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); openPanelWindow(mod); }).child("⤢");
-export const closeButton = (t) => div().id("window-close").flex_none().size(26).flex().items_center().justify_center().rounded(6).cursor_pointer()
-  .text_color(t.muted).hover((s) => s.bg(t.hover)).tooltip("Close (Esc or z)").on_click((_e, cx) => { cx.stop_propagation(); closeWindow(); }).child("✕");
-export const headerButton = (view, t, mod) => (view.windowed ? closeButton(t) : expandButton(t, mod));
+export const closeButton = (t, mod) => div().id("window-close").flex_none().size(26).flex().items_center().justify_center().rounded(6).cursor_pointer()
+  .text_color(t.muted).hover((s) => s.bg(t.hover)).tooltip("Close (Esc or z)").on_click((_e, cx) => { cx.stop_propagation(); closeWindow(mod); }).child("✕");
+export const headerButton = (view, t, mod) => (view.windowed ? closeButton(t, mod) : expandButton(t, mod));

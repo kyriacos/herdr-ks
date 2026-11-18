@@ -61,13 +61,21 @@ const shownIn = (st) => st?.content
 // sidebar and side panel left as they are. A full zoom that's on comes off instead; a pane alone in its tab zooms
 // over the window.
 // A side panel (or its window) has the keyboard: the zoom keys open its window, or close it (lib/panelwin.js).
+// Only what has the keyboard right now: the window closing clears its mark, and a panel counts only while the side
+// panel shows it (a hidden panel can't have the keyboard, whatever an old mark says). Anything else: a pane zoom.
 const PANEL_WINDOWS = { "ks-tasks-board": "ks-tasks" };
+const PANEL_BLOCKS = { "ks-files": "files", "ks-changes": "changes", "ks-prs": "prs", "ks-notes": "notes", "ks-tasks": "tasks" };
+const findNode = (n, id) => { if (n?.id === id) return n; for (const c of n?.children ?? []) { const f = findNode(c, id); if (f) return f; } return null; };
+function tryRun(command) { try { run(command); return true; } catch (e) { console.log("ks-zen:", command, String(e)); return false; } }
 function zoomPanel() {
   const w = shared("ks.activeWindow");
   const wmod = w?.key && (PANEL_WINDOWS[w.key] ?? (w.key.endsWith("-window") ? w.mod : null));
-  if (wmod) { run(`${wmod}.unzoom`); return true; }
-  const p = shared("ks.activePanel");
-  if (p?.mod) { run(`${p.mod}.zoom`); return true; }
+  if (wmod) { setShared("ks.activeWindow", null); if (tryRun(`${wmod}.unzoom`)) return true; }
+  const p = shared("ks.activePanel"), root = layout();
+  const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
+  const showing = p?.mod && panel && !panel.hidden && body?.active === PANEL_BLOCKS[p.mod];
+  if (p?.mod && !showing) { setShared("ks.activePanel", null); return false; }
+  if (showing) return tryRun(`${p.mod}.zoom`);
   return false;
 }
 function zoomTab(pane) {

@@ -21,7 +21,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { exec, appHome, spaces, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand } from "herdr";
-import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
+import { trackActive, takeRequest, raiseStrip, forget } from "./lib/windows.js";
 import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
 import { spaceName } from "./lib/spacenames.js";
@@ -196,6 +196,7 @@ export default class Tasks extends View {
     openOverlay({ mod: "ks-tasks", kind: "dialog", key: `ks-task-${id}`, width: 680, height: 720, props: { task: id } });
   }
   // The board window: its last size (px, from dragging a corner or the key modes' resize keys), else 64% x 66%.
+  closeBoard() { forget(BOARD); closeOverlay(props().overlay); }
   openBoard(size = shared(SIZE) ?? null, at = null) {
     const p = { board: true };
     openOverlay({ mod: "ks-tasks", kind: "window", key: BOARD, width: size?.width ?? 0.64, height: size?.height ?? 0.66, ...(at ? { at } : {}), props: p });
@@ -233,7 +234,7 @@ export default class Tasks extends View {
       cx.spawn(async (cx) => {
         for (;;) {
           const c = await nextCommand();
-          if (c === "unzoom") { closeOverlay(props().overlay); continue; }
+          if (c === "unzoom") { this.closeBoard(); continue; }
           if (c !== "winresize") continue;
           const r = takeRequest(this, BOARD);
           if (!r) continue;
@@ -389,7 +390,7 @@ export default class Tasks extends View {
     else if (k === "u") this.step(true, cx);
     else if (k === "U") this.step(false, cx);
     else if (k === "b" || k === "tab") this.setView(today ? "board" : "today", cx);
-    else if (k === "z") { if (this.board) closeOverlay(props().overlay); else this.openBoard(); }
+    else if (k === "z") { if (this.board) this.closeBoard(); else this.openBoard(); }
     else if (!today && (k === "l" || k === "right") && this.cur.col < this.data.columns.length - 1) goCol(this.cur.col + 1);
     else if (!today && (k === "h" || k === "left") && this.cur.col > 0) goCol(this.cur.col - 1);
     else if (!today && (k === "L" || k === "H") && sel) {
@@ -404,7 +405,7 @@ export default class Tasks extends View {
     else if (!today && k === "r" && col) this.startRename(col, cx);
     else if (!this.board && (k === "h" || k === "escape")) { leave("left"); }
     else if (!this.board && k === "l") { leave("right"); }
-    else if (this.board && k === "escape") { closeOverlay(props().overlay); }
+    else if (this.board && k === "escape") { this.closeBoard(); }
     else return;
     cx.stop_propagation(); cx.notify();
   }
@@ -574,7 +575,7 @@ export default class Tasks extends View {
         .child(div().id("tasks-new").h(24).px(9).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground).text_size(11).cursor_pointer()
           .hover((s) => s.opacity(0.85)).on_click((_e, cx) => this.startAdd(this.view === "today" ? "@today" : this.data.columns[this.cur.col]?.id, cx)).child("+ New"))
         .when(this.board, (e) => e.child(div().id("board-x").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
-          .hover((s) => s.bg(t.hover)).tooltip("Close (Esc)").on_click(() => closeOverlay(props().overlay)).child("✕"))))
+          .hover((s) => s.bg(t.hover)).tooltip("Close (Esc)").on_click(() => this.closeBoard()).child("✕"))))
       .when(Boolean(toast), (e) => e.child(h_flex().flex_none().mx(8).mt(8).px(10).h(28).gap(8).items_center().rounded(7).bg(t.accent + "1f").text_size(11.5).text_color(t.accent)
         .child(div().flex_1().truncate().child(toast.text))
         .when(Boolean(toast.offer), (e) => e.child(div().id("tasks-undo").px(6).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a"))

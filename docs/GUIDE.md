@@ -1,7 +1,7 @@
 # herdr-ks guide
 
 What you get with the `ks` layout for [Herdr App](https://herdr.dev), and how to use each part. The README
-covers setup and the list of files changed from upstream; this is the tour.
+covers setup and where things live; this is the tour.
 
 `ks` is built for one way of working: several Claude Code agents, each in its own git worktree, often across
 two repos (a backend and a frontend) at once, with you reviewing their work and sending feedback back to them.
@@ -55,7 +55,7 @@ The interface font is whatever you pick in Herdr's Settings (the layout sets non
   with its branch.
 - **New space + worktree** (`cmd-shift-n`, or right-click a space → New worktree): pick a repo (any folder),
   a branch (existing, or a new name created from HEAD) and where the checkout goes (default
-  `~/code/worktrees/<repo>/<branch>`). Enter creates the worktree and opens a space in it.
+  `~/code/worktrees/<repo>/<branch>`, the folder is set in Settings > Spaces & agents). Enter creates the worktree and opens a space in it.
 - A main checkout nobody works in (on `main`/`master`, nothing uncommitted) is left out of the panels, unless
   it's the folder you're in.
 
@@ -247,7 +247,7 @@ agent** sends your note with the PR as context; the agent on that PR is named an
 are folded away under "Other agents, not working on this PR" (**Send anyway**). With no agent on it, the
 button reads **Start a session & send**: Claude Code starts in the PR's worktree (a new tab in the space showing
 it, else a new space) with your message as its first task. With no local checkout of the branch, it reads
-**Create worktree, start & send** and makes the worktree first (`~/code/worktrees/<repo>/<branch>`).
+**Create worktree, start & send** and makes the worktree first (`~/code/worktrees/<repo>/<branch>` unless you changed the folder).
 Movable, resizable from the corners.
 
 **PRs panel** (`cmd-shift-u`): open PRs of the session's worktrees with CI, review state and size; **Review**

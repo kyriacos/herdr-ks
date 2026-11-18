@@ -19,8 +19,14 @@ export const DEFAULTS = {
   notesAll: false,     // the Notes panel starts on every space's notes (else this space's)
   autoSpaceNames: true, // spaces called "branch · repo" of the worktree their agent works in
   spaceTaskLine: true, // under each space, what its agent works on
+  worktreeRoot: "~/code/worktrees", // new worktrees go to <this>/<repo>/<branch>
   agentProcs: true,    // the Agents list's "N procs" chip and the process lookups behind it
 };
 export const prefs = () => ({ ...DEFAULTS, ...(shared(KEY) ?? {}) });
 export const pref = (k) => prefs()[k];
+// The worktree folder as a full path (~ is the home folder).
+export const worktreeRoot = (home) => {
+  const p = String(pref("worktreeRoot") || DEFAULTS.worktreeRoot).trim().replace(/\/+$/, "") || DEFAULTS.worktreeRoot;
+  return p === "~" ? home : p.startsWith("~/") ? home + p.slice(1) : p;
+};
 export const setPref = (k, v) => setShared(KEY, { ...(shared(KEY) ?? {}), [k]: v });
