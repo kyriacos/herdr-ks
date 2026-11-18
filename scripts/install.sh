@@ -15,14 +15,33 @@ command -v rsync >/dev/null || { echo "needs rsync" >&2; exit 1; }
 [ -d "$app" ] || { echo "$app not found: install and start Herdr App first" >&2; exit 1; }
 
 # Mods can't import from each other: shared/ (highlighter, diff model, review comments) is copied into the
-# mods that use it before they're installed.
+# mods that use it before they're installed. Each mod gets only the shared files it imports (from its own .js
+# files, `./lib/<name>.js`), and the ones those import in turn: Herdr reloads every mod whose files change, so
+# copying all of shared/ everywhere made one shared edit reload all of them. A missed import shows up in the
+# herdr-app check below.
+deps() {
+  want=$(grep -ho '\./lib/[A-Za-z0-9_-]*\.js' "$1"*.js 2>/dev/null | sed 's|\./lib/||' | sort -u)
+  while :; do
+    more=$(for f in $want; do grep -ho '"\./[A-Za-z0-9_-]*\.js"' "$src/shared/$f" 2>/dev/null | tr -d '"' | sed 's|\./||'; done)
+    all=$(printf '%s\n%s\n' "$want" "$more" | grep . | sort -u)
+    [ "$all" = "$want" ] && break
+    want=$all
+  done
+  echo "$want"
+}
 for d in "$src"/mods/ks-*/; do
   [ "$(basename "$d")" = ks-keys ] && continue  # self-contained
-  mkdir -p "$d/lib" && cp "$src"/shared/*.js "$d/lib/"
+  need=$(deps "$d")
+  mkdir -p "$d/lib"
+  # Shared files it no longer uses go (the rsync below drops them from the app too).
+  for f in "$d"lib/*.js; do [ -e "$f" ] || continue; echo "$need" | grep -qx "$(basename "$f")" || rm -f "$f"; done
+  # -p keeps shared/'s mtimes so the rsync below skips unchanged lib files: a fresh mtime on every
+  # install made rsync rewrite lib/ in every mod, and Herdr hot-reloads each mod whose files change.
+  for f in $need; do cp -p "$src/shared/$f" "$d/lib/"; done
 done
 
 mkdir -p "$app/layouts" "$app/mods"
-cp "$src/layouts/$name".* "$app/layouts/"
+rsync -a "$src/layouts/$name".* "$app/layouts/"  # skips unchanged files, so Herdr doesn't reload the layout
 
 for d in "$src"/mods/ks-*/; do
   rsync -a --delete --exclude gpui-kit.d.ts --exclude jsconfig.json "$d" "$app/mods/$(basename "$d")/"
