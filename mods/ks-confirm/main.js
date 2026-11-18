@@ -1,7 +1,7 @@
 // Asks before something destructive, e.g. "Close tab?". Opened as a
 // dialog with props { title, detail, command: { name, args } }.
 // Cloned from Herdr's `confirm`: Cancel is chosen when it opens, so Enter
-// cancels; Tab and Shift-Tab move between Cancel and Confirm, Enter or Space
+// cancels; Tab and Shift-Tab (or ←/→, h/l) move between Cancel and Confirm, Enter or Space
 // presses the chosen one, Esc cancels.
 
 import { View, div } from "gpui-kit";
@@ -16,6 +16,9 @@ export default class Confirm extends View {
     this.at = "no";
     this.overlay = props()?.overlay;
     this.no.focus();
+    // Opened from a key strip (ctrl-w c, service c), the strip hands the keyboard back to the pane as it closes,
+    // after this dialog took it: take it again a few times while it settles (Tab, Enter and Esc need it here).
+    for (const ms of [0, 120, 300, 600, 1000]) cx.timer.after(ms, () => { if (!this.no.is_focused() && !this.yes.is_focused()) this[this.at].focus(); });
   }
 
   // ks-tabs and ks-pane keep the open dialog under this key, so only one is up at a time.
@@ -54,8 +57,9 @@ export default class Confirm extends View {
     return v_flex()
       .id("confirm")
       .on_key_down((e, cx) => {
-        if (e.keystroke === "tab" || e.keystroke === "shift-tab") this.move(cx);
-        else if (e.keystroke === "enter" || e.keystroke === "space") this.press();
+        if (e.key === "tab") this.move(cx);
+        else if (e.key === "enter" || e.key === "space") this.press();
+        else if (e.key === "left" || e.key === "right" || e.key === "h" || e.key === "l") { this.at = e.key === "left" || e.key === "h" ? "no" : "yes"; this[this.at].focus(); cx.notify(); }
         else if (e.key === "escape") closeOverlay(props().overlay);
         else return;
         cx.stop_propagation();

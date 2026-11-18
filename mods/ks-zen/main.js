@@ -58,8 +58,7 @@ const shownIn = (st) => st?.content
   : st?.terminal;
 
 // Zoom in the tab only (cmd-shift-enter, ctrl-w o, service z, the pane header): Herdr's zoom, the pane over its tab,
-// sidebar and side panel left as they are. A full zoom that's on comes off instead; a pane alone in its tab zooms
-// over the window.
+// sidebar and side panel left as they are, a pane alone in its tab too. A full zoom that's on comes off instead.
 // A side panel (or its window) has the keyboard: the zoom keys open its window, or close it (lib/panelwin.js).
 // Only what has the keyboard right now: the window closing clears its mark, and a panel counts only while the side
 // panel shows it (a hidden panel can't have the keyboard, whatever an old mark says). Anything else: a pane zoom.
@@ -96,9 +95,9 @@ function zoomTab(pane) {
   if (shared(ZOOM)) return zoom(pane);
   const ps = panes(), id = pane || focused()?.pane, p = ps.find((x) => x.pane === id) ?? ps.find((x) => x.focused);
   if (!p) return;
-  // Alone in its tab (a review tab) there's nothing to zoom over: it zooms over the window instead.
-  if (!p.zoomed && ps.filter((x) => x.tab === p.tab).length < 2) return zoom(p.pane);
-  run("pane.zoom", { pane: p.pane });
+  // Always the pane over its tab, even alone in it (nothing changes then): only the window-level keys hide the
+  // sidebar and side panel.
+  try { run("pane.zoom", { pane: p.pane }); } catch (e) { console.log("ks-zen: pane.zoom", String(e)); }
 }
 
 // Zoom over the window (cmd-shift-alt-enter, ctrl-w O, capital Z / O in the modes): the pane fills the whole window, always the

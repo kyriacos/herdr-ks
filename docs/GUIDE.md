@@ -117,7 +117,7 @@ file (branch review).
 **Zoom and zen:** two zooms, each the same on every pane. **Over its tab** (`cmd-shift-enter`, `ctrl-w o`, service `o`/`z`,
 tmux / move `z`, vim `o`, the pane header's Zoom): the other panes in the tab hide, the sidebar and side panel stay.
 **Over the window** (`cmd-shift-alt-enter`, `ctrl-w O`, service `O`, tmux / move `Z`, vim `O`, the pane menu's "Zoom over the
-window"): the sidebar and side panel hide too. A pane alone in its tab (a review) zooms over the window either way.
+window"): the sidebar and side panel hide too. A pane alone in its tab stays as it is with the tab-level keys; use the window-level ones to hide the sidebar and panel.
 Zooming again brings everything back. A zoomed pane's header shows **⤢ Zoomed · N hidden** (click it to
 unzoom) and its tab shows **⤢**.
 **Zen** (`cmd-shift-z`, service `Z`, vim `zz`) opens the review in the zen window, on the file you were on; Esc or
