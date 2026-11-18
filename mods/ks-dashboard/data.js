@@ -2,9 +2,12 @@
 // the Linear issue ids those mention), the prompts you can run over it, and every run kept.
 //
 // Files under <app home>/data/ks-dashboard/:
-//   prompts.json   [{ id, name, range: "day" | "week" | "month", source: "merged-prs", text, auto: "HH:MM" | null }]
+//   prompts.json   [{ id, name, range: "day" | "week" | "month", source: "merged-prs", text, auto: "HH:MM" | null,
+//                    view: a view id | null (all repos) }]
 //   runs/<id>.json { id, prompt, name, range, from, at, ms, prs, tasks, linear, summary, error }
 //   activity.json  the last look at each range ({ day: { at, from, prs, tasks, linear } }), shown at once on open.
+//   views.json     { current: id | null, views: [{ id, name, repos: ["acme/*", "sam/web"] }] }: which repos a view shows.
+//                  "acme/*" is a whole owner (a GitHub org or user), "sam/web" one repo. null (All) shows everything.
 // A run gathers the range's data, then hands it with the prompt's text to `claude -p` (no tools, nothing saved
 // as a session) for the summary. Without claude the run keeps the data and says why there's no summary.
 import { exec, appHome } from "herdr";
@@ -48,6 +51,8 @@ export async function loadPrompts() {
   await writeJson(`${DIR()}/prompts.json`, DEFAULT_PROMPTS);
   return DEFAULT_PROMPTS;
 }
+
+export const savePrompts = (list) => writeJson(`${DIR()}/prompts.json`, list);
 
 // Every run, newest first (each file read once and kept by its name).
 const seen = new Map();
@@ -104,22 +109,70 @@ export async function mergedPrs(from) {
   return { prs };
 }
 
-// Tasks moved to the board's last column since `from`.
+// The repo ("owner/name") a folder's git origin points at, kept per folder. "" when it has none.
+const folderRepos = new Map();
+async function folderRepo(folder) {
+  if (!folder) return "";
+  if (folderRepos.has(folder)) return folderRepos.get(folder);
+  const r = await exec("git", ["-C", folder, "remote", "get-url", "origin"]).catch(() => null);
+  const m = String(r?.stdout ?? "").trim().match(/[:/]([^/:]+\/[^/]+?)(?:\.git)?$/);
+  const repo = r?.code === 0 && m ? m[1] : "";
+  folderRepos.set(folder, repo);
+  return repo;
+}
+
+// Tasks moved to the board's last column since `from`, each with the repo of its folder.
 export async function tasksDone(from) {
   const d = await readJson(`${appHome()}/data/ks-tasks.json`, null);
   if (!d?.tasks) return [];
   const done = d.columns?.[d.columns.length - 1]?.id;
   return d.tasks.filter((x) => x.column === done && (x.doneAt ?? x.updated ?? 0) >= from.getTime())
-    .map((x) => ({ id: x.id, title: x.title, doneAt: x.doneAt ?? x.updated, space: String(x.spaceName ?? "").replace(/\s*·\s*$/, "") }))
+    .map((x) => ({ id: x.id, title: x.title, doneAt: x.doneAt ?? x.updated, folder: x.folder ?? "", space: String(x.spaceName ?? "").replace(/\s*·\s*$/, "") }))
     .sort((a, b) => b.doneAt - a.doneAt);
+}
+async function withRepos(tasks) {
+  for (const x of tasks) x.repo = await folderRepo(x.folder);
+  return tasks;
+}
+
+// ---------- views: which repos to show ----------
+export async function loadViews() {
+  const v = await readJson(`${DIR()}/views.json`, null);
+  return { current: v?.current ?? null, views: Array.isArray(v?.views) ? v.views : [] };
+}
+export const saveViews = (v) => writeJson(`${DIR()}/views.json`, v);
+const lc = (s) => String(s ?? "").toLowerCase();
+export function inView(view, repo) {
+  if (!view) return true;
+  const r = lc(repo);
+  return (view.repos ?? []).some((pat) => { const p = lc(pat); return p.endsWith("/*") ? r.startsWith(p.slice(0, -1)) : r === p; });
+}
+// A range's activity cut down to a view: its PRs, the tasks whose folder is in one of its repos, their Linear ids.
+export function filtered(a, view) {
+  if (!a || !view) return a;
+  const prs = a.prs.filter((p) => inView(view, p.repo)), tasks = a.tasks.filter((x) => x.repo && inView(view, x.repo));
+  return { ...a, prs, tasks, linear: linearOf(prs, tasks) };
+}
+const linearOf = (prs, tasks) => [...new Set(prs.flatMap((p) => p.linear).concat(tasks.flatMap((t) => linearIds(t.title))))].sort();
+// Every owner and repo seen in the kept activity, for picking a view's repos: [{ owner, repos: [name] }].
+export function knownRepos(act, view) {
+  const all = new Set([...(view?.repos ?? []).filter((r) => !r.endsWith("/*"))]);
+  for (const a of Object.values(act ?? {})) { for (const p of a?.prs ?? []) if (p.repo) all.add(p.repo); for (const x of a?.tasks ?? []) if (x.repo) all.add(x.repo); }
+  for (const r of view?.repos ?? []) if (r.endsWith("/*")) all.add(r);
+  const owners = new Map();
+  for (const r of all) { // one entry per owner and repo whatever the case (a folder's remote may spell it otherwise)
+    const [o, n] = r.split("/"), k = lc(o);
+    if (!owners.has(k)) owners.set(k, { owner: o, names: new Map() });
+    if (n && n !== "*" && !owners.get(k).names.has(lc(n))) owners.get(k).names.set(lc(n), n);
+  }
+  return [...owners.values()].sort((a, b) => lc(a.owner).localeCompare(lc(b.owner))).map(({ owner, names }) => ({ owner, repos: [...names.values()].sort() }));
 }
 
 // A range's activity: { at, from, prs, tasks, linear, error }. Kept, so the next open shows it at once.
 export async function activity(range) {
   const from = rangeStart(range);
-  const [got, tasks] = await Promise.all([mergedPrs(from), tasksDone(from)]);
-  const prs = got.prs ?? [];
-  const linear = [...new Set(prs.flatMap((p) => p.linear).concat(tasks.flatMap((t) => linearIds(t.title))))].sort();
+  const [got, tasks] = await Promise.all([mergedPrs(from), tasksDone(from).then(withRepos)]);
+  const prs = got.prs ?? [], linear = linearOf(prs, tasks);
   const out = { at: Date.now(), from: from.getTime(), prs, tasks, linear, error: got.error ?? null };
   const all = await readJson(`${DIR()}/activity.json`, {});
   await writeJson(`${DIR()}/activity.json`, { ...all, [range]: out });
@@ -134,10 +187,13 @@ async function claude(text) {
   return { summary: r.stdout.trim() };
 }
 
-// Runs a prompt: the range's data, then the summary. Saved under runs/; resolves to the run.
+// Runs a prompt: the range's data (cut to the prompt's view, if it has one), then the summary. Saved under runs/;
+// resolves to the run and the whole, uncut activity.
 export async function runPrompt(p) {
-  const t0 = Date.now(), a = await activity(p.range);
-  const run = { id: `r${t0}`, prompt: p.id, name: p.name, range: p.range, from: a.from, at: t0, prs: a.prs, tasks: a.tasks, linear: a.linear, summary: "", error: a.error };
+  const t0 = Date.now(), whole = await activity(p.range);
+  const view = p.view ? (await loadViews()).views.find((v) => v.id === p.view) ?? null : null;
+  const a = filtered(whole, view);
+  const run = { id: `r${t0}`, prompt: p.id, name: p.name, view: view?.name ?? null, range: p.range, from: a.from, at: t0, prs: a.prs, tasks: a.tasks, linear: a.linear, summary: "", error: a.error };
   if (!a.error) {
     const data = {
       range: `${p.range} starting ${ymd(new Date(a.from))}`,
@@ -152,5 +208,5 @@ export async function runPrompt(p) {
   }
   run.ms = Date.now() - t0;
   await writeJson(`${DIR()}/runs/${run.id}.json`, run);
-  return run;
+  return { run, whole };
 }

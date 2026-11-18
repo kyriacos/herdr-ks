@@ -248,6 +248,12 @@ lines added and removed, tasks done, Linear issue ids). Click it for the window 
 - **Today / This week / This month** (`1` `2` `3`, or Tab): a one-line summary, tiles (PRs merged, lines, tasks
   done, Linear issues), then the merged PRs (repo, number, size, branch, merge time, Linear ids; click opens it
   on GitHub), the tasks finished on the board, and the Linear issue ids (click copies). `r` looks again.
+- **Views** (the header, beside the ranges): which repos the dashboard shows. **All repos**, or a view of your
+  own: **+** opens a new one, with a name and every owner and repo it has seen ticked or not. `acme/*` takes a
+  whole owner (a GitHub org or user), new repos included; or tick single repos, such as `acme/web`. A view keeps
+  only its PRs, the tasks whose folder is in one of its repos, and their Linear ids. Click a view to show it,
+  click it again to edit or delete it; `v` steps through them. The sidebar line follows the view you pick. Repos
+  show up in the editor once the dashboard has seen them, so look at This month first.
 - **Linear issues** are the ids found in your merged PRs (titles, branch names, descriptions) and done tasks, such
   as `ENG-123` or a branch `sam/eng-123-search-filters`. Nothing is read from Linear itself.
 - **Prompts** (left): **▶ Run** gathers the prompt's range and hands it, with the prompt's text, to `claude -p`
@@ -255,10 +261,12 @@ lines added and removed, tasks done, Linear issue ids). Click it for the window 
   merged PRs with what each changed and why, grouped by repo, and possible follow-ups. It also runs on its own
   once a day after 18:00 while Herdr is open. Today's latest summary shows under Today.
 - **Runs** (left): every run kept, newest first: when, which prompt, how many PRs. Click one for its summary and
-  the PRs it covered; **Delete run** removes it. Without `claude` a run keeps the data and says why there's no
+  the PRs it covered; **Delete run** removes it. Each prompt has a view chip (**All repos** at first): click it
+  to tie the prompt to a view, so its runs cover only those repos. Without `claude` a run keeps the data and says why there's no
   summary.
 - Prompts are in `~/.config/herdr-app/data/ks-dashboard/prompts.json` (`id`, `name`, `range`: day, week or month,
-  `text`, `auto`: a time like `"18:00"` or null), runs in `runs/`. Edit the file to change or add prompts.
+  `text`, `auto`: a time like `"18:00"` or null, `view`: a view's id or null), views in `views.json`, runs in
+  `runs/`. Edit the file to change or add prompts.
 - Needs `gh` signed in; summaries need Claude Code (`claude`).
 
 ## Pull requests
