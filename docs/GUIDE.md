@@ -292,8 +292,9 @@ put away, and it disappears from the tab bar and sidebar.
 - **A space with more than one tab** always asks first (whatever the settings), naming its tabs, and waits at
   least **10 minutes** before closing for real, so there's time to notice and undo.
 - After 30 s it closes for real; one due while Herdr was quit closes at the next start.
-- The tab menu's "Ask before closing a tab" still offers Never / While an agent runs in it / Always. Any agent
-  counts, idle at its prompt too: closing still ends its session.
+- The tab and pane menus' "Ask before closing" offer Never / While something runs in it / Always. "Something"
+  is any agent (idle at its prompt too) or any program running in its terminals: a dev server, a build, a
+  background job (`&`). Only a shell waiting at its prompt closes without asking. The dialog lists what runs.
 
 ## Key modes
 
@@ -425,7 +426,7 @@ does. Layout choices are kept in Herdr's shared state and put back after a reins
 | Focus mode | On / off, how visible dimmed parts stay |
 | Zen mode | Open it, backdrop opaque or translucent (and how much), theme color or dark, size |
 | Keys & modes | Every mode with its key, the shortcuts, and the key modes editor |
-| Tabs & closing | Ask before closing a tab / a pane (never, while an agent runs in it, always), how long a close can be undone (10–120 s) |
+| Tabs & closing | Ask before closing a tab / a pane (never, while something runs in it, always), how long a close can be undone (10–120 s) |
 | Claude sessions (Codex sessions too) | Show the last session's card after a reboot; forget every remembered session |
 | Pull requests | My PRs shown or hidden, its notifications on or off |
 | Panels | Hide idle main checkouts |

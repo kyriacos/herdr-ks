@@ -209,7 +209,7 @@ export default class Settings extends View {
       }
       case "closing": {
         const mode = (k) => shared(k) ?? (k.startsWith("ks-tabs") ? "always" : "agents");
-        const opts = [["never", "Never"], ["agents", "While an agent runs in it"], ["always", "Always"]];
+        const opts = [["never", "Never"], ["agents", "While something runs in it"], ["always", "Always"]];
         return v_flex().child(heading("Tabs & closing"))
           .child(row("Ask before closing a tab", null, ...choice("ct", opts, mode("ks-tabs.confirm-close"), (v) => setShared("ks-tabs.confirm-close", v))))
           .child(row("Ask before closing a pane", null, ...choice("cp", opts, mode("ks-pane.confirm-close"), (v) => setShared("ks-pane.confirm-close", v))))
