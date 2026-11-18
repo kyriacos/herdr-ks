@@ -1,7 +1,11 @@
-"""Where a Claude Code agent is working: the git checkouts it touched last.
+"""Where an agent is working: the git checkouts it touched last.
 
 Usage: python3 -I agent_where.py <pid>
-Prints JSON: {"roots": [checkout, ...] (most recent first, at most 3), "cwd": its recorded folder, "log": the log read}
+Prints JSON: {"roots": [checkout, ...] (most recent first), "cwd": its recorded folder, "log": the log read,
+"agent": "claude" | "codex" | "other"}
+
+Claude Code and Codex: read from the session log (below). Any other agent: the folders its process and the
+commands it runs are in right now, which follows it only while it works there.
 
 Claude Code resets its shell to the launch folder when a `cd` leaves it, so the recorded `cwd` stays the
 launch folder while the agent edits other worktrees by absolute path. The signals that do follow the work:
@@ -12,13 +16,16 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
+import time
 
 HOME = os.path.expanduser("~")
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 CD = re.compile(r"(?:^|&&|\|\||;|\()\s*cd\s+((?:\"[^\"]+\"|'[^']+'|[^\s;&|)]+))")
 GIT_C = re.compile(r"\bgit\s+-C\s+((?:\"[^\"]+\"|'[^']+'|[^\s;&|)]+))")
 TAIL = 40_000_000  # bytes of the log read, from the end (a whole session, in practice)
+PATCH = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.M)
 RECENT = 12        # navigation signals (cd, git -C) that count, from the end
 MAX_ROOTS = 10
 
@@ -48,6 +55,80 @@ def log_of(pid):
             others.add(s["sessionId"])
     logs = [p for p in glob.glob(f"{folder}/*.jsonl") if os.path.basename(p)[:-6] not in others]
     return (max(logs, key=os.path.getmtime) if logs else None), sess["cwd"]
+
+
+# ---------- other agents ----------
+ROLLOUT = re.compile(r"/rollout-[^/]*\.jsonl$")
+
+
+def sh(args):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=8).stdout
+    except Exception:
+        return ""
+
+
+def family(pid):
+    """The pid and every process under it (an agent's command is often a wrapper around the real program)."""
+    kids = {}
+    for line in sh(["ps", "-axo", "pid=,ppid="]).splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            kids.setdefault(parts[1], []).append(parts[0])
+    out, todo = [], [str(pid)]
+    while todo and len(out) < 200:
+        p = todo.pop(0)
+        out.append(p)
+        todo.extend(kids.get(p, []))
+    return out
+
+
+def cwds(pids):
+    """Each process's folder, in the order given (lsof prints p<pid> then n<folder>)."""
+    found, pid = {}, None
+    for line in sh(["lsof", "-a", "-d", "cwd", "-Fn", "-p", ",".join(pids)]).splitlines():
+        if line.startswith("p"):
+            pid = line[1:]
+        elif line.startswith("n") and pid:
+            found[pid] = line[1:]
+    return [found[p] for p in pids if p in found]
+
+
+def codex_log(pids, folders):
+    """The Codex session log (rollout-*.jsonl) of these processes: the one they hold open, else the newest of
+    the last days that was started in one of their folders."""
+    for line in sh(["lsof", "-Fn", "-p", ",".join(pids)]).splitlines():
+        if line.startswith("n") and ROLLOUT.search(line):
+            return line[1:]
+    root = os.path.join(os.environ.get("CODEX_HOME") or f"{HOME}/.codex", "sessions")
+    logs = sorted(glob.glob(f"{root}/*/*/*/rollout-*.jsonl"), key=os.path.getmtime, reverse=True)[:30]
+    for log in logs:
+        if time.time() - os.path.getmtime(log) > 2 * 86400:
+            break
+        meta = codex_meta(log)
+        if meta.get("cwd") and meta["cwd"] in folders:
+            return log
+    return None
+
+
+def codex_meta(log):
+    """{"id", "cwd"} from the log's first lines (its session_meta)."""
+    try:
+        with open(log, "rb") as f:
+            for _ in range(5):
+                raw = f.readline()
+                if not raw:
+                    break
+                try:
+                    e = json.loads(raw)
+                except Exception:
+                    continue
+                p = e.get("payload") if isinstance(e.get("payload"), dict) else e
+                if p.get("id") and p.get("cwd"):
+                    return {"id": p["id"], "cwd": p["cwd"]}
+    except Exception:
+        pass
+    return {}
 
 
 def unquote(s):
@@ -85,18 +166,15 @@ def repo_of(top):
     return top.lower()
 
 
-def main():
-    pid = sys.argv[1]
-    log, launch = log_of(pid)
-    out = {"roots": [], "cwd": launch, "log": log}
-    if not log:
-        print(json.dumps(out))
-        return
+def tail(log):
     with open(log, "rb") as f:
         f.seek(0, 2)
         size = f.tell()
         f.seek(max(0, size - TAIL))
-        lines = f.read().decode("utf-8", "replace").splitlines()[1 if size > TAIL else 0:]
+        return f.read().decode("utf-8", "replace").splitlines()[1 if size > TAIL else 0:]
+
+
+def claude_signals(lines, launch):
     signals, cwd = [], launch
     for line in lines:
         try:
@@ -118,6 +196,71 @@ def main():
                 for rx in (CD, GIT_C):
                     for t in rx.findall(cmd):
                         signals.append((unquote(t), cwd, "nav"))
+    return signals, cwd
+
+
+def codex_signals(lines, launch):
+    """Codex's tool calls: the folder a command runs in (workdir), where it `cd`s or `git -C`s, and the files
+    its patches name. Read loosely (any call with arguments), as the call names changed between versions."""
+    signals, cwd = [], launch
+    for line in lines:
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        p = e.get("payload") if isinstance(e.get("payload"), dict) else e
+        if isinstance(p.get("cwd"), str) and p["cwd"]:
+            cwd = p["cwd"]
+        if not str(p.get("type", "")).endswith("_call"):
+            continue
+        args = p.get("arguments") or p.get("input") or p.get("action") or {}
+        text = args if isinstance(args, str) else ""
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except Exception:
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
+        base = args.get("workdir") or args.get("working_directory") or args.get("cwd") or cwd
+        if base != cwd:
+            signals.append((base, cwd, "nav"))
+        cmd = args.get("command") or args.get("cmd") or ""
+        if isinstance(cmd, list):
+            cmd = " ".join(str(c) for c in cmd)
+        text = f"{cmd}\n{args.get('input') or args.get('patch') or ''}\n{text}"
+        for t in PATCH.findall(text):
+            signals.append((t.strip(), base, "edit"))
+        for rx in (CD, GIT_C):
+            for t in rx.findall(str(cmd)):
+                signals.append((unquote(t), base, "nav"))
+    return signals, cwd
+
+
+def main():
+    pid = sys.argv[1]
+    log, launch = log_of(pid)
+    out = {"roots": [], "cwd": launch, "log": log, "agent": "claude"}
+    signals, cwd = [], launch
+    if log:
+        signals, cwd = claude_signals(tail(log), launch)
+    elif launch is None:
+        # Not Claude Code. Codex has a session log too; anything else is followed by where its processes are.
+        pids = family(pid)
+        folders = cwds(pids)
+        launch = cwd = folders[0] if folders else None
+        log = codex_log(pids, set(folders))
+        out.update({"log": log, "agent": "codex" if log else "other"})
+        if log:
+            launch = codex_meta(log).get("cwd") or launch
+            signals, cwd = codex_signals(tail(log), launch)
+        # No log, or nothing in it yet: where its processes are now. A command's folder (a process further down)
+        # is listed after the agent's own, so it counts as the more recent one.
+        if not signals:
+            signals = [(f, None, "edit") for f in folders]
+    else:
+        print(json.dumps(out))
+        return
     out["cwd"] = cwd
     # Every checkout it edited in this session, plus where its recent commands went (reading around counts
     # only while recent). Most recently active first; worktrees of the same repo each count.

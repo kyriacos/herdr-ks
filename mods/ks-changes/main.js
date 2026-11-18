@@ -1,12 +1,13 @@
 // The Changes panel, cloned from Herdr's `changes` (0.1.15) and extended:
 // - search (/): narrows the files by path, and in Commits the commits;
 // - a checkout bar: follow the focused terminal, pin any worktree of the repo, or follow an agent
-//   (Claude Code: its real working folder, read from its session log, not where it was launched);
+//   (Claude Code and Codex: the real working folder, read from the session log, not where it was launched;
+//   any other agent: where its process and its commands are now);
 // - matching repos: sibling repos (same parent folder as the main checkout) with a checkout on the
 //   same branch show as extra sections, each with its own commit, so backend + web work side by side.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
-import { spaces, panes, focused, exec, hc, watchFolder, theme, settings, home, appHome, run, shared, setShared, openOverlay } from "herdr";
+import { spaces, panes, agents, focused, exec, hc, watchFolder, theme, settings, home, appHome, run, shared, setShared, openOverlay } from "herdr";
 import { langOf, colorsFor } from "./lib/highlight.js";
 import { parseDiff, wrapTokens, colsFor } from "./lib/diff.js";
 import { WORKTREE, RECENT, readBranch, readCommits, readCommitFiles, treeRows } from "./lib/branch.js";
@@ -38,10 +39,11 @@ const untab = (text) => text.replace(/[^\t]*\t/g, (s) => s.slice(0, -1).padEnd((
 
 
 // ---------- where to look ----------
-// Claude Code agents in the shown tab, the focused one first.
+// Agents in the shown tab, the focused one first: every terminal Herdr sees an agent in.
 function tabAgents() {
   const f = focused(), ps = panes();
-  const isAgent = (p) => p.terminal && (p.program?.key === "claude" || p.app === "claude-code" || /claude/i.test(p.program?.name ?? ""));
+  const live = new Set(agents().map((a) => a.address));
+  const isAgent = (p) => p.terminal && (live.has(p.terminal) || p.program?.key === "claude" || p.app === "claude-code" || /claude/i.test(p.program?.name ?? ""));
   return ps.filter((p) => p.tab === f?.tab && isAgent(p)).sort((a, b) => (b.pane === f?.pane) - (a.pane === f?.pane));
 }
 
@@ -57,7 +59,7 @@ function location() {
 }
 const key = () => JSON.stringify([location(), pairing]);
 
-// Where a Claude Code agent works now: the checkouts it last edited files in or cd'd into, one per repo,
+// Where an agent works now: the checkouts it last edited files in or cd'd into, one per repo,
 // most recent first (agent_where.py reads its session log; see there for why its recorded cwd isn't enough).
 // { roots: [...], cwd } or null when it can't be told.
 async function agentRoots(address) {
@@ -346,7 +348,7 @@ export default class Changes extends View {
         let cwd = loc.cwd;
         if (loc.mode === "agent") {
           const where = await agentRoots(loc.agent);
-          if (!where) throw new Error("Can't tell where that agent works (only Claude Code agents are supported)");
+          if (!where) throw new Error("Can't tell where that agent works (its process wasn't found)");
           this.agentAt = where.roots[0] ?? where.cwd;
           if (!where.roots.length) throw new Error(`That agent isn't working in a git repository (${tilde(where.cwd ?? "?")})`);
           // Every checkout it works in is a section; matching repos on the same branch come after, once each.
@@ -529,7 +531,7 @@ export default class Changes extends View {
         .child(div().text_size(12).truncate().child(label))
         .child(div().text_size(10.5).text_color(t.dim).truncate().child(sub)));
     const rows = [item("pick-follow", "Follow focused terminal", "the folder of the terminal you're in", loc.mode === "focus", (cx) => this.choose(null, cx))];
-    for (const a of tabAgents()) rows.push(item(`pick-agent-${a.terminal}`, `Follow agent ${a.title || a.terminal}`, "where this Claude Code agent works now, even in another worktree", following && loc.agent === a.terminal, (cx) => this.choose({ agent: a.terminal }, cx)));
+    for (const a of tabAgents()) rows.push(item(`pick-agent-${a.terminal}`, `Follow agent ${a.title || a.terminal}`, "where this agent works now, even in another worktree", following && loc.agent === a.terminal, (cx) => this.choose({ agent: a.terminal }, cx)));
     for (const c of this.checkouts ?? []) rows.push(item(`pick-${c.path}`, c.main ? `${c.branch ?? "detached"} (main checkout)` : c.branch ?? "detached", tilde(c.path), loc.mode === "pinned" && same(c.path, first?.root), (cx) => this.choose({ path: c.path }, cx)));
     rows.push(item("pick-pairing", `Matching branch in other repos: ${pairing ? "on" : "off"}`, "sibling repos with a checkout on the same branch show below", false, (cx) => this.togglePairing(cx)));
     return [bar, v_flex().id("checkout-list").flex_none().max_h(300).overflow_y_scroll().border_b(1).border_color(t.border).bg(t.raised)

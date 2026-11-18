@@ -267,7 +267,8 @@ offers it back:
   the first and last prompts, Claude's last reply and the files it edited. **Enter** resumes, **p** picks
   another session in that folder, any other key keeps the shell.
 - **On the tab**: a **↻ Resume** chip (hover for the session and when it ran).
-- **In the pane header**: **↻ Resume** runs `claude --resume <id>` in the right folder; the title shows the
+- **In the pane header**: **↻ Resume** runs `claude --resume <id>` (`codex resume <id>` for Codex, which has
+  no card) in the right folder; the title shows the
   card again; on hover **Pick…** and **✕** (forget it).
 
 These also show after you quit Claude yourself; ✕ dismisses. Quitting and reopening only the Herdr app keeps
@@ -484,5 +485,6 @@ takes milliseconds against 1–2 s per `gh` call. Delete the folder to start ove
 - **Light theme looks broken in Claude Code** (heavy red/green diff rows, unreadable gray text): Claude Code
   has its own theme. Run `/theme` in Claude and pick a light one (or set `"theme": "light"` in
   `~/.claude/settings.json`). Its auto theme can't tell Herdr's background, so pick it explicitly.
-- **Follow agent shows nothing**: Claude Code only, and it needs `python3`.
+- **Follow agent shows nothing**: it needs `python3`. Claude Code and Codex are read from their session logs;
+  another agent is followed only by where its process is now, so it must be inside a git checkout.
 - **PR features empty**: `gh auth status` must be logged in.

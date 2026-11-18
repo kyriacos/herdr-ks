@@ -1,8 +1,9 @@
-"""Which Claude Code session a running agent is in, so it can be resumed after its terminal is lost.
+"""Which session a running agent is in, so it can be resumed after its terminal is lost. Claude Code and Codex.
 
 Usage: python3 -I session_of.py <pid> [<pid> ...]
-Prints JSON: {"<pid>": {"sessionId", "cwd" (the folder Claude was started in: resume runs there), "title"}, ...}
-A pid that isn't a Claude Code session, or whose session has no conversation yet, is left out.
+Prints JSON: {"<pid>": {"sessionId", "cwd" (the folder the agent was started in: resume runs there), "title",
+"app": "claude" | "codex"}, ...}
+A pid that is neither, or whose session has no conversation yet, is left out.
 
 ~/.claude/sessions/<pid>.json names the session; when its log is missing (resumed or cleared), the newest log in
 the project folder that no other live session owns is taken, as in ks-changes/agent_where.py.
@@ -12,7 +13,9 @@ import glob
 import json
 import os
 import re
+import subprocess
 import sys
+import time
 
 HOME = os.path.expanduser("~")
 
@@ -74,11 +77,124 @@ def title_of(log):
     return custom or ai or first
 
 
+# ---------- other agents ----------
+ROLLOUT = re.compile(r"/rollout-[^/]*\.jsonl$")
+
+
+def sh(args):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=8).stdout
+    except Exception:
+        return ""
+
+
+def family(pid):
+    """The pid and every process under it (an agent's command is often a wrapper around the real program)."""
+    kids = {}
+    for line in sh(["ps", "-axo", "pid=,ppid="]).splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            kids.setdefault(parts[1], []).append(parts[0])
+    out, todo = [], [str(pid)]
+    while todo and len(out) < 200:
+        p = todo.pop(0)
+        out.append(p)
+        todo.extend(kids.get(p, []))
+    return out
+
+
+def cwds(pids):
+    """Each process's folder, in the order given (lsof prints p<pid> then n<folder>)."""
+    found, pid = {}, None
+    for line in sh(["lsof", "-a", "-d", "cwd", "-Fn", "-p", ",".join(pids)]).splitlines():
+        if line.startswith("p"):
+            pid = line[1:]
+        elif line.startswith("n") and pid:
+            found[pid] = line[1:]
+    return [found[p] for p in pids if p in found]
+
+
+def codex_log(pids, folders):
+    """The Codex session log (rollout-*.jsonl) of these processes: the one they hold open, else the newest of
+    the last days that was started in one of their folders."""
+    for line in sh(["lsof", "-Fn", "-p", ",".join(pids)]).splitlines():
+        if line.startswith("n") and ROLLOUT.search(line):
+            return line[1:]
+    root = os.path.join(os.environ.get("CODEX_HOME") or f"{HOME}/.codex", "sessions")
+    logs = sorted(glob.glob(f"{root}/*/*/*/rollout-*.jsonl"), key=os.path.getmtime, reverse=True)[:30]
+    for log in logs:
+        if time.time() - os.path.getmtime(log) > 2 * 86400:
+            break
+        meta = codex_meta(log)
+        if meta.get("cwd") and meta["cwd"] in folders:
+            return log
+    return None
+
+
+def codex_meta(log):
+    """{"id", "cwd"} from the log's first lines (its session_meta)."""
+    try:
+        with open(log, "rb") as f:
+            for _ in range(5):
+                raw = f.readline()
+                if not raw:
+                    break
+                try:
+                    e = json.loads(raw)
+                except Exception:
+                    continue
+                p = e.get("payload") if isinstance(e.get("payload"), dict) else e
+                if p.get("id") and p.get("cwd"):
+                    return {"id": p["id"], "cwd": p["cwd"]}
+    except Exception:
+        pass
+    return {}
+
+
+def codex_title(log):
+    """The first thing the person asked."""
+    try:
+        with open(log, "rb") as f:
+            for n, raw in enumerate(f):
+                if n > 400:
+                    break
+                if b'"user"' not in raw:
+                    continue
+                try:
+                    e = json.loads(raw)
+                except Exception:
+                    continue
+                p = e.get("payload") if isinstance(e.get("payload"), dict) else e
+                if p.get("role") != "user":
+                    continue
+                t = " ".join(c.get("text", "") for c in p.get("content") or [] if isinstance(c, dict)).strip()
+                if t and not t.startswith("<"):
+                    return " ".join(t.split())[:80]
+    except Exception:
+        pass
+    return None
+
+
+def codex_session(pid):
+    pids = family(pid)
+    log = codex_log(pids, set(cwds(pids)))
+    meta = codex_meta(log) if log else {}
+    title = codex_title(log) if meta else None
+    if not meta or not title:
+        return None  # nothing said yet: nothing to resume
+    return {"sessionId": meta["id"], "cwd": meta["cwd"], "title": title, "app": "codex"}
+
+
 def main(pids):
     out = {}
     for pid in pids:
         sess = load(f"{HOME}/.claude/sessions/{pid}.json")
-        if not sess or not sess.get("sessionId") or not sess.get("cwd"):
+        if not sess:
+            found = codex_session(pid)
+            if found:
+                out[str(pid)] = found
+            continue
+        if not sess.get("sessionId") or not sess.get("cwd"):
             continue
         log = log_of(pid, sess)
         if not log:
@@ -88,7 +204,7 @@ def main(pids):
             title = title_of(log)
         except Exception:
             title = None
-        out[str(pid)] = {"sessionId": sid, "cwd": sess["cwd"], "title": title or sess.get("name")}
+        out[str(pid)] = {"sessionId": sid, "cwd": sess["cwd"], "title": title or sess.get("name"), "app": "claude"}
     print(json.dumps(out))
 
 

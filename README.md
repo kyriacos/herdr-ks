@@ -14,7 +14,7 @@ It installs next to whatever you already use in Herdr and changes nothing else.
 
 - **See everything running.** Spaces grouped by repo and worktree, and every agent with its status and task. [More](docs/GUIDE.md#the-window)
 - **One step to a new worktree.** Repo, branch, folder, Enter: a new space opens in the checkout. [More](docs/GUIDE.md#spaces-worktrees-and-new-worktrees)
-- **Changes that follow the agent.** The diff panel shows the checkouts an agent is working in, across repos on the same branch. [More](docs/GUIDE.md#changes-panel)
+- **Changes that follow the agent.** The diff panel shows the checkouts an agent is working in (Claude Code, Codex or any other), across repos on the same branch. [More](docs/GUIDE.md#changes-panel)
 - **Review like a pull request.** A file or a whole branch, inline or side by side, with vim keys. [More](docs/GUIDE.md#reviewing)
 - **Send comments to the agent.** Comment on any line, then send them all in one message. [More](docs/GUIDE.md#comments-and-sending-them-to-an-agent)
 - **Pull requests in view.** Your open PRs with CI, review and merge state; message the agent on a PR, or start one. [More](docs/GUIDE.md#pull-requests)
@@ -28,7 +28,7 @@ The [guide](docs/GUIDE.md) is the full tour.
 
 You need macOS, [Herdr App](https://herdr.dev) (started once), `git` and `jq` (`brew install jq`).
 Pull request features need the GitHub CLI, signed in (`gh auth login`). Following an agent and resuming
-sessions need `python3`, and work with Claude Code.
+sessions need `python3`; resuming works with Claude Code and Codex.
 
 ```sh
 git clone https://github.com/kyriacos/herdr-ks.git
