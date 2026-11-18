@@ -232,7 +232,9 @@ export default class Tasks extends View {
       trackActive(this, cx, BOARD, "ks-tasks");
       cx.spawn(async (cx) => {
         for (;;) {
-          if ((await nextCommand()) !== "winresize") continue;
+          const c = await nextCommand();
+          if (c === "unzoom") { closeOverlay(props().overlay); continue; }
+          if (c !== "winresize") continue;
           const r = takeRequest(this, BOARD);
           if (!r) continue;
           const cur = this.size ?? { width: 1100, height: 700 }, step = 40 * (r.dir || 1);
@@ -244,6 +246,8 @@ export default class Tasks extends View {
   }
   command(c, cx) {
     if (c === "board") this.openBoard();
+    // z / the window-level zoom keys (ks-zen): the board window, unless it's open (then it closes itself).
+    else if (c === "zoom") this.openBoard();
     else if (c === "new") { this.setView(this.view, cx); this.startAdd(this.view === "today" ? "@today" : this.data.columns[this.cur.col]?.id, cx); }
   }
   setAll(on, cx) { this.all = on; save(this.scopeKey, on); this.row = 0; this.cur.row = 0; cx.notify(); }
@@ -385,7 +389,7 @@ export default class Tasks extends View {
     else if (k === "u") this.step(true, cx);
     else if (k === "U") this.step(false, cx);
     else if (k === "b" || k === "tab") this.setView(today ? "board" : "today", cx);
-    else if (k === "B" && !this.board) this.openBoard();
+    else if (k === "z") { if (this.board) closeOverlay(props().overlay); else this.openBoard(); }
     else if (!today && (k === "l" || k === "right") && this.cur.col < this.data.columns.length - 1) goCol(this.cur.col + 1);
     else if (!today && (k === "h" || k === "left") && this.cur.col > 0) goCol(this.cur.col - 1);
     else if (!today && (k === "L" || k === "H") && sel) {
@@ -566,7 +570,7 @@ export default class Tasks extends View {
         .child(div().flex_1())
         .child(btn("tasks-undo-btn", "↶", (cx) => this.step(true, cx), this.history.length ? `Undo ${this.history[this.history.length - 1].label} (u, cmd-z)` : "Nothing to undo"))
         .child(btn("tasks-redo-btn", "↷", (cx) => this.step(false, cx), this.future.length ? `Redo ${this.future[this.future.length - 1].label} (U, cmd-shift-z)` : "Nothing to redo"))
-        .when(!this.board, (e) => e.child(btn("tasks-big", "⤢", () => this.openBoard(), "Open the board in a window (B)")))
+        .when(!this.board, (e) => e.child(btn("tasks-big", "⤢", () => this.openBoard(), "Open the board in a window (z)")))
         .child(div().id("tasks-new").h(24).px(9).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground).text_size(11).cursor_pointer()
           .hover((s) => s.opacity(0.85)).on_click((_e, cx) => this.startAdd(this.view === "today" ? "@today" : this.data.columns[this.cur.col]?.id, cx)).child("+ New"))
         .when(this.board, (e) => e.child(div().id("board-x").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
@@ -580,8 +584,8 @@ export default class Tasks extends View {
         .child(this.view === "today" ? this.renderToday(t, focused) : this.renderBoard(t, focused))
         .when(this.view === "today", (e) => e.child(Scrollbar.vertical("tasks-today").absolute().inset_0())))
       .child(h_flex().flex_none().h(24).px(12).items_center().border_t(1).border_color(t.border).text_size(10.5).text_color(t.dim).truncate()
-        .child(this.view === "today" ? "j/k move · Enter open · t today · n new · x delete · s here / all · b board · drop files"
-          : "h/l j/k move · H/L to column · J/K reorder · r rename column · drag cards · drop files"));
+        .child(this.view === "today" ? "j/k move · Enter open · t today · n new · x delete · s here / all · b board · z window · drop files"
+          : "h/l j/k move · H/L to column · J/K reorder · r rename column · z window · drag cards · drop files"));
   }
 
   // ===================================================================================================================

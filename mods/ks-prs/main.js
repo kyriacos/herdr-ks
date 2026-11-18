@@ -9,6 +9,7 @@ import * as cache from "./lib/cache.js";
 import { summarize, runningColor, pillColors } from "./lib/ci.js";
 import { dimmed } from "./lib/focus.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
+import { isWindow, initWindow, windowCommand, zoomCommand, zoomKey, windowFrame, headerButton } from "./lib/panelwin.js";
 
 const FIELDS = "number,title,state,url,baseRefName,headRefName,isDraft,reviewDecision,additions,deletions,changedFiles,statusCheckRollup,author";
 const base = (p) => p.replace(/\/+$/, "").split("/").pop();
@@ -42,7 +43,9 @@ export default class Prs extends View {
     this.prs = []; this.without = []; this.loading = false; this.error = null; this.key = null;
     // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o review, g o / O on GitHub, r refresh, h/l/Esc leave.
     this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.cursor = 0; this.pageRows = 4;
-    takeFocus(this, cx, "ks-prs"); watchFocus(this, cx, "ks-prs");
+    // In its own window (lib/panelwin.js), or the panel; z / the zoom keys go between the two.
+    if (isWindow()) initWindow(this, cx, "ks-prs");
+    else { takeFocus(this, cx, "ks-prs", (c) => zoomCommand(this, c, "ks-prs")); watchFocus(this, cx, "ks-prs"); }
     this.doneAt = 0; this.startedAt = 0;
     this.refresh(cx);
     // GitHub once a minute, every 20 s while a PR's checks are running, 30 s after a failed look; a 10 s tick asks
@@ -134,7 +137,7 @@ export default class Prs extends View {
   }
 
   // ks: focus mode dims this until hovered (lib/focus.js).
-  render(cx) { return dimmed(this, this.renderInner(cx)); }
+  render(cx) { return this.windowed ? windowFrame(this, this.renderInner(cx), theme(), "ks-prs") : dimmed(this, this.renderInner(cx)); }
 
   renderInner(cx) {
     this.refresh(cx); // follows the session's worktrees as they change
@@ -143,6 +146,7 @@ export default class Prs extends View {
       .track_focus(this.handle)
       .on_key_down((e, cx) => {
         const before = this.cursor, prs = this.prs;
+        if (zoomKey(this, e, "ks-prs")) { cx.stop_propagation(); return; }
         if (!listKey(this, e, prs.length, (i) => this.review([prs[i]]), (k) => {
           if (k === "r") { this.refresh(cx, true); return true; }
           if (k === "O" && prs[this.cursor]) { this.openUrl(prs[this.cursor].url); return true; }
@@ -159,7 +163,8 @@ export default class Prs extends View {
         .child(div().id("prs-refresh").h(24).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).text_size(11).cursor_pointer()
           .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.refresh(cx, true)).child(this.loading ? (this.prs.length ? "Updating…" : "…") : "Refresh"))
         .when(this.prs.length > 1, (e) => e.child(div().id("prs-review-all").h(24).px(8).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground)
-          .text_size(11).cursor_pointer().on_click(() => this.review(this.prs)).child("Review all"))))
+          .text_size(11).cursor_pointer().on_click(() => this.review(this.prs)).child("Review all")))
+        .child(headerButton(this, t, "ks-prs")))
       .child(div().flex_1().min_h(0).relative()
         .child(v_flex().id("prs-list").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).pb(10)
           .when(Boolean(this.error), (e) => e.child(div().p(12).text_size(12).text_color(t.ansi1).child(this.error)))

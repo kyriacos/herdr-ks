@@ -3,7 +3,7 @@
 // In a panel: j/k (↓/↑) move, gg/G first/last, ctrl-d/ctrl-u half a page, Enter/o open, h/l/Esc leave towards
 // the pane on that side (Esc: back to the terminal on the left).
 // Source of truth: shared/panelkeys.js; scripts/install.sh copies it into each mod's lib/.
-import { nextCommand, run, shared, setShared } from "herdr";
+import { nextCommand, run, shared, setShared, props, closeOverlay } from "herdr";
 
 // The panel you moved to ({ mod }), kept while a key mode's strip holds the keyboard: the panel doesn't take the
 // keyboard from the strip (a sticky mode keeps its keys), still shows its accent border, and gets "focus" when the
@@ -32,10 +32,16 @@ export function takeFocus(view, cx, mod, other = null) {
 // Redraws when this panel gains or loses the keyboard (its accent border follows it): focus moving away, to a
 // terminal or another panel, doesn't redraw the panel by itself. `extra()` counts as focused too (a search box).
 // The mark goes once the keyboard is elsewhere with no strip open (a click on a terminal, say).
+// It also keeps shared "ks.activePanel" ({ mod }) naming the panel that has the keyboard, so the window-level zoom
+// keys zoom it (ks-zen); kept while a key mode's strip is open over it.
+export const ACTIVE_PANEL = "ks.activePanel";
 export function watchFocus(view, cx, mod, extra = null) {
   let was = false;
   cx.timer.every(200, () => {
     const real = Boolean(view.handle?.is_focused() || (extra && extra()));
+    const ap = shared(ACTIVE_PANEL);
+    if (real && ap?.mod !== mod) setShared(ACTIVE_PANEL, { mod });
+    else if (!real && !stripOpen() && ap?.mod === mod) setShared(ACTIVE_PANEL, null);
     if (real || stripOpen()) view.__unfocusedTicks = 0;
     else if (shared(MARK)?.mod === mod) { view.__unfocusedTicks = (view.__unfocusedTicks ?? 0) + 1; if (view.__unfocusedTicks > 3) setShared(MARK, null); }
     const now = focusedNow(view, mod, extra);
@@ -66,6 +72,8 @@ export function listKey(view, e, n, open, more = null) {
   if ((k === "k" && !shift) || k === "up") return go(at - 1);
   if ((k === "enter" || (k === "o" && !shift)) && n > 0) { open(at); return true; }
   if (more && more(k, e)) return true;
+  // In its own window (lib/panelwin.js) there's nothing beside it: Esc closes the window.
+  if (view.windowed) { if (k === "escape") { closeOverlay(props()?.overlay); return true; } return false; }
   if (k === "h" && !shift) { leave("left"); return true; }
   if (k === "l" && !shift) { leave("right"); return true; }
   if (k === "escape") { leave("left"); return true; }

@@ -356,6 +356,8 @@ export default class Keys extends View {
       }
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24, this.pane);
       // ks-zen zooms: pane.zoom over its tab (as cmd-shift-enter), ks-zen.zoom over the whole window (cmd-shift-alt-enter).
+      // A side panel's window had the keyboard when the strip opened: the zoom keys close it (lib/panelwin.js).
+      else if ((a.command === "pane.zoom" || a.command === "ks-zen.zoom" || a.command === "ks-zen.zoomtab") && this.window?.key && (/-window$/.test(this.window.key) || this.window.key === "ks-tasks-board")) run(`${this.window.mod}.unzoom`);
       else if (a.command === "pane.zoom") run(`ks-zen.zoomtab:${a.args.pane ?? ""}`);
       else if (a.command === "ks-zen.zoom" || a.command === "ks-zen.zoomtab") run(`${a.command}:${this.pane ?? ""}`);
       // Search works on the focused terminal, and the strip has the keyboard: the terminal gets it back first.

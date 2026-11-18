@@ -60,7 +60,18 @@ const shownIn = (st) => st?.content
 // Zoom in the tab only (cmd-shift-enter, ctrl-w o, service z, the pane header): Herdr's zoom, the pane over its tab,
 // sidebar and side panel left as they are. A full zoom that's on comes off instead; a pane alone in its tab zooms
 // over the window.
+// A side panel (or its window) has the keyboard: the zoom keys open its window, or close it (lib/panelwin.js).
+const PANEL_WINDOWS = { "ks-tasks-board": "ks-tasks" };
+function zoomPanel() {
+  const w = shared("ks.activeWindow");
+  const wmod = w?.key && (PANEL_WINDOWS[w.key] ?? (w.key.endsWith("-window") ? w.mod : null));
+  if (wmod) { run(`${wmod}.unzoom`); return true; }
+  const p = shared("ks.activePanel");
+  if (p?.mod) { run(`${p.mod}.zoom`); return true; }
+  return false;
+}
 function zoomTab(pane) {
+  if (zoomPanel()) return;
   if (shared(ZOOM)) return zoom(pane);
   const ps = panes(), id = pane || focused()?.pane, p = ps.find((x) => x.pane === id) ?? ps.find((x) => x.focused);
   if (!p) return;
@@ -75,6 +86,7 @@ function zoomTab(pane) {
 // while it's on.
 const ZOOM = "ks-zen.zoom";
 function zoom(pane) {
+  if (!shared(ZOOM) && zoomPanel()) return;
   const ps = panes(), id = pane || focused()?.pane, p = ps.find((x) => x.pane === id) ?? ps.find((x) => x.focused);
   const z = shared(ZOOM);
   if (z || p?.zoomed) {

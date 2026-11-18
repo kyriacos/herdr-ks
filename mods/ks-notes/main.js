@@ -26,7 +26,7 @@ import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } 
 
 const FILE = () => `${appHome()}/data/ks-notes.json`;
 // The notes in a window of their own (⤢ or e in the panel): resizable like the Tasks board, its size kept here.
-const WINDOW = "ks-notes-window", SIZE = "ks-notes.windowSize";
+const WINDOW = "ks-notes-window", SIZE = "ks-notes.windowSize", CARD = 200;
 export function openNotesWindow(size = shared(SIZE) ?? null) {
   openOverlay({ mod: "ks-notes", kind: "window", key: WINDOW, width: size?.width ?? 0.6, height: size?.height ?? 0.7, props: { window: true } });
 }
@@ -73,7 +73,8 @@ export default class Notes extends View {
     // The window starts on every note (it remembers its own choice), the panel on this space's.
     this.allKey = this.window ? "windowAll" : "all"; this.all = load(this.allKey, this.window || Boolean(pref("notesAll")));
     if (!this.window) {
-      takeFocus(this, cx, "ks-notes", (c) => { if (c === "window") openNotesWindow(); });
+      // z / the window-level zoom keys (ks-zen): the window, unless it's open (then it closes itself).
+      takeFocus(this, cx, "ks-notes", (c) => { if (c === "zoom" || c === "window") openNotesWindow(); });
       watchFocus(this, cx, "ks-notes", () => this.editing !== null || this.searching);
     } else {
       this.handle.focus(); cx.timer.after(150, () => this.handle.focus());
@@ -81,7 +82,9 @@ export default class Notes extends View {
       trackActive(this, cx, WINDOW, "ks-notes");
       cx.spawn(async () => {
         for (;;) {
-          if ((await nextCommand()) !== "winresize") continue;
+          const c = await nextCommand();
+          if (c === "unzoom") { closeOverlay(props().overlay); continue; }
+          if (c !== "winresize") continue;
           const r = takeRequest(this, WINDOW);
           if (!r) continue;
           const cur = this.size ?? { width: 900, height: 640 }, step = 40 * (r.dir || 1);
@@ -233,7 +236,7 @@ export default class Notes extends View {
       .on_drop((e, cx) => { cx.stop_propagation(); this.droppedOnNote = true; cx.timer.after(100, () => { this.droppedOnNote = false; }); this.attach(n, () => addPaths(e.paths), cx, "Adding…"); })
       .child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
         // Which space it's in, always (grouped, the group header says it too).
-        .child(div().id(`tag-${n.id}`).flex_none().px(5).rounded(5).border_1().border_color(t.border).max_w(170).truncate()
+        .child(div().id(`tag-${n.id}`).flex_none().px(5).rounded(5).border_1().border_color(t.border).max_w(this.window && !editing ? 96 : 170).truncate()
           .when(Boolean(this.taskOf(n.space ?? "none")), (e) => e.tooltip(this.taskOf(n.space ?? "none")))
           .text_color(closed ? t.dim : t.muted).child(`${this.spaceLabel(n)}${closed ? " · closed" : ""}`))
         .child(div().flex_1().min_w(0).truncate().child(ago(n.updated)))
@@ -248,9 +251,10 @@ export default class Notes extends View {
           .child(link(`paste-${n.id}`, "Paste image", (cx) => this.attach(n, pasteImage, cx, "Pasting…"), t.muted))
           .child(link(`done-${n.id}`, "Done", (cx) => this.doneEditing(cx), t.accent))))
       .when(!editing, (e) => e
-        .child(div().text_size(12.5).font_semibold().text_color(text ? t.foreground : t.dim).child(first))
-        .when(Boolean(rest), (e) => e.child(div().text_size(12).text_color(t.muted).max_h(96).overflow_hidden().child(rest)))
-        .when((n.attachments ?? []).length > 0, (e) => e.child(attachRow(n.attachments, t, `na-${n.id}`))));
+        .child(div().flex_none().text_size(12.5).font_semibold().text_color(text ? t.foreground : t.dim).when(this.window, (e) => e.max_h(54).overflow_hidden()).child(first))
+        // In the window's grid every card is the same square: the text fills what's left and is cut off.
+        .when(Boolean(rest), (e) => e.child(div().text_size(12).text_color(t.muted).overflow_hidden().when(this.window, (e) => e.flex_1().min_h(0)).when(!this.window, (e) => e.max_h(96)).child(rest)))
+        .when((n.attachments ?? []).length > 0, (e) => e.child(div().flex_none().max_h(48).overflow_hidden().child(attachRow(n.attachments, t, `na-${n.id}`)))));
   }
 
   render(cx) { return this.window ? this.renderInner(cx) : dimmed(this, this.renderInner(cx)); }
@@ -292,7 +296,8 @@ export default class Notes extends View {
         last = k;
       }
       const c = this.card(n, t, focusedList && list[this.cursor] === n);
-      rows.push(this.window ? (this.editing === n.id ? c.w_full() : c.w(340)) : c);
+      // The window's grid: squares (CARD px), the note being edited full width.
+      rows.push(this.window ? (this.editing === n.id ? c.w_full() : c.w(CARD).h(CARD).overflow_hidden()) : c);
     }
     const chip = (id, label, on, act) => div().id(id).flex_none().h(22).px(8).flex().items_center().rounded(11).cursor_pointer().text_size(11)
       .bg(on ? t.selected : t.chrome).border_1().border_color(on ? t.accent : t.border).text_color(on ? t.foreground : t.muted)
@@ -320,7 +325,7 @@ export default class Notes extends View {
           if (k === "x" && list[this.cursor]) { this.remove(list[this.cursor], cx); return true; }
           if (k === "u") { this.restore(cx); return true; }
           if (k === "a") { this.setAll(!this.all, cx); return true; }
-          if (k === "e" && !this.window) { openNotesWindow(); return true; }
+          if (k === "z") { if (this.window) closeOverlay(props().overlay); else openNotesWindow(); return true; }
           return false;
         })) return;
         cx.stop_propagation(); cx.notify();
@@ -332,7 +337,7 @@ export default class Notes extends View {
           .child(seg("notes-all", `All · ${this.notes.length}`, this.all, (cx) => this.setAll(true, cx))))
         .child(div().flex_1())
         .when(!this.window, (e) => e.child(div().id("notes-big").h(24).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).text_size(11).text_color(t.muted)
-          .cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Open the notes in a window (e)").on_click(() => openNotesWindow()).child("⤢")))
+          .cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Open the notes in a window (z)").on_click(() => openNotesWindow()).child("⤢")))
         .child(div().id("notes-new").h(24).px(9).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground).text_size(11).cursor_pointer()
           .hover((s) => s.opacity(0.85)).on_click((_e, cx) => this.create(cx)).child("+ New"))
         .when(this.window, (e) => e.child(div().id("notes-x").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)

@@ -174,8 +174,8 @@ modes editor).
 
 ## Notes
 
-A scratchpad in the side panel: **Notes** in the tab bar, or `cmd-shift-j`. **⤢** (or `e`) opens them in a window of
-its own, every note laid out side by side; drag its corners (or use the key modes' resize keys) and it keeps that size.
+A scratchpad in the side panel: **Notes** in the tab bar, or `cmd-shift-j`. **⤢** (or `z`) opens them in a window of
+its own, every note in a grid of equal squares; drag its corners (or use the key modes' resize keys) and it keeps that size.
 
 - **This space** shows the notes written in the space you're in; **All** shows every note. Closing a space keeps
   its notes (marked closed); a new space in the same folder picks them up again.
@@ -201,7 +201,7 @@ shows this space's tasks (made in it, or in its worktrees), the board window eve
 with how many are planned for today and how many agents proposed. Click a task to open it, the header for the
 board on all spaces; the chevron folds it.
 
-**⤢** (or `B`) opens the board in a
+**⤢** (or `z`) opens the board in a
 window of its own; drag its corners to resize it (or use the key modes' resize keys), and it keeps that size.
 
 - **Board:** columns of your own. **+ Column** adds one; click a column's name (or `r`) to rename it, with **‹ ›**
@@ -217,7 +217,7 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
 - **Undo / redo:** every change on the board or in Today (moves, today on / off, adding, deleting, columns): `u` /
   `U`, `cmd-z` / `cmd-shift-z`, or **↶ ↷** in the header. A card's **×** deletes it, with Undo.
 - Keys: `j`/`k`, `gg`/`G`, `h`/`l` between columns, Enter/`o` open, `t` today, `x` delete, `u`/`U` undo / redo,
-  `b` Today / Board, `B` the window.
+  `b` Today / Board, `z` the window.
 - **Agents:** any Claude session can use the `ks-task` command (the `ks-tasks` skill tells it how). Ask it to "add a
   task", "track this", "what's on my board"; it also proposes follow-ups it notices. What an agent adds on its own
   arrives **proposed**: at the top of Today, with ✓ Accept (`a`) and ✕ Dismiss (`x`), and the tab bar's button
@@ -315,6 +315,12 @@ work anywhere, not only from service mode:
 **The strip waits.** The keys work as soon as you enter a mode, but the strip only appears after a 1 s pause, and
 each key starts the wait again, so a combo you know never shows it. Change it in Settings → Keys & modes
 (at once, 0,5 s, 1 s, 1,5 s, 2,5 s).
+
+**Every side panel in a window.** Files, Changes, PRs, Notes and Tasks each have a **⤢** in their header: the panel
+opens in a window of its own, resizable from its corners or with the key modes' resize keys, and it keeps its size.
+The keys are the same everywhere: `z` in a panel opens its window and `z` in the window closes it; the window-level
+zoom keys (`cmd-shift-enter`, `ctrl-w o`, service `o` / `z`) do the same whenever a panel or its window has the
+keyboard. Esc or ✕ closes the window.
 
 **Panels with vim keys.** `h`/`l` (service, vim normal mode) or `ctrl-w h`/`ctrl-w l` move the keyboard into the side
 panels; a focused panel gets an accent border. In every panel: `j`/`k` move, `gg`/`G` first/last, `ctrl-d`/`ctrl-u`

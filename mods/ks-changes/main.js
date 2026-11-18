@@ -14,6 +14,7 @@ import * as comments from "./lib/comments.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
+import { isWindow, initWindow, windowCommand, zoomCommand, zoomKey, windowFrame, headerButton } from "./lib/panelwin.js";
 
 // ---------- stored choices (this mod's localStorage) ----------
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -199,7 +200,9 @@ export default class Changes extends View {
     cx.timer.every(10000, (cx) => this.refresh(cx));
     // Vim keys (lib/panelkeys.js): pane.go hands this panel the keyboard.
     this.diffScroll = VirtualListScrollHandle.new(); this.diffTop = 0;
-    takeFocus(this, cx, "ks-changes"); watchFocus(this, cx, "ks-changes");
+    // In its own window (lib/panelwin.js), or the panel; z / the zoom keys go between the two.
+    if (isWindow()) initWindow(this, cx, "ks-changes");
+    else { takeFocus(this, cx, "ks-changes", (c) => zoomCommand(this, c, "ks-changes")); watchFocus(this, cx, "ks-changes"); }
   }
 
   // j/k over the files (each opens its diff), or over the commits when picking one; l / Tab into the diff, where
@@ -657,7 +660,7 @@ export default class Changes extends View {
   }
 
   // ks: focus mode dims this until hovered (lib/focus.js).
-  render(cx) { return dimmed(this, this.renderInner(cx)); }
+  render(cx) { return this.windowed ? windowFrame(this, this.renderInner(cx), theme(), "ks-changes") : dimmed(this, this.renderInner(cx)); }
 
   renderInner(cx) {
     if (key() !== this.context) this.refresh(cx);
@@ -730,6 +733,7 @@ export default class Changes extends View {
           else if (e.key === "down") { this.handle.focus(); cx.stop_propagation(); cx.notify(); }
           return;
         }
+        if (!this.inDiff && zoomKey(this, e, "ks-changes")) { cx.stop_propagation(); return; }
         if (this.vimKey(e, cx)) { cx.stop_propagation(); cx.notify(); }
       })
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
@@ -738,7 +742,8 @@ export default class Changes extends View {
         .child(div().flex_1()).child(div().text_size(11).text_color(t.ansi2).child(`+${add}`)).child(div().text_size(11).text_color(t.ansi1).child(`−${del}`))
         .when(secs.length > 0, (e) => e.child(div().id("review-branch").ml(4).h(24).px(8).flex().items_center().rounded(6).border_1().border_color(t.border)
           .text_size(11).text_color(t.foreground).cursor_pointer().hover((st) => st.bg(t.hover))
-          .on_click(() => this.openBranchReview()).child("Review branch"))))
+          .on_click(() => this.openBranchReview()).child("Review branch")))
+        .child(headerButton(this, t, "ks-changes")))
       .children(this.checkoutBar(t))
       .child(this.scopeBar(t))
       .child(this.searchBar(t))

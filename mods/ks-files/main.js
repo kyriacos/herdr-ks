@@ -36,6 +36,7 @@ import { listNote, footerLines, linkTip, statusColor, changeColors, gitReason, n
 // checks that the two copies match.
 import { FLOAT, openTab, timerOf, floatSpec, newToken, isOpen, unanswered, placed, floatShows } from "./open-file.js";
 import { leave, watchFocus, focusedNow, gotFocus } from "./lib/panelkeys.js";
+import { isWindow, initWindow, windowCommand, zoomCommand, zoomKey, windowFrame, headerButton } from "./lib/panelwin.js";
 import { dimmed } from "./lib/focus.js";
 
 const NAME = "ks-files";
@@ -100,12 +101,15 @@ export default class Files extends View {
       // list it (a folder's hold normally reads it again before this).
       if (this.index && (this.index.dirty || this.index.stale) && outdated(this.index, Date.now())) this.searchAgain(cx);
     });
-    watchFocus(this, cx, "ks-files", () => this.typing);
+    // In its own window (lib/panelwin.js), or the panel; z / the zoom keys go between the two.
+    if (isWindow()) initWindow(this, cx, "ks-files", false);
+    else watchFocus(this, cx, "ks-files", () => this.typing);
     // Commands (keys.json: "ks-files.<command>"). "focus" also comes from Herdr: pane.go
     // moved onto this panel (mod.json "focusable"), or a popup over it closed.
     cx.spawn(async (cx) => {
       for (;;) {
         const c = await nextCommand();
+        if (windowCommand(this, c, "ks-files") || zoomCommand(this, c, "ks-files")) continue;
         if (c === "focus") gotFocus(this, cx, "ks-files");
         else if (c === "search") { this.closePreview(); this.input.focus(); }
         else if (c.startsWith("view:")) this.setView(c.slice(5), cx);
@@ -715,7 +719,8 @@ export default class Files extends View {
       else { this.__g = false; k = { j: "down", k: "up", l: "right", G: "end", o: "enter" }[k] ?? k; }
       if (e.key === "h" && !vm.shift) k = this.file ? "left" : (cur && (cur.dir && cur.open || dirOf(cur.rel)) ? "left" : "leave");
       if (k === "escape" && !this.file && !this.query && !isOpen(shared(FLOAT))) k = "leave";
-      if (k === "leave") { leave("left"); cx.stop_propagation(); return; }
+      if (k === "leave") { if (this.windowed) { if (e.key === "escape") this.closeWindowNow(); } else leave("left"); cx.stop_propagation(); return; }
+      if (e.key === "z" && !vm.shift && !this.file && zoomKey(this, e, "ks-files")) { cx.stop_propagation(); return; }
     }
     if (e.modifiers?.platform || e.modifiers?.control || e.modifiers?.alt) return;
     if (this.kmenu) {
@@ -921,7 +926,8 @@ export default class Files extends View {
       })))
       .child(h_flex().flex_1().min_w(0).gap(6).justify_end().items_center().text_size(12).text_color(t.dim)
         .when(Boolean(this.root), (el) => el.child(image(rootIcon(false)).size(14).flex_none()))
-        .child(div().min_w(0).truncate().child(this.root?.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || this.root || "")));
+        .child(div().min_w(0).truncate().child(this.root?.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || this.root || "")))
+      .child(headerButton(this, t, "ks-files"));
   }
 
   // In the search field, inside a repo, not in a folder git ignores and where the disk can be
@@ -936,7 +942,8 @@ export default class Files extends View {
   }
 
   // ks: focus mode dims this until hovered (lib/focus.js).
-  render(cx) { return dimmed(this, this.renderInner(cx)); }
+  render(cx) { return this.windowed ? windowFrame(this, this.renderInner(cx), theme(), "ks-files") : dimmed(this, this.renderInner(cx)); }
+  closeWindowNow() { closeOverlay(props().overlay); }
 
   renderInner(cx) {
     if (this.menu) return this.renderMenu();
