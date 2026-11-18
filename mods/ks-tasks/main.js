@@ -354,11 +354,26 @@ export default class Tasks extends View {
   // A press on a card arms a drag; it starts once the pointer moved a few pixels (a plain click opens the task).
   // While dragging, the card or column under the pointer says where it would land (this.over = { where, before }).
   pressCard(task, e) { this.drag = { id: task.id, x: e.position.x, y: e.position.y, moved: false }; }
+  // The pointer, over the whole view: a drag starts after a few pixels, then a copy of the card follows it.
   moveRoot(e, cx) {
     const g = this.drag;
-    if (!g || g.moved) return;
-    if (Math.abs(e.position.x - g.x) + Math.abs(e.position.y - g.y) > 6) { g.moved = true; cx.notify(); }
+    if (!g) return;
+    if (e.local_position) this.ptr = e.local_position;
+    if (!g.moved && Math.abs(e.position.x - g.x) + Math.abs(e.position.y - g.y) > 6) g.moved = true;
+    if (g.moved) cx.notify();
   }
+  // The card being dragged, beside the pointer (not under it, so the cards and columns below still see the pointer).
+  ghost(t) {
+    const g = this.drag, x = g?.moved && find(this.data, g.id);
+    if (!x || !this.ptr) return null;
+    const to = this.over ? (this.over.where === "@today" ? "Today" : this.over.where === "@backlog" ? "Backlog" : this.data.columns.find((c) => c.id === this.over.where)?.name) : null;
+    return v_flex().absolute().left(this.ptr.x + 14).top(this.ptr.y + 8).w(240).p(9).gap(4).rounded(8).border_1().border_color(t.accent)
+      .bg(t.background).shadow_lg().opacity(0.96)
+      .child(div().text_size(12.5).text_color(t.foreground).truncate().child(x.title || "Untitled"))
+      .child(div().text_size(10.5).text_color(to ? t.accent : t.dim).child(to ? `→ ${to}` : "Drop on a column"));
+  }
+  // Where the card would land: a slot that opens up between the cards.
+  slot(t) { return div().h(34).mx(2).mb(6).rounded(8).border_1().border_dashed().border_color(t.accent).bg(t.accent + "14"); }
   overCard(where, list, task, e, cx) {
     if (!this.drag?.moved) return;
     const lower = e.bounds && e.local_position ? e.local_position.y > e.bounds.height / 2 : false;
@@ -447,9 +462,10 @@ export default class Tasks extends View {
     if (n) meta.push(plural(n, "comment"));
     if (files.length) meta.push(plural(files.length, "file"));
     return v_flex().flex_none()
-      .when(lineBefore, (e) => e.child(div().h(2).mx(2).mb(4).rounded(1).bg(t.accent)))
+      .when(lineBefore, (e) => e.child(this.slot(t)))
       .child(v_flex().id(`card-${task.id}`).p(9).gap(5).rounded(8).border_1()
-        .border_color(at ? t.accent : t.border).bg(t.background).cursor_pointer().opacity(dragging ? 0.4 : 1)
+        .border_color(dragging ? t.accent + "66" : at ? t.accent : t.border).when(dragging, (e) => e.border_dashed()).bg(t.background)
+        .when(Boolean(this.drag?.moved), (e) => e.cursor_grabbing()).when(!this.drag?.moved, (e) => e.cursor_pointer()).opacity(dragging ? 0.35 : 1)
         .hover((s) => s.bg(t.hover))
         .on_mouse_down("left", (e) => this.pressCard(task, e))
         .on_mouse_move((e, cx) => this.overCard(where, list, task, e, cx))
@@ -493,11 +509,12 @@ export default class Tasks extends View {
   // A list that takes drops (today, backlog, a column): an accent end line while a card would land at its end.
   dropList(where, list, t, at) {
     const endLine = this.over?.where === where && this.over.before === null && this.drag?.moved;
-    return v_flex().gap(6)
+    const target = this.drag?.moved && this.over?.where === where;
+    return v_flex().gap(6).rounded(8).when(where.startsWith("@"), (e) => e.p(target ? 4 : 0).when(Boolean(target), (e) => e.bg(t.accent + "0d")))
       .on_mouse_move((e, cx) => this.overList(where, e, cx))
       .on_drop((e, cx) => { cx.stop_propagation(); if (!this.droppedOn) this.dropNew(where, e.paths, cx); })
       .children(list.map((x, i) => this.card(x, t, where, list, at === i)))
-      .when(Boolean(endLine), (e) => e.child(div().h(2).mx(2).rounded(1).bg(t.accent)))
+      .when(Boolean(endLine), (e) => e.child(this.slot(t)))
       .child(this.addBox(where, t));
   }
 
@@ -522,7 +539,9 @@ export default class Tasks extends View {
     const small = (id, label, act, tone = t.muted, tip = null) => div().id(id).flex_none().px(5).rounded(4).text_size(11).text_color(tone).cursor_pointer()
       .hover((s) => s.bg(t.hover).text_color(t.foreground)).when(Boolean(tip), (e) => e.tooltip(tip)).on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label);
     const deleting = this.confirmDelete === c.id;
-    return v_flex().id(`col-${c.id}`).flex_none().w(W).h_full().min_h(0).rounded(9).bg(t.chrome).border_1().border_color(on ? t.accent + "88" : t.border)
+    // The column a dragged card would land in lights up.
+    const target = this.drag?.moved && this.over?.where === c.id;
+    return v_flex().id(`col-${c.id}`).flex_none().w(W).h_full().min_h(0).rounded(9).bg(target ? t.accent + "12" : t.chrome).border_1().border_color(target ? t.accent : on ? t.accent + "88" : t.border)
       .child(h_flex().flex_none().h(36).px(10).gap(6).items_center().border_b(1).border_color(t.border)
         .when(!renaming, (e) => e
           .child(div().id(`colname-${c.id}`).flex_1().min_w(0).truncate().font_semibold().text_size(12).cursor_pointer()
@@ -581,6 +600,7 @@ export default class Tasks extends View {
       .on_key_down((e, cx) => this.key(e, cx))
       .on_mouse_move((e, cx) => { if (this.board && e.bounds) this.winRect = e.bounds; this.moveRoot(e, cx); })
       .on_mouse_up("left", (_e, cx) => this.release(cx))
+      .relative().when(Boolean(this.drag?.moved), (e) => e.cursor_grabbing())
       .when(this.board, (e) => e.relative()
         .on_size_change((size) => { if (size?.width && (size.width !== this.size?.width || size.height !== this.size?.height)) { this.size = size; setShared(SIZE, { width: Math.round(size.width), height: Math.round(size.height) }); } })
         .children(this.grips(t)))
@@ -610,7 +630,8 @@ export default class Tasks extends View {
         .when(this.view === "today", (e) => e.child(Scrollbar.vertical("tasks-today").absolute().inset_0())))
       .child(h_flex().flex_none().h(24).px(12).items_center().border_t(1).border_color(t.border).text_size(10.5).text_color(t.dim).truncate()
         .child(this.view === "today" ? "j/k move · Enter open · t today · n new · x delete · s here / all · b board · z window · drop files"
-          : "h/l j/k move · H/L to column · J/K reorder · r rename column · z window · drag cards · drop files"));
+          : "h/l j/k move · H/L to column · J/K reorder · r rename column · z window · drag cards · drop files"))
+      .children([this.ghost(t)].filter(Boolean));
   }
 
   // ===================================================================================================================
