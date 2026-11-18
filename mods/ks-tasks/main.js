@@ -25,7 +25,7 @@ import { trackActive, takeRequest, raiseStrip, claim, backToPanel } from "./lib/
 import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
 import { spaceName } from "./lib/spacenames.js";
-import { takeFocus, watchFocus, focusedNow, leave } from "./lib/panelkeys.js";
+import { takeFocus, watchFocus, focusedNow, leave, toStrip } from "./lib/panelkeys.js";
 import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } from "./lib/attach.js";
 
 const FILE = () => `${appHome()}/data/ks-tasks.json`;
@@ -402,6 +402,7 @@ export default class Tasks extends View {
 
   // ---------- keys ----------
   key(e, cx) {
+    if (toStrip(e)) { cx.stop_propagation(); return; }
     if (this.typing) {
       if (e.key === "escape") { if (this.renaming) { this.renaming = null; } this.adding = null; this.handle.focus(); cx.stop_propagation(); cx.notify(); }
       return;
@@ -469,7 +470,8 @@ export default class Tasks extends View {
         .border_color(dragging ? t.accent + "66" : at ? t.accent : t.border).when(dragging, (e) => e.border_dashed()).bg(t.background)
         .when(Boolean(this.drag?.moved), (e) => e.cursor_grabbing()).when(!this.drag?.moved, (e) => e.cursor_pointer()).opacity(dragging ? 0.35 : 1)
         .hover((s) => s.bg(t.hover))
-        .on_mouse_down("left", (e) => this.pressCard(task, e))
+        // Stopped here, so in the board window a press on a card drags the card, not the window.
+        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressCard(task, e); })
         .on_mouse_move((e, cx) => this.overCard(where, list, task, e, cx))
         .on_click((_e, cx) => this.clickCard(task, cx))
         .on_drop((e, cx) => { cx.stop_propagation(); this.droppedOn = true; cx.timer.after(100, () => { this.droppedOn = false; }); this.dropOn(task, e.paths, cx); })
@@ -527,6 +529,7 @@ export default class Tasks extends View {
       .child(div().font_semibold().text_color(t.muted).child(label)).child(div().text_color(t.dim).child(String(n)))
       .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(hint));
     return v_flex().id("tasks-today").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).px(10).pb(16)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .when(l.proposed.length > 0, (e) => e
         .child(head("Proposed by agents", l.proposed.length, "a or ✓ accepts · x or ✕ dismisses"))
         .child(v_flex().gap(6).children(l.proposed.map((x, i) => this.card(x, t, "@proposed", l.proposed, at === i)))))
@@ -547,6 +550,7 @@ export default class Tasks extends View {
     // The whole column takes a dragged card (an empty one has no cards to point at), at its end unless over a card.
     return v_flex().id(`col-${c.id}`).flex_none().w(W).h_full().min_h(0).rounded(9).bg(target ? t.accent + "12" : t.chrome).border_1().border_color(target ? t.accent : on ? t.accent + "88" : t.border)
       .on_mouse_move((e, cx) => this.overList(c.id, e, cx))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_drop((e, cx) => { cx.stop_propagation(); if (!this.droppedOn) this.dropNew(c.id, e.paths, cx); })
       .child(h_flex().flex_none().h(36).px(10).gap(6).items_center().border_b(1).border_color(t.border)
         .when(!renaming, (e) => e

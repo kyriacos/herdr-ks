@@ -14,7 +14,7 @@ import { WORKTREE, RECENT, readBranch, readCommits, readCommitFiles, treeRows } 
 import * as comments from "./lib/comments.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
-import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
+import { takeFocus, listKey, watchFocus, focusedNow, toStrip } from "./lib/panelkeys.js";
 import { isWindow, initWindow, windowCommand, zoomCommand, zoomKey, windowFrame, headerButton } from "./lib/panelwin.js";
 
 // ---------- stored choices (this mod's localStorage) ----------
@@ -728,6 +728,7 @@ export default class Changes extends View {
       })).size_full().track_scroll(this.diffScroll);
     return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focusedNow(this, "ks-changes") ? t.accent : t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {
+        if (toStrip(e)) { cx.stop_propagation(); return; }
         if (this.typing) { if (e.key === "escape") { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); } return; }
         // Typing a search: Esc clears it, a second Esc goes back to the list.
         if (this.searching) {

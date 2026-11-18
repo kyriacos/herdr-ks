@@ -20,7 +20,7 @@ import { exec, appHome, spaces, theme, settings, props, openOverlay, closeOverla
 import { trackActive, takeRequest, raiseStrip, claim, backToPanel } from "./lib/windows.js";
 import { dimmed } from "./lib/focus.js";
 import { spaceName, spaceTask } from "./lib/spacenames.js";
-import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
+import { takeFocus, listKey, watchFocus, focusedNow, toStrip } from "./lib/panelkeys.js";
 import { pref } from "./lib/prefs.js";
 import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } from "./lib/attach.js";
 
@@ -233,6 +233,7 @@ export default class Notes extends View {
     return v_flex().id(`note-${n.id}`).flex_none().mx(8).mt(8).p(10).gap(4).rounded(8).border_1()
       .border_color(editing || at ? t.accent : t.border).bg(t.background)
       .when(!editing, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.edit(n, cx)))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_drop((e, cx) => { cx.stop_propagation(); this.droppedOnNote = true; cx.timer.after(100, () => { this.droppedOnNote = false; }); this.attach(n, () => addPaths(e.paths), cx, "Adding…"); })
       .child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
         // Which space it's in, always (grouped, the group header says it too).
@@ -313,6 +314,7 @@ export default class Notes extends View {
         .on_mouse_move((ev) => { if (ev.bounds) this.winRect = ev.bounds; })
         .children(this.grips(t)))
       .on_key_down((e, cx) => {
+        if (toStrip(e)) { cx.stop_propagation(); return; }
         if (this.editing !== null) { if (e.key === "escape") { this.doneEditing(cx); cx.stop_propagation(); } return; }
         if (this.searching) { // typing a search: Esc clears it (again: back to the list), Enter goes to the list
           if (e.key === "escape") { if (this.search.value()) this.search.set_value(""); else this.handle.focus(); cx.stop_propagation(); cx.notify(); }

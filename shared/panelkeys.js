@@ -50,11 +50,24 @@ export function watchFocus(view, cx, mod, extra = null) {
 }
 export const focusedNow = (view, mod, extra = null) => Boolean(view.handle?.is_focused() || (extra && extra()) || (stripOpen() && shared(MARK)?.mod === mod));
 
+// A key mode's strip (ctrl-w, service) was just opened from here but hasn't got the keyboard yet: the keys typed
+// meanwhile are the strip's ("o" after ctrl-w is the window command, not this panel's "open"). Sent on to it
+// (ks-keys "press:<key>"). True when sent.
+export function toStrip(e) {
+  if (!stripOpen()) return false;
+  const m = e.modifiers ?? {};
+  if (/^(shift|control|ctrl|alt|platform|cmd|function|fn)$/.test(e.key)) return true;
+  const tok = e.key_char && [...e.key_char].length === 1 && e.key_char !== " " && !m.control && !m.alt && !m.platform && !m.function ? e.key_char : e.keystroke;
+  run(`ks-keys.press:${tok}`);
+  return true;
+}
+
 export const leave = (direction) => { setShared(MARK, null); run("pane.go", { direction }); };
 
 // List keys over `n` rows, with the row index in `view.cursor`. `open(i)` for Enter / o, `more(k, e)` for the
 // panel's own keys (return true when handled). Returns true when the key was taken.
 export function listKey(view, e, n, open, more = null) {
+  if (toStrip(e)) return true;
   const k = e.key, m = e.modifiers ?? {}, shift = Boolean(m.shift);
   if (m.platform || m.alt) return false;
   const at = Math.max(0, Math.min(n - 1, view.cursor ?? 0));

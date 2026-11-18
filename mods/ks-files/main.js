@@ -35,7 +35,7 @@ import { listNote, footerLines, linkTip, statusColor, changeColors, gitReason, n
 // A copy of ks-preview's: how it opens and which pane already shows a file. sync.sh
 // checks that the two copies match.
 import { FLOAT, openTab, timerOf, floatSpec, newToken, isOpen, unanswered, placed, floatShows } from "./open-file.js";
-import { leave, watchFocus, focusedNow, gotFocus } from "./lib/panelkeys.js";
+import { leave, watchFocus, focusedNow, gotFocus, toStrip } from "./lib/panelkeys.js";
 import { isWindow, initWindow, windowCommand, zoomCommand, zoomKey, windowFrame, headerButton, closeWindow } from "./lib/panelwin.js";
 import { dimmed } from "./lib/focus.js";
 
@@ -708,6 +708,7 @@ export default class Files extends View {
   }
 
   key(e, cx) {
+    if (toStrip(e)) { cx.stop_propagation(); return; }
     const rows = this.shown, cur = rows.find((r) => r.rel === this.cursor);
     // ks: vim keys, as the arrows (lib/panelkeys.js has the same set for the other panels): j k h l, gg G,
     // ctrl-d / ctrl-u half a page, o open; Esc with nothing to close, or h at the top level, leaves the panel.

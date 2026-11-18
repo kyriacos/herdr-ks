@@ -238,6 +238,18 @@ export default class Keys extends View {
   // --- the mode popup ---
 
   initMode(p, cx) {
+    // Keys a panel typed before this strip got the keyboard (lib/panelkeys.js toStrip): as if pressed here.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = await nextCommand();
+        if (!c.startsWith("press:") || this.leaving) continue;
+        const tok = c.slice(6);
+        this.key({ key: tok, keystroke: tok, key_char: [...tok].length === 1 ? tok : null, modifiers: {} }, cx);
+        // Its release went to the panel, not here: don't wait for it to close.
+        if (this.releaseWanted) this.keyUp(cx);
+        cx.notify();
+      }
+    });
     this.mode = p.mode;
     this.pane = p.pane ?? null;         // the pane you were in (pane commands get it explicitly)
     this.terminal = p.terminal ?? null;
