@@ -11,7 +11,7 @@ import * as closing from "./lib/closing.js";
 const KEYS = { tab: "ks-tabs.confirm-close", pane: "ks-pane.confirm-close" };
 export const MODES = [
   ["never", "Never"],
-  ["agents", "While an agent works"],
+  ["agents", "While an agent runs in it"],
   ["always", "Always"],
 ];
 // ks: closing a tab asks every time unless chosen otherwise (and can be undone for 30 s, lib/closing.js).
@@ -39,8 +39,9 @@ function fit(name, room = 26) {
   return out;
 }
 
-// An agent counts while it works or waits on the person (blocked); done and idle ones have finished.
-const busy = (keep) => agents().filter(a => (a.status === "working" || a.status === "blocked") && keep(a));
+// Every agent counts, whatever its status: one sitting idle at its prompt still holds a session (its context, what
+// it was doing) that closing ends just the same.
+const busy = (keep) => agents().filter(keep);
 
 // One dialog at a time, across both mods: a held key or the other mod's close replaces it rather than
 // stacking another. Shared, as each mod has its own copy of this file; ks-confirm clears it on closing.
@@ -63,8 +64,8 @@ function closeAsking({ kind, agents, title, ends, more, command }) {
   }
   const names = [...new Set(agents.map(a => a.program?.name ?? a.app ?? "An agent"))].join(", ");
   const why = agents.length === 0 ? ends
-    : agents.length === 1 ? `${names} is still running in it. Closing ends it.`
-    : `${agents.length} agents are still running in it (${names}). Closing ends them.`;
+    : agents.length === 1 ? `${names} is running in it. Closing ends it.`
+    : `${agents.length} agents are running in it (${names}). Closing ends them.`;
   if (shared(OPEN)) closeOverlay(shared(OPEN));
   const detail = [why, more, soft ? `You can undo for ${Math.round(closing.grace() / 1000)} s.` : ""].filter(Boolean).join(" ") || "Nothing runs in it.";
   setShared(OPEN, openOverlay({ mod: "ks-confirm", kind: "dialog", width: 400, height: 170,

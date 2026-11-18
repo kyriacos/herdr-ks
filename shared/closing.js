@@ -13,6 +13,10 @@ import { pref } from "./prefs.js";
 export const KEY = "ks.closing";
 // How long a close waits (settings: "Undo a close for"), ms.
 export const grace = () => Math.max(5, Number(pref("undoSeconds")) || 30) * 1000;
+// A space with more than one tab is a lot to lose: it waits at least 10 minutes before closing for real.
+export const BIG_SPACE = 10 * 60 * 1000;
+const spaceGrace = (space) => (space.tabs.length > 1 ? Math.max(grace(), BIG_SPACE) : grace());
+const human = (ms) => (ms >= 60000 ? `${Math.round(ms / 60000)} min` : `${Math.round(ms / 1000)} s`);
 
 export const pending = () => shared(KEY) ?? [];
 export const hiddenSpace = (id) => pending().some((e) => e.kind === "space" && e.id === id);
@@ -25,9 +29,9 @@ function remember(entry) {
   setShared(KEY, [...pending().filter((e) => e.id !== entry.id), entry]);
   notify({
     title: `Closed ${entry.kind === "space" ? "space" : "tab"} ${entry.name}`,
-    body: `Click to undo within ${Math.round(grace() / 1000)} s, or press ⌘⇧T.`,
+    body: `Click to undo within ${human(entry.until - Date.now())}, or press ⌘⇧T.`,
     level: "info",
-    timeout: grace(),
+    timeout: Math.min(entry.until - Date.now(), 60000),
     action: { name: `ks-tabs.undo:${entry.key}` },
   });
 }
@@ -58,7 +62,7 @@ export function closeSpace(id) {
   }
   const tabs = space.tabs.filter((c) => !c.settled).map((c) => c.id);
   for (const t of tabs) run("tab.settle", { id: t });
-  remember({ key: `${id}-${Date.now()}`, kind: "space", id, space: id, name: `"${space.name}"`, tabs, until: Date.now() + grace() });
+  remember({ key: `${id}-${Date.now()}`, kind: "space", id, space: id, name: `"${space.name}"`, tabs, until: Date.now() + spaceGrace(space) });
 }
 
 // Brings back the entry with this key, else the most recent one.
@@ -87,15 +91,17 @@ export function finish(now = Date.now()) {
 }
 
 // One dialog at a time (the key ks-confirm clears); `soft` tells ks-confirm what to close on Confirm.
-export function ask({ kind, id, title, detail }) {
+export function ask({ kind, id, title, detail, wait = grace(), height = 170 }) {
   if (shared("ks-confirm.open")) closeOverlay(shared("ks-confirm.open"));
-  setShared("ks-confirm.open", openOverlay({ mod: "ks-confirm", kind: "dialog", width: 400, height: 170,
-    props: { title, detail: `${detail ? detail + " " : ""}You can undo for ${Math.round(grace() / 1000)} s.`, soft: { kind, id } } }));
+  setShared("ks-confirm.open", openOverlay({ mod: "ks-confirm", kind: "dialog", width: 420, height,
+    props: { title, detail: `${detail ? detail + " " : ""}You can undo for ${human(wait)} (⌘⇧T).`, soft: { kind, id } } }));
 }
 
 export function askSpace(id) {
   const space = spaces().find((s) => s.id === id);
   if (!space) return;
   const n = space.tabs.length;
-  ask({ kind: "space", id, title: `Close space "${space.name}"?`, detail: `Its ${n === 1 ? "tab" : `${n} tabs`} and terminals end.` });
+  const names = space.tabs.map((c) => (/^tb\d+$/.test(c.name) ? "unnamed" : c.name)), shown = names.slice(0, 4).join(", ") + (n > 4 ? ` and ${n - 4} more` : "");
+  ask({ kind: "space", id, title: `Close space "${space.name}"?`, wait: spaceGrace(space), height: n > 1 ? 200 : 170,
+    detail: n === 1 ? "Its tab and terminals end." : `All ${n} tabs (${shown}) and their terminals and agents end.` });
 }
