@@ -21,3 +21,31 @@ export async function set(key, value) {
 
 // How old an entry is, in ms (Infinity when there is none).
 export const age = (entry) => (entry?.at ? Date.now() - entry.at : Infinity);
+
+// Housekeeping. Entries in use are rewritten as they refresh (an open PR's every few minutes), so a file's mtime
+// says when it was last useful.
+// prune(days): deletes entries not written for that many days (0: keeps everything).
+export async function prune(days) {
+  if (!(days > 0)) return;
+  await exec("find", [dir(), "-name", "*.json", "-mtime", `+${Math.round(days)}`, "-delete"]).catch(() => null);
+}
+
+// Entries no longer in use: PRs merged or closed, PRs not in My PRs and not opened in a day, and panel lists for
+// worktree sets not seen in a day. My PRs' own list is always kept. Resolves to the file paths.
+export async function inactive() {
+  const r = await exec("sh", ["-c", 'cd "$1" 2>/dev/null && for f in *.json; do [ -e "$f" ] && echo "$(stat -f %m "$f") $f"; done', "sh", dir()]).catch(() => null);
+  const files = (r?.stdout ?? "").split("\n").filter(Boolean).map((l) => { const i = l.indexOf(" "); return { at: Number(l.slice(0, i)) * 1000, name: l.slice(i + 1) }; });
+  const mine = new Set(((await get("myprs"))?.value ?? []).map((p) => p.url));
+  const day = Date.now() - 86400000, out = [];
+  for (const f of files) {
+    if (f.name === "myprs.json") continue;
+    if (f.name.startsWith("pr_")) {
+      const e = await get(f.name.replace(/\.json$/, "")), pr = e?.value?.pr;
+      if (!pr || pr.state && pr.state !== "OPEN" || (!mine.has(pr.url) && f.at < day)) out.push(`${dir()}/${f.name}`);
+    } else if (f.at < day) out.push(`${dir()}/${f.name}`);
+  }
+  return out;
+}
+export async function remove(paths) {
+  if (paths?.length) await exec("rm", ["-f", ...paths]).catch(() => null);
+}

@@ -6,6 +6,7 @@ import * as sessions from "./lib/sessions.js";
 import * as closing from "./lib/closing.js";
 import { pref } from "./lib/prefs.js";
 import { arrange } from "./lib/arrange.js";
+import { prune } from "./lib/cache.js";
 import { menuView, shortcut } from "./menu.js";
 import { dimmed } from "./lib/focus.js";
 
@@ -37,6 +38,9 @@ export default class Tabs extends View {
     setShared("ks.activeWindow", null); setShared("ks.activePanel", null);
     // ks: the side panel's side and the sidebar's order, as set in ks-settings (lib/arrange.js).
     cx.timer.after(1500, () => { try { arrange(); } catch (e) { console.log("ks-tabs: arrange failed", String(e)); } });
+    // ks: the GitHub cache drops what hasn't been refreshed in `cacheDays` days (settings), now and every 6 h.
+    const tidy = () => prune(pref("cacheDays") ?? 7);
+    cx.timer.after(20000, tidy); cx.timer.every(6 * 3600000, tidy);
     cx.timer.every(30000, (cx) => this.tasksChanged(cx, false));
     // ks: close for real what has waited 30 s (lib/closing.js); redraw the Undo chip's countdown meanwhile.
     closing.finish();

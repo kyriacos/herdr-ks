@@ -21,6 +21,7 @@ export const DEFAULTS = {
   spaceTaskLine: true, // under each space, what its agent works on
   worktreeRoot: "~/code/worktrees", // new worktrees go to <this>/<repo>/<branch>
   repoFolders: "~/code", // where your clones live, comma-separated; looked through two levels deep
+  cacheDays: 7,        // the GitHub cache drops entries not refreshed for this many days (0: never)
   agentProcs: true,    // the Agents list's "N procs" chip and the process lookups behind it
 };
 export const prefs = () => ({ ...DEFAULTS, ...(shared(KEY) ?? {}) });

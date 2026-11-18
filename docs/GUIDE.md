@@ -420,7 +420,7 @@ does. Layout choices are kept in Herdr's shared state and put back after a reins
 | Claude sessions (Codex sessions too) | Show the last session's card after a reboot; forget every remembered session |
 | Pull requests | My PRs shown or hidden, its notifications on or off |
 | Panels | Hide idle main checkouts |
-| Storage | Clear the GitHub cache |
+| Storage | GitHub cache: clear inactive entries or everything, auto-clear after 3, 7 (default), 14 or 30 days, or never |
 | About | The guide |
 
 ## Resizing from the keyboard
@@ -469,7 +469,12 @@ Herdr's own keys still apply (`cmd-t` new tab, `cmd-d` split, `cmd-1`…`9` tabs
 
 GitHub answers are cached in `~/.config/herdr-app/data/ks-cache/` and shown at once, then refreshed in the
 background ("updating…"). My PRs pre-fetches each PR's details so a PR window opens instantly. Reading the cache
-takes milliseconds against 1–2 s per `gh` call. Delete the folder to start over.
+takes milliseconds against 1–2 s per `gh` call.
+
+Entries in use refresh every few minutes. Ones not refreshed for 7 days are deleted on their own, at start and
+every 6 hours (Settings → Storage: 3, 7, 14, 30 days or never). **Clear inactive** there removes merged or closed
+PRs, PRs not in My PRs that nobody opened in a day, and PRs panel lists not used in a day (a new one is kept each
+time the set of open spaces changes). **Clear everything** starts over.
 
 ## Where things are kept
 

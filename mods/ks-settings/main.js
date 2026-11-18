@@ -11,6 +11,7 @@ import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { run, theme, props, closeOverlay, shared, setShared, layout, exec, appHome, notify } from "herdr";
 import { focusOn, focusLevel, setFocus } from "./lib/focus.js";
 import { prefs, setPref, DEFAULTS } from "./lib/prefs.js";
+import * as cache from "./lib/cache.js";
 import { SIDEBAR, PANELS, arrange, node } from "./lib/arrange.js";
 
 const SECTIONS = [
@@ -57,6 +58,7 @@ export default class Settings extends View {
     cx.spawn(async (cx) => {
       const r = await exec("sh", ["-c", 'ls "$1"/*.json 2>/dev/null | wc -l', "sh", `${appHome()}/data/ks-cache`]).catch(() => null);
       this.cacheFiles = Number((r?.stdout ?? "0").trim()) || 0;
+      this.cacheInactive = (await cache.inactive()).length;
       cx.notify();
     });
   }
@@ -91,7 +93,7 @@ export default class Settings extends View {
       .child(div().text_size(13).font_medium().child(title))
       .when(Boolean(help), (e) => e.child(div().text_size(11.5).text_color(t.dim).child(help)))
       .child(h_flex().gap(8).flex_wrap().items_center().children(controls));
-    const choice = (id, options, current, set) => options.map(([v, label]) => btn(`${id}-${v}`, label, () => set(v), current === v));
+    const choice = (id, options, current, set) => options.map(([v, label]) => btn(`${id}-${v}`, label, (cx) => set(v, cx), current === v));
     const meter = (value) => h_flex().h(8).w(200).rounded(4).bg(t.hover).child(div().h_full().w(200 * value).rounded(4).bg(t.accent));
     const note = (text) => div().text_size(11.5).text_color(t.muted).child(text);
     const heading = (text) => div().pb(14).text_size(15).font_semibold().child(text);
@@ -239,11 +241,21 @@ export default class Settings extends View {
       case "storage":
         return v_flex().child(heading("Storage"))
           .child(row(`GitHub cache: ${this.cacheFiles ?? "…"} files`, "Answers from gh, shown at once and refreshed in the background (~/.config/herdr-app/data/ks-cache). Clearing makes the next look slower once.",
-            btn("cache-clear", "Clear the cache", (cx) => cx.spawn(async (cx) => {
+            btn("cache-inactive", this.cacheInactive == null ? "Clear inactive…" : `Clear inactive (${this.cacheInactive})`, (cx) => cx.spawn(async (cx) => {
+              const list = await cache.inactive();
+              await cache.remove(list);
+              notify({ title: list.length ? `Cleared ${list.length} inactive ${list.length === 1 ? "entry" : "entries"}` : "Nothing inactive to clear", level: "info", timeout: 2500 });
+              this.countCache(cx);
+            })),
+            btn("cache-clear", "Clear everything", (cx) => cx.spawn(async (cx) => {
               await exec("sh", ["-c", 'rm -f "$1"/*.json', "sh", `${appHome()}/data/ks-cache`]).catch(() => null);
               notify({ title: "GitHub cache cleared", level: "info", timeout: 2500 });
               this.countCache(cx);
-            }))));
+            }))))
+          .child(note("Inactive: merged or closed PRs, PRs not in My PRs that nobody opened in a day, and panel lists not used in a day."))
+          .child(div().h(12))
+          .child(row("Auto-clear", "Entries not refreshed for this long are deleted (checked at start and every 6 hours). Ones in use refresh every few minutes, so they stay.",
+            ...choice("cachedays", [[3, "3 days"], [7, "7 days"], [14, "14 days"], [30, "30 days"], [0, "Never"]], p.cacheDays ?? 7, (v, cx) => { setPref("cacheDays", v); cx.spawn(async (cx) => { await cache.prune(v); this.countCache(cx); }); })));
       case "about":
         return v_flex().child(heading("About"))
           .child(note("herdr-ks: the ks layout for Herdr App, inspired by Herdr Roundup. Apache-2.0."))
