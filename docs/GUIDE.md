@@ -174,7 +174,8 @@ modes editor).
 
 ## Notes
 
-A scratchpad in the side panel: **Notes** in the tab bar, or `cmd-shift-j`.
+A scratchpad in the side panel: **Notes** in the tab bar, or `cmd-shift-j`. **⤢** (or `e`) opens them in a window of
+its own, every note laid out side by side; drag its corners (or use the key modes' resize keys) and it keeps that size.
 
 - **This space** shows the notes written in the space you're in; **All** shows every note. Closing a space keeps
   its notes (marked closed); a new space in the same folder picks them up again.
