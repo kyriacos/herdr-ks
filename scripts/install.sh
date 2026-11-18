@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs this folder into Herdr App: the ks layout, its ks-* mods and its keys section.
-# Adapted from herdr-roundup's scripts/sync.sh. Real copies, not symlinks: Herdr doesn't load a mod's SVGs
+# Real copies, not symlinks: Herdr doesn't load a mod's SVGs
 # through a symlink. Other mods, layouts and key sections in the app are left alone.
 # Usage: scripts/install.sh [--switch]   (--switch also shows the layout)
 set -eu

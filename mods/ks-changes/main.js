@@ -1,4 +1,4 @@
-// Roundup's Changes panel, cloned from Herdr's `changes` (0.1.15) and extended:
+// The Changes panel, cloned from Herdr's `changes` (0.1.15) and extended:
 // - search (/): narrows the files by path, and in Commits the commits;
 // - a checkout bar: follow the focused terminal, pin any worktree of the repo, or follow an agent
 //   (Claude Code and Codex: the real working folder, read from the session log, not where it was launched;

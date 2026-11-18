@@ -2,8 +2,7 @@
 
 Parts of this repository include or adapt other people's open-source work.
 Their licences apply to those parts, and their copyright notices are kept here
-as the licences require. Each adapted file names its origin in a comment at
-its top.
+as the licences require. The table below names the origin of each adapted part.
 
 | Part | Based on | Licence | Copyright |
 | --- | --- | --- | --- |

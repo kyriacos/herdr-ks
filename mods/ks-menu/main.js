@@ -2,7 +2,7 @@
 // props { tab: "pane" | "tab" | "space" | "global", target }.
 // ↑/↓ move, Enter runs, Esc closes. An item is [label, command, args];
 // a command "worktree" opens the worktree dialog instead.
-// Herdr Roundup's clone of `menu`, changed only so ks-spaces can tell it is open: while it is,
+// A clone of Herdr's `menu`, changed only so ks-spaces can tell it is open: while it is,
 // shared "ks-menu.open" holds its overlay id (a hover card would draw above it).
 
 import { View, div, svg } from "gpui-kit";
