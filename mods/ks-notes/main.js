@@ -21,7 +21,7 @@ import { dimmed } from "./lib/focus.js";
 import { spaceName, spaceTask } from "./lib/spacenames.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 import { pref } from "./lib/prefs.js";
-import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles } from "./lib/attach.js";
+import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } from "./lib/attach.js";
 
 const FILE = () => `${appHome()}/data/ks-notes.json`;
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -54,6 +54,8 @@ export default class Notes extends View {
     this.editor = TextareaState.new({ placeholder: "Write anything. It's saved as you type.", rows: 6 });
     this.editor.set_auto_grow(4, 18);
     this.editor.on("change", (_e, cx) => this.typed(cx));
+    // cmd-v with a picture on the clipboard: it's attached to the note being edited.
+    onPasteImage(this.editor, (a, cx) => { const n = this.notes.find((x) => x.id === this.editing); if (n) { n.attachments = [...(n.attachments ?? []), a]; n.updated = Date.now(); this.persist(cx); } });
     // Search (both views), grouping by space and one space picked (All).
     this.grouped = load("grouped", true); this.only = null; this.searching = false;
     this.search = InputState.new({ placeholder: "Search notes  (/)" });

@@ -148,6 +148,11 @@ Exit leaves zen, and the review tab moves to the file you ended on.
 - The agent receives numbered comments with file, line (and commit) and the code line quoted, then they're
   removed from the list. The target is named in the header ("Sends to …").
 
+**Pictures:** with an image on the clipboard (a screenshot, say), `cmd-v` in a comment box, the send dialog's note,
+or a PR window's message attaches it; it shows as a thumbnail (× removes it). The agent gets each picture's full
+path in the message and opens it. A comment can be just a picture. The same `cmd-v` in a task's description or
+comment, or in a note being edited, adds the picture to its attachments.
+
 ## Floating review windows
 
 **Expand** opens a file's review floating over the window. Several can be open at once, one per file.

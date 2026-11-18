@@ -26,7 +26,7 @@ import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
 import { spaceName } from "./lib/spacenames.js";
 import { takeFocus, watchFocus, focusedNow, leave } from "./lib/panelkeys.js";
-import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles } from "./lib/attach.js";
+import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } from "./lib/attach.js";
 
 const FILE = () => `${appHome()}/data/ks-tasks.json`;
 const REV = "ks-tasks.rev";
@@ -595,6 +595,8 @@ export default class Tasks extends View {
     this.body.on("change", (_e, cx) => this.typed("body", this.body.value(), cx));
     this.note = TextareaState.new({ placeholder: "Add a comment (cmd-enter)", rows: 2 });
     this.note.set_auto_grow(2, 8);
+    // A picture pasted into the description or a comment becomes one of the task's attachments.
+    for (const box of [this.body, this.note]) onPasteImage(box, (a, cx) => this.apply(ops.attach(this.taskId, [a]), cx), (on, cx) => { this.working = on ? "Pasting…" : null; cx.notify(); });
     this.scroll = ScrollHandle.new();
     this.seeded = false; this.working = null;
     this.handle.focus();

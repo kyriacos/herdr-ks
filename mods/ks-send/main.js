@@ -7,6 +7,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, Scrollbar } from "gpui-base";
 import { props, theme, settings, closeOverlay } from "herdr";
 import * as comments from "./lib/comments.js";
+import { onPasteImage, attachRow } from "./lib/attach.js";
 
 const base = (p) => p.replace(/\/+$/, "").split("/").pop();
 const where = (c) => (c.line == null ? "whole file" : `line ${c.line}${c.side === "old" ? " (removed)" : ""}`) + (c.commit ? ` · commit ${c.commit}` : "");
@@ -21,7 +22,12 @@ export default class Send extends View {
     this.editing = null; this.preview = false; this.sending = false;
     this.editInput = InputState.new({ placeholder: "Comment" });
     this.editInput.on("submit", (_e, cx) => this.saveEdit(cx));
-    this.note = TextareaState.new({ placeholder: "Anything else for the agent (optional, goes after the comments)", rows: 2 });
+    this.note = TextareaState.new({ placeholder: "Anything else for the agent (optional, goes after the comments; cmd-v pastes an image)", rows: 2 });
+    // Pictures pasted into the note go with it; one pasted while editing a comment joins that comment.
+    this.noteImages = [];
+    const busy = (on, cx) => { this.pasting = on; cx.notify(); };
+    onPasteImage(this.note, (a, cx) => { this.noteImages.push(a); cx.notify(); }, busy);
+    onPasteImage(this.editInput, (a, cx) => { const c = comments.all().find((x) => x.id === this.editing); if (c) comments.update(c.id, { images: [...(c.images ?? []), a] }); cx.notify(); }, busy);
     this.handle = cx.focus_handle(); this.handle.focus();
   }
 
@@ -43,12 +49,12 @@ export default class Send extends View {
 
   async sendList(list, withNote, cx) {
     if (this.sending) return;
-    const note = withNote ? this.note.value() : "";
-    if (!list.length && !note.trim()) return;
+    const note = withNote ? this.note.value() : "", pics = withNote ? this.noteImages : [];
+    if (!list.length && !note.trim() && !pics.length) return;
     this.sending = true; cx.notify();
-    const ok = await comments.send(list, this.agent, null, note);
+    const ok = await comments.send(list, this.agent, null, note, pics);
     this.sending = false;
-    if (ok && withNote) this.note.set_value("");
+    if (ok && withNote) { this.note.set_value(""); this.noteImages = []; }
     for (const c of list) this.selected.delete(c.id);
     if (ok && !this.pending().length) { this.close(); return; }
     cx.notify();
@@ -90,7 +96,8 @@ export default class Send extends View {
               .child(editing
                 ? div().h(30).px(8).flex().items_center().rounded(6).border_1().border_color(t.accent).bg(t.background)
                     .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.editInput).h_full().text_size(12.5).text_color(t.foreground))
-                : div().text_size(12.5).text_color(t.foreground).child(c.text)))
+                : div().text_size(12.5).text_color(t.foreground).child(c.text))
+              .when(Boolean(c.images?.length), (e) => e.child(attachRow(c.images, t, `si-${c.id}`, { onRemove: (a, cx) => { comments.update(c.id, { images: c.images.filter((x) => x.id !== a.id) }); cx.notify(); } }))))
             .child(h_flex().flex_none().gap(2)
               .child(editing ? link(`save-${c.id}`, "Save", (cx) => this.saveEdit(cx), t.accent) : link(`edit-${c.id}`, "Edit", (cx) => this.edit(c, cx), t.muted))
               .child(link(`del-${c.id}`, "Delete", (cx) => this.remove(c, cx), t.dim))
@@ -98,7 +105,7 @@ export default class Send extends View {
         }
       }
     }
-    const message = comments.format(chosen, this.note.value());
+    const message = comments.format(chosen, this.note.value(), this.noteImages);
     return v_flex().id("send").size_full().p(16).gap(10).bg(t.popover ?? t.background).text_color(t.foreground).track_focus(this.handle)
       .on_key_down((e, cx) => { if (e.key === "escape") { if (this.editing) { this.editing = null; cx.notify(); } else this.close(); cx.stop_propagation(); } })
       .child(h_flex().flex_none().gap(8).items_center()
@@ -119,6 +126,9 @@ export default class Send extends View {
         .child(Scrollbar.vertical("send-list").absolute().inset_0()))
       .child(div().flex_none().p(6).rounded(8).border_1().border_color(t.border).bg(t.background)
         .child(Textarea.new(this.note).w_full().text_size(12.5).text_color(t.foreground)))
+      .when(this.noteImages.length > 0 || Boolean(this.pasting), (e) => e.child(h_flex().flex_none().gap(8).items_center()
+        .child(attachRow(this.noteImages, t, "note-img", { onRemove: (a, cx) => { this.noteImages = this.noteImages.filter((x) => x.id !== a.id); cx.notify(); } }))
+        .when(Boolean(this.pasting), (e) => e.child(div().text_size(11).text_color(t.dim).child("Pasting…")))))
       .when(this.preview, (e) => e.child(v_flex().id("preview").flex_none().max_h(200).overflow_y_scroll().p(8).rounded(8).bg(t.raised)
         .font_family(settings().font_family ?? "JetBrains Mono").text_size(11).text_color(t.muted)
         .children((message || "(nothing selected)").split("\n").map((l) => div().child(l || " ")))))
@@ -127,6 +137,6 @@ export default class Send extends View {
         .child(div().flex_1())
         .child(button("cancel", "Close", () => this.close()))
         .child(button("send-selected", this.sending ? "Sending…" : `Send selected (${chosen.length})`, (cx) => this.sendList(chosen, true, cx), true,
-          !this.sending && Boolean(this.agent) && (chosen.length > 0 || Boolean(this.note.value().trim())))));
+          !this.sending && Boolean(this.agent) && (chosen.length > 0 || Boolean(this.note.value().trim()) || this.noteImages.length > 0))));
   }
 }

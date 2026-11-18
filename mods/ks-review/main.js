@@ -17,6 +17,7 @@ import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { langOf, colorsFor } from "./lib/highlight.js";
 import { parseDiff, fileRows, splitRows, wrapTokens, colsFor, charWidth, longest } from "./lib/diff.js";
 import * as comments from "./lib/comments.js";
+import { onPasteImage, attachRow } from "./lib/attach.js";
 import { READ, git, base, WORKTREE, RECENT, branchRefs, readBranch, readCommits, readCommitFiles, treeRows, candidates } from "./lib/branch.js";
 
 const MAX_LINES = 20000, ROW = 20;
@@ -72,8 +73,11 @@ export default class Review extends View {
     if (!this.windowKey) this.offerZen(cx);
     this.scroll = VirtualListScrollHandle.new();
     this.cursorAt = 0; this.visible = { start: 0, end: 0 }; this.pendingG = false;
-    this.input = InputState.new({ placeholder: "Your comment, then Enter" });
+    this.input = InputState.new({ placeholder: "Your comment, then Enter (cmd-v pastes an image)" });
     this.input.on("submit", (_e, cx) => this.saveComment(cx));
+    // A picture pasted into the comment (cmd-v with an image on the clipboard) goes with it.
+    this.images = [];
+    onPasteImage(this.input, (a, cx) => { this.images.push(a); cx.notify(); }, (on, cx) => { this.pasting = on; cx.notify(); });
     this.roots = this.branchMode ? (p.roots ?? []).filter(Boolean) : p.root ? [p.root] : [];
     this.bases = p.bases ?? {}; // root -> base ref (a PR's base branch, or one picked); else the branch it came from
     // "Compare with" picker (branch review): the repo it's open for, its branches, and a filter box.
@@ -440,13 +444,14 @@ export default class Review extends View {
   allComments() { return comments.all().filter((c) => this.roots.includes(c.root) && (this.branchMode || c.path === this.file()?.path)); }
 
   openComposer(anchor, cx) { // { line, side, code } | { line: null } for the whole file
-    this.composer = anchor; this.input.set_value(""); this.input.focus(); cx.notify();
+    this.composer = anchor; this.images = []; this.input.set_value(""); this.input.focus(); cx.notify();
   }
   closeComposer(cx) { this.composer = null; this.handle.focus(); cx.notify(); }
   saveComment(cx) {
-    const text = this.input.value().trim(), f = this.file();
+    const text = this.input.value().trim() || (this.images.length ? "See the image." : ""), f = this.file();
     if (!text || !this.composer || !f) return;
-    comments.add({ root: f.root, branch: this.branchOf(f), path: f.path, ...this.composer, text, ...(this.commitTag() ? { commit: this.commitTag() } : {}) });
+    comments.add({ root: f.root, branch: this.branchOf(f), path: f.path, ...this.composer, text, ...(this.images.length ? { images: this.images } : {}), ...(this.commitTag() ? { commit: this.commitTag() } : {}) });
+    this.images = [];
     this.closeComposer(cx);
   }
 
@@ -498,7 +503,7 @@ export default class Review extends View {
     return this.mode === "split" ? 2 * (66 + text) + 4 : 124 + text;
   }
   height(item) {
-    if (item.t === "comment") return 30 + 17 * wrapLines(item.c.text);
+    if (item.t === "comment") return 30 + 17 * wrapLines(item.c.text) + (item.c.images?.length ? 50 : 0);
     if (!this.wrap) return ROW;
     if (item.t === "code") return ROW * this.linesOf(item.r, false).length;
     if (item.t === "pair") return ROW * Math.max(1, this.linesOf(item.left, true)?.length ?? 1, this.linesOf(item.right, true)?.length ?? 1);
@@ -546,12 +551,16 @@ export default class Review extends View {
     return div().w_full().h(this.height(item)).pl(102).pr(16).py(3).child(
       v_flex().size_full().px(10).py(4).gap(1).rounded(6).border_l_2().border_color(t.accent).bg(t.raised)
         .child(div().text_size(10.5).font_semibold().text_color(t.accent).child(where(c)))
-        .child(div().text_size(12.5).text_color(t.foreground).child(c.text)));
+        .child(div().text_size(12.5).text_color(t.foreground).child(c.text))
+        .when(Boolean(c.images?.length), (e) => e.child(attachRow(c.images, t, `ci-${c.id}`))));
   }
 
   // ---------- outside the list ----------
   composerBar(t) {
-    return h_flex().flex_none().px(12).py(8).gap(8).items_center().border_t(1).border_color(t.border).bg(t.chrome)
+    const pics = this.images.length || this.pasting ? h_flex().flex_none().px(12).pt(8).gap(8).items_center().border_t(1).border_color(t.border).bg(t.chrome)
+      .child(attachRow(this.images, t, "cmp", { onRemove: (a, cx) => { this.images = this.images.filter((x) => x.id !== a.id); cx.notify(); } }))
+      .when(Boolean(this.pasting), (e) => e.child(div().text_size(11).text_color(t.dim).child("Pasting…"))) : null;
+    const bar = h_flex().flex_none().px(12).py(8).gap(8).items_center().when(!pics, (e) => e.border_t(1).border_color(t.border)).bg(t.chrome)
       .when(Boolean(this.overlay), (e) => e.on_mouse_down("left", (_e, cx) => cx.stop_propagation()))
       .child(div().flex_none().text_size(11.5).text_color(t.accent).child(where(this.composer)))
       .child(div().flex_1().h(32).px(10).flex().items_center().rounded(7).border_1().border_color(t.accent).bg(t.background)
@@ -560,6 +569,7 @@ export default class Review extends View {
         .on_click((_e, cx) => this.saveComment(cx)).child("Comment"))
       .child(div().id("composer-cancel").h(32).px(10).flex().items_center().rounded(7).text_color(t.dim).text_size(12).cursor_pointer()
         .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.closeComposer(cx)).child("Cancel"));
+    return pics ? v_flex().flex_none().child(pics).child(bar) : bar;
   }
 
   commentsColumn(t, mine) {
@@ -572,6 +582,7 @@ export default class Review extends View {
         .child(div().text_size(10.5).font_semibold().text_color(t.accent).child(where(c)))
         .when(Boolean(c.code), (e) => e.child(div().text_size(11).text_color(t.dim).truncate().child(c.code.trim())))
         .child(div().text_size(12).text_color(t.foreground).child(c.text))
+        .when(Boolean(c.images?.length), (e) => e.child(attachRow(c.images, t, `cc-i-${c.id}`)))
         .child(h_flex().gap(2).justify_end().text_size(11)
           .child(link(`send-${c.id}`, "Send to agent", () => comments.send([c], this.agent, this.space), t.accent))
           .child(link(`del-${c.id}`, "Delete", (_e, cx) => { comments.remove(c.id); cx.notify(); }, t.dim)))));

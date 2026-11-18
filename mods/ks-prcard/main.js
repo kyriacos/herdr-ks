@@ -9,6 +9,7 @@ import { v_flex, h_flex, TextareaState, Textarea, Scrollbar } from "gpui-base";
 import { props, exec, hc, theme, run, notify, agents, spaces, panes, shared, settings, appHome, openOverlay, closeOverlay, nextCommand } from "herdr";
 import { checkKind, runningColor, pillColors } from "./lib/ci.js";
 import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
+import { onPasteImage, attachRow, imageLines } from "./lib/attach.js";
 import { candidates, git } from "./lib/branch.js";
 import * as cache from "./lib/cache.js";
 import { fetchPr, prKey } from "./lib/github.js";
@@ -85,7 +86,10 @@ export default class PrCard extends View {
     this.url = p.url; this.repo = p.repo ?? ""; this.number = p.number; this.overlay = p.overlay ?? null; this.windowKey = p.windowKey ?? null;
     this.openProps = Object.fromEntries(Object.entries(p).filter(([k]) => k !== "overlay"));
     this.pr = null; this.error = null; this.places = null; this.target = null; this.sending = false;
-    this.msg = TextareaState.new({ placeholder: "Message to the agent about this PR (sent right away, with the PR as context)", rows: 3 });
+    this.msg = TextareaState.new({ placeholder: "Message to the agent about this PR (sent right away, with the PR as context; cmd-v pastes an image)", rows: 3 });
+    // Pictures pasted into the message go with it (their paths, for the agent to open).
+    this.images = [];
+    onPasteImage(this.msg, (a, cx) => { this.images.push(a); cx.notify(); }, (on, cx) => { this.pasting = on; cx.notify(); });
     // Redraw when the box goes from empty to not (the buttons depend on it).
     this.msg.on("change", (_e, cx) => { const has = Boolean(this.msg.value().trim()); if (has !== this.hasText) { this.hasText = has; cx.notify(); } });
     this.handle = cx.focus_handle(); this.handle.focus();
@@ -159,7 +163,7 @@ export default class PrCard extends View {
   // No agent on this PR: start Claude Code with the message (and the PR) as its first task: in a new tab of the
   // space showing its worktree, else in a new space there; with no local checkout, a new worktree first.
   async startAgent(cx) {
-    const text = this.msg.value().trim(), pr = this.pr;
+    const text = (this.msg.value().trim() + imageLines(this.images)).trim(), pr = this.pr;
     if (!text || this.sending || !pr) return;
     this.sending = true; cx.notify();
     const repoName = this.repo.split("/").pop();
@@ -176,7 +180,7 @@ export default class PrCard extends View {
     if (w.spaces[0]) run("tab.new", { name: `PR #${pr.number}`, space: w.spaces[0].id, folder: w.root, argv: ["claude"], task });
     else run("space.new", { name: `${repoName} #${pr.number}`, folder: w.root, argv: ["claude"], task });
     this.sending = false;
-    this.msg.set_value("");
+    this.msg.set_value(""); this.images = [];
     notify({ title: "Started a session on the PR", body: `${this.repo}#${pr.number} in ${w.root.split("/").pop()}${w.spaces[0] ? "" : " (new space)"}`, level: "success", timeout: 4000 });
     // Look again in a moment, so the new agent shows as the PR's.
     cx.timer.after(6000, (cx) => this.load(cx));
@@ -189,13 +193,13 @@ export default class PrCard extends View {
   }
 
   async send(cx) {
-    const text = this.msg.value().trim();
+    const text = (this.msg.value().trim() + imageLines(this.images)).trim();
     if (!text || !this.target || this.sending) return;
     this.sending = true; cx.notify();
     const pr = this.pr, msg = `About ${this.repo}#${pr.number} "${pr.title}" (branch ${pr.headRefName} → ${pr.baseRefName}, ${this.url}):\n\n${text}`;
     const r = await hc(["send", this.target, msg]).catch((e) => ({ code: 1, stderr: String(e) }));
     this.sending = false;
-    if (r.code === 0) { this.msg.set_value(""); notify({ title: "Sent to the agent", body: `${this.repo}#${pr.number}`, level: "success", timeout: 3000 }); }
+    if (r.code === 0) { this.msg.set_value(""); this.images = []; notify({ title: "Sent to the agent", body: `${this.repo}#${pr.number}`, level: "success", timeout: 3000 }); }
     else notify({ title: "Couldn't send", body: (r.stderr || "").trim().slice(0, 200), level: "error", timeout: 5000 });
     cx.notify();
   }
@@ -299,11 +303,14 @@ export default class PrCard extends View {
       .when(Boolean(this.showOthers), (e) => e.children(others.map((a) => this.agentRow(a, false, "not on this PR", t))))
       .child(div().mt(6).p(6).rounded(8).border_1().border_color(t.border).bg(t.chrome).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .child(Textarea.new(this.msg).w_full().text_size(12.5).text_color(t.foreground)))
+      .when(this.images.length > 0 || Boolean(this.pasting), (e) => e.child(h_flex().pt(6).gap(8).items_center().on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .child(attachRow(this.images, t, "pr-img", { onRemove: (a, cx) => { this.images = this.images.filter((x) => x.id !== a.id); cx.notify(); } }))
+        .when(Boolean(this.pasting), (e) => e.child(div().text_size(11).text_color(t.dim).child("Pasting…")))))
       .child(h_flex().pt(6).gap(8).items_center()
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(!target ? t.dim : targetOnPr ? t.muted : t.blocked)
           .child(starting ? "Starts a new Claude Code session on this PR" : !target ? (this.places === null ? "Finding the agent…" : "Pick the agent to send to") : targetOnPr ? `To ${target.title}, the agent on this PR` : `To ${target.title}, which is not working on this PR`))
         .child(button("send", this.sending ? (starting ? "Starting…" : "Sending…") : starting ? (w0 ? "Start a session & send" : "Create worktree, start & send") : !target ? "Send" : targetOnPr ? "Send to the PR's agent" : "Send anyway",
-          (cx) => (starting ? this.startAgent(cx) : this.send(cx)), true, (Boolean(target) || starting) && !this.sending && Boolean(this.msg.value().trim()))));
+          (cx) => (starting ? this.startAgent(cx) : this.send(cx)), true, (Boolean(target) || starting) && !this.sending && (Boolean(this.msg.value().trim()) || this.images.length > 0))));
 
     return root
       .child(h_flex().h(44).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).bg(t.chrome)

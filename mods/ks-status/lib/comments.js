@@ -2,10 +2,12 @@
 // persisted), and sending them to an agent. Source of truth: shared/comments.js; scripts/install.sh copies
 // it into each mod's lib/.
 import { shared, setShared, agents, focused, spaces, hc, notify } from "herdr";
+import { imageLines } from "./attach.js";
 
 const KEY = "ks.comments";
 
-// [{ id, root, branch, path, line (null: the whole file), side ("new" | "old" | null), code, text, at, commit? }]
+// [{ id, root, branch, path, line (null: the whole file), side ("new" | "old" | null), code, text, at, commit?,
+//    images? (pasted pictures, lib/attach.js: { rel, path, name, w, h }) }]
 export const all = () => (Array.isArray(shared(KEY)) ? shared(KEY) : []);
 export const of = (root, path) => all().filter((c) => c.root === root && (path === undefined || c.path === path));
 export const countOf = (root, path) => of(root, path).length;
@@ -40,8 +42,8 @@ export function agentChoices() {
   return [...agents()].sort((a, b) => b.seq - a.seq).map((a) => ({ address: a.address, title: `${a.space_name} / ${a.title || a.address}` }));
 }
 
-// `note`: extra words for the agent, after the comments (or alone).
-export function format(comments, note = "") {
+// `note`: extra words for the agent, after the comments (or alone); `noteImages`: pictures pasted into it.
+export function format(comments, note = "", noteImages = []) {
   const byRoot = new Map();
   for (const c of comments) (byRoot.get(c.root) ?? byRoot.set(c.root, []).get(c.root)).push(c);
   const parts = [];
@@ -54,20 +56,20 @@ export function format(comments, note = "") {
       n++;
       const where = (c.line == null ? `${c.path} (whole file)` : `${c.path}:${c.line}${c.side === "old" ? " (removed line)" : ""}`)
         + (c.commit ? ` (in commit ${c.commit})` : "");
-      parts.push(`${n}. ${where}${c.code ? `\n   > ${c.code.trim()}` : ""}\n   ${c.text.trim().replace(/\n/g, "\n   ")}`);
+      parts.push(`${n}. ${where}${c.code ? `\n   > ${c.code.trim()}` : ""}\n   ${c.text.trim().replace(/\n/g, "\n   ")}${imageLines(c.images, "   ")}`);
     }
   }
-  const extra = note.trim();
+  const extra = (note.trim() + imageLines(noteImages)).trim();
   if (!n) return extra;
   return `Please address ${n === 1 ? "this review comment" : `these ${n} review comments`}:\n\n${parts.join("\n\n")}${extra ? `\n\nAlso: ${extra}` : ""}`;
 }
 
 // Pastes the comments into the agent and presses enter (hc send), then removes them. Returns true when sent.
-export async function send(comments, prefer, spaceId, note = "") {
-  if (!comments.length && !note.trim()) return false;
+export async function send(comments, prefer, spaceId, note = "", noteImages = []) {
+  if (!comments.length && !note.trim() && !noteImages.length) return false;
   const agent = pickAgent(prefer, spaceId);
   if (!agent) { notify({ title: "No agent to send to", body: "Start an agent in this space first", level: "warning", timeout: 3500 }); return false; }
-  const r = await hc(["send", agent.address, format(comments, note)]).catch((e) => ({ code: 1, stderr: String(e) }));
+  const r = await hc(["send", agent.address, format(comments, note, noteImages)]).catch((e) => ({ code: 1, stderr: String(e) }));
   if (r.code !== 0) { notify({ title: "Couldn't send the comments", body: (r.stderr || r.stdout || "").trim().slice(0, 200), level: "error", timeout: 5000 }); return false; }
   remove(comments.map((c) => c.id));
   notify({ title: comments.length ? `Sent ${comments.length} comment${comments.length === 1 ? "" : "s"}` : "Sent the note", body: `to ${agent.title}`, level: "success", timeout: 3000 });

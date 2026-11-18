@@ -62,6 +62,26 @@ export async function pasteImage() {
   return a;
 }
 
+// A text box (InputState / TextareaState) that takes a pasted picture: a paste with no text in it (an image on the
+// clipboard) is saved as an attachment and handed to `got(attachment, cx)`. Text pastes go in as usual.
+export function onPasteImage(state, got, busy = null) {
+  state.on("paste_other", (_e, cx) => {
+    busy?.(true, cx);
+    cx.spawn(async (cx) => {
+      const a = await pasteImage();
+      busy?.(false, cx);
+      if (a) got({ ...a, path: abs(a) }, cx);
+      cx.notify();
+    });
+  });
+}
+// Images in a message to an agent: their full paths, which it can open and look at.
+export function imageLines(list, indent = "") {
+  const l = (list ?? []).filter((a) => a?.rel || a?.path);
+  if (!l.length) return "";
+  return `\n${indent}${l.length === 1 ? "Image" : "Images"} (open to look at): ${l.map((a) => a.path ?? abs(a)).join(", ")}`;
+}
+
 export const openAtt = (a) => exec("open", [abs(a)]).catch(() => null);
 export const revealAtt = (a) => exec("open", ["-R", abs(a)]).catch(() => null);
 // Deletes the copies (the originals are untouched).
