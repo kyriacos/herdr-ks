@@ -214,11 +214,17 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   comments and everything that happened to it (created, moved, renamed, added to today, attached, started, done),
   with who did it, oldest first. `ks-task show ID` prints the same. Drop files onto
   it, or **Add files…** / **Paste image**; write a comment and **Comment** (or `cmd-enter`). Esc closes it.
+  It opens with the description ready to type in (the title, for a task with none). **Tab** / **shift-Tab** move
+  through everything: title, the column pills, Today, description, Add files, Paste image, the comment box,
+  Comment, Delete. On a button or pill (ringed in the accent colour), Enter or Space presses it. Enter in the title
+  goes to the description.
 - Drop files onto a card to attach them to that task, or onto a column or list for a new task carrying them.
-- **+ Add task** at the end of each list (or `n`): type and Enter, and the box stays open for the next one.
+- **New tasks:** `n` opens a box right under the selected task, `N` one at the end of its list (or column), and
+  **+ Add task** at the end of each list does the same. Type and Enter: the task is saved and selected, so the next
+  Enter opens it for details. Esc cancels. Not while you're typing in a box.
 - **Undo / redo:** every change on the board or in Today (moves, today on / off, adding, deleting, columns): `u` /
   `U`, `cmd-z` / `cmd-shift-z`, or **↶ ↷** in the header. A card's **×** deletes it, with Undo.
-- Keys: `j`/`k`, `gg`/`G`, `h`/`l` between columns, Enter/`o` open, `t` today, `x` delete, `u`/`U` undo / redo,
+- Keys: `j`/`k`, `gg`/`G`, `h`/`l` between columns, Enter/`o` open, `n`/`N` new below / at the end, `t` today, `x` delete, `u`/`U` undo / redo,
   `b` Today / Board, `z` the window.
 - **Agents:** any Claude session can use the `ks-task` command (the `ks-tasks` skill tells it how). Ask it to "add a
   task", "track this", "what's on my board"; it also proposes follow-ups it notices. What an agent adds on its own

@@ -9,6 +9,8 @@
 // Undo / redo (u / U, cmd-z / cmd-shift-z, ↶ ↷): every change made here, back to when the panel opened.
 // Board: columns you add, rename, reorder and delete; drag a card onto another column (or between two cards), or
 // H / L (move to the column left / right), J / K (up / down in its column).
+// New: n opens the add box under the selected task, N at the end of its list; Enter saves and selects the new
+// task (the next Enter opens it). A task's window opens on its description; Tab / shift-Tab go round all of it.
 // Today: what you mean to do today, then the backlog (everything else not done). t (or the card's ☀) moves a task
 // between the two; dragging works here too. A task in the board's last column counts as done and leaves both lists.
 // Attachments (lib/attach.js): drop files from Finder onto a card (that task), onto a column or a list (a new task),
@@ -240,7 +242,7 @@ export default class Tasks extends View {
     this.scroll = ScrollHandle.new(); this.boardScroll = ScrollHandle.new();
     this.cur = { col: 0, row: 0 }; this.row = 0;
     this.drag = null; this.over = null;
-    this.adding = null; // the column (or "@today", "@backlog") whose add box is open
+    this.adding = null; this.addAfter = null; // the column (or "@today", "@backlog") whose add box is open, and the task it's under
     this.add = InputState.new({ placeholder: "A task, Enter adds it" });
     this.add.on("submit", (_e, cx) => this.submitAdd(cx));
     this.add.on("focus", (_e, cx) => { this.typing = true; cx.notify(); });
@@ -307,14 +309,33 @@ export default class Tasks extends View {
     return c ? this.colTasks(c.id)[this.cur.row] ?? null : null;
   }
 
-  startAdd(where, cx) { if (!where) return; this.adding = where; this.add.set_value(""); this.add.focus(); cx.notify(); }
+  // The add box: at the end of a list, or (`after`, a task's id) right under that task.
+  startAdd(where, cx, after = null) { if (!where) return; this.adding = where; this.addAfter = after; this.add.set_value(""); this.add.focus(); cx.notify(); }
+  listOf(where) { return where.startsWith("@") ? this.lists()[where.slice(1)] ?? [] : this.colTasks(where); }
+  // n: a new task under the selected one, in the same list; N: at the bottom of that list.
+  addHere(under, cx) {
+    const sel = this.selected();
+    if (this.view === "today") {
+      const where = !sel || sel.proposed ? "@today" : sel.today ? "@today" : "@backlog";
+      this.startAdd(where, cx, under && sel && !sel.proposed ? sel.id : null);
+    } else this.startAdd(this.data.columns[this.cur.col]?.id, cx, under ? sel?.id ?? null : null);
+  }
+  // Enter: saves it, closes the box and selects the new task, so the next Enter opens it for details.
   submitAdd(cx) {
-    const title = this.add.value().trim(), where = this.adding;
-    if (!title || !where) { this.adding = null; this.handle.focus(); cx.notify(); return; }
+    const title = this.add.value().trim(), where = this.adding, after = this.addAfter;
+    this.adding = null; this.addAfter = null;
+    if (!title || !where) { this.handle.focus(); cx.notify(); return; }
     const fields = where === "@today" ? { today: true, column: this.data.columns[1]?.id ?? this.data.columns[0]?.id } : where === "@backlog" ? { column: this.data.columns[0]?.id } : { column: where };
-    const list = where.startsWith("@") ? this.lists()[where.slice(1)] : this.colTasks(where);
-    this.apply(ops.create(this.newTask({ title, ...fields, order: (list.length ? list[list.length - 1].order : 0) + 1 })), cx);
-    this.add.set_value(""); // stays open for the next one
+    const list = this.listOf(where), i = after ? list.findIndex((x) => x.id === after) : -1;
+    const task = this.newTask({ title, ...fields, order: orderAt(list, i >= 0 ? list[i + 1]?.id ?? null : null) });
+    this.apply(ops.create(task), cx);
+    this.selectId(task.id);
+    this.add.set_value(""); this.handle.focus(); cx.notify();
+  }
+  selectId(id) {
+    if (this.view === "today") { const i = this.flat().findIndex((x) => x.id === id); if (i >= 0) this.row = i; return; }
+    const x = find(this.data, id), c = x ? this.data.columns.findIndex((col) => col.id === x.column) : -1;
+    if (c >= 0) { this.cur.col = c; this.cur.row = Math.max(0, this.colTasks(x.column).findIndex((y) => y.id === id)); }
   }
   // Files dropped on a list or column: a new task, called after the first file, carrying them.
   dropNew(where, paths, cx) {
@@ -404,7 +425,7 @@ export default class Tasks extends View {
   key(e, cx) {
     if (toStrip(e)) { cx.stop_propagation(); return; }
     if (this.typing) {
-      if (e.key === "escape") { if (this.renaming) { this.renaming = null; } this.adding = null; this.handle.focus(); cx.stop_propagation(); cx.notify(); }
+      if (e.key === "escape") { if (this.renaming) { this.renaming = null; } this.adding = null; this.addAfter = null; this.handle.focus(); cx.stop_propagation(); cx.notify(); }
       return;
     }
     // Shift+letter reads as the capital (e.key can be the lowercase letter with shift held).
@@ -424,7 +445,7 @@ export default class Tasks extends View {
     else if (k === "g") { this.__g = true; cx.timer.after(600, () => { this.__g = false; }); cx.stop_propagation(); return; }
     else if (k === "G") go(1e9);
     else if ((k === "enter" || k === "o") && sel) this.openTask(sel.id);
-    else if (k === "n") this.startAdd(today ? "@today" : col?.id, cx);
+    else if (k === "n" || k === "N") this.addHere(k === "n", cx);
     else if (k === "t" && sel) this.toggleToday(sel, cx);
     else if (k === "a" && sel?.proposed) this.accept(sel, cx);
     else if (k === "x" && sel) this.remove(sel, cx);
@@ -501,8 +522,8 @@ export default class Tasks extends View {
           .child(div().flex_1().min_w(0).truncate().child(meta.join(" · "))))));
   }
 
-  addBox(where, t) {
-    if (this.adding !== where) {
+  addBox(where, t, inline = false) {
+    if (this.adding !== where || Boolean(this.addAfter) !== inline) {
       return div().id(`add-${where}`).flex_none().h(28).px(8).flex().items_center().rounded(6).text_size(11.5).text_color(t.dim).cursor_pointer()
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => this.startAdd(where, cx)).child("+ Add task");
     }
@@ -517,7 +538,10 @@ export default class Tasks extends View {
     return v_flex().gap(6).rounded(8).when(where.startsWith("@"), (e) => e.p(target ? 4 : 0).when(Boolean(target), (e) => e.bg(t.accent + "0d")))
       .on_mouse_move((e, cx) => this.overList(where, e, cx))
       .on_drop((e, cx) => { cx.stop_propagation(); if (!this.droppedOn) this.dropNew(where, e.paths, cx); })
-      .children(list.map((x, i) => this.card(x, t, where, list, at === i)))
+      .children(list.flatMap((x, i) => {
+        const c = this.card(x, t, where, list, at === i);
+        return this.adding === where && this.addAfter === x.id ? [c, this.addBox(where, t, true)] : [c];
+      }))
       .when(Boolean(endLine), (e) => e.child(this.slot(t)))
       .child(this.addBox(where, t));
   }
@@ -642,8 +666,8 @@ export default class Tasks extends View {
         .child(this.view === "today" ? this.renderToday(t, focused) : this.renderBoard(t, focused))
         .when(this.view === "today", (e) => e.child(Scrollbar.vertical("tasks-today").absolute().inset_0())))
       .child(h_flex().flex_none().h(24).px(12).items_center().border_t(1).border_color(t.border).text_size(10.5).text_color(t.dim).truncate()
-        .child(this.view === "today" ? "j/k move · Enter open · t today · n new · x delete · s here / all · b board · z window · drop files"
-          : "h/l j/k move · H/L to column · J/K reorder · r rename column · z window · drag cards · drop files"))
+        .child(this.view === "today" ? "j/k move · Enter open · t today · n new below · N new at end · x delete · s here / all · b board · z window · drop files"
+          : "h/l j/k move · n new below · N at end · H/L to column · J/K reorder · r rename column · z window · drag cards · drop files"))
       .children([this.ghost(t)].filter(Boolean));
   }
 
@@ -660,9 +684,45 @@ export default class Tasks extends View {
     this.note.set_auto_grow(2, 8);
     // A picture pasted into the description or a comment becomes one of the task's attachments.
     for (const box of [this.body, this.note]) onPasteImage(box, (a, cx) => this.apply(ops.attach(this.taskId, [a]), cx), (on, cx) => { this.working = on ? "Pasting…" : null; cx.notify(); });
+    // Tab order (Tab / shift-Tab): title, the column pills, Today, the description, Add files, Paste image, the
+    // comment box, Comment, Delete. The text boxes take the keyboard themselves; for the others the window keeps it
+    // and rings the one Tab is on, and Enter or Space presses it. `this.stop` is where Tab is.
+    this.stop = null;
+    for (const [name, box] of [["title", this.title], ["body", this.body], ["note", this.note]]) box.on("focus", (_e, cx) => { this.stop = name; cx.notify(); });
+    this.title.on("submit", (_e, cx) => this.goStop("body", cx));
     this.scroll = ScrollHandle.new();
     this.seeded = false; this.working = null;
     this.handle.focus();
+  }
+  stops(x) {
+    return ["title", ...this.data.columns.map((c) => `col:${c.id}`), "today", ...(x.proposed ? ["accept", "dismiss"] : []), "body", "pick", "paste", "note", "send", "delete"];
+  }
+  goStop(name, cx) {
+    this.stop = name;
+    if (name === "title") this.title.focus(); else if (name === "body") this.body.focus(); else if (name === "note") this.note.focus(); else this.handle.focus();
+    cx.notify();
+  }
+  tabStop(back, cx) {
+    const l = this.stops(this.task()), i = l.indexOf(this.stop);
+    this.goStop(l[i < 0 ? (back ? l.length - 1 : 0) : (i + (back ? -1 : 1) + l.length) % l.length], cx);
+  }
+  // Enter / Space on a ringed control: what clicking it does.
+  pressStop(x, cx) {
+    const s = this.stop ?? "";
+    if (s.startsWith("col:")) this.apply(ops.move(x.id, s.slice(4), null), cx);
+    else if (s === "today") this.apply(ops.patch(x.id, { today: !x.today }), cx);
+    else if (s === "accept") this.apply(ops.patch(x.id, { proposed: false }), cx);
+    else if (s === "dismiss") { this.apply(ops.remove(x.id), cx); this.closeTask(cx); }
+    else if (s === "pick") this.attachWith(cx, "Choosing…", pickAndAdd);
+    else if (s === "paste") this.attachWith(cx, "Pasting…", pasteImage);
+    else if (s === "send") this.sendComment(cx);
+    else if (s === "delete") this.deleteTask(x, cx);
+    else return false;
+    return true;
+  }
+  deleteTask(x, cx) {
+    if (!this.confirmDel) { this.confirmDel = true; cx.timer.after(4000, (cx) => { this.confirmDel = false; cx.notify(); }); cx.notify(); return; }
+    this.pending = null; dropFiles(x.attachments); this.apply(ops.remove(x.id), cx); this.closeTask(cx);
   }
   task() { return find(this.data, this.taskId); }
   // First load: the fields get the task's text (later reloads leave what you're typing alone).
@@ -670,7 +730,7 @@ export default class Tasks extends View {
     const x = this.task();
     if (!x || this.seeded) return;
     this.seeded = true; this.title.set_value(x.title ?? ""); this.body.set_value(x.body ?? "");
-    if (!x.title) this.title.focus();
+    if (!x.title) this.title.focus(); else this.body.focus(); // the description first (Tab moves on)
   }
   // Saved a moment after the last key; every field typed meanwhile goes in that one save.
   typed(field, value, cx) {
@@ -719,11 +779,13 @@ export default class Tasks extends View {
         .child(div().text_size(13).text_color(t.dim).child(this.loaded ? "This task was deleted." : "Loading…"));
     }
     const d = this.data, mono = settings().font_family ?? "JetBrains Mono";
-    const pill = (id, label, on, act, tone = t.accent) => div().id(id).h(24).px(9).flex().items_center().rounded(12).text_size(11).cursor_pointer()
+    const ringed = (name) => this.stop === name && this.handle.is_focused();
+    const ring = (name, e) => e.when(ringed(name), (e) => e.border_2().border_color(t.accent));
+    const pill = (id, label, on, act, tone = t.accent, name = null) => ring(name, div().id(id).h(24).px(9).flex().items_center().rounded(12).text_size(11).cursor_pointer()
       .border_1().border_color(on ? tone : t.border).bg(on ? tone + "1f" : t.background).text_color(on ? tone : t.muted)
-      .hover((s) => s.bg(t.hover)).on_click((_e, cx) => act(cx)).child(label);
-    const btn = (id, label, act, tone = t.muted) => div().id(id).h(26).px(10).flex().items_center().rounded(6).border_1().border_color(t.border)
-      .text_size(11.5).text_color(tone).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => act(cx)).child(label);
+      .hover((s) => s.bg(t.hover)).on_click((_e, cx) => act(cx)).child(label));
+    const btn = (id, label, act, tone = t.muted, name = null) => ring(name, div().id(id).h(26).px(10).flex().items_center().rounded(6).border_1().border_color(t.border)
+      .text_size(11.5).text_color(tone).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => act(cx)).child(label));
     const section = (label, extra = null) => h_flex().mt(14).mb(6).gap(8).items_center()
       .child(div().text_size(11).font_semibold().text_color(t.muted).child(label)).child(div().flex_1().h(1).bg(t.border)).when(Boolean(extra), (e) => e.child(extra));
     const comments = [...(x.comments ?? [])].sort((a, b) => a.at - b.at);
@@ -735,6 +797,8 @@ export default class Tasks extends View {
       .on_key_down((e, cx) => {
         const m = e.modifiers ?? {};
         if (e.key === "escape") { close(cx); cx.stop_propagation(); return; }
+        if (e.key === "tab" && !m.platform && !m.control && !m.alt) { this.tabStop(Boolean(m.shift), cx); cx.stop_propagation(); return; }
+        if ((e.key === "enter" || e.key === "space") && !m.platform && this.handle.is_focused() && this.pressStop(x, cx)) { cx.stop_propagation(); return; }
         if (e.key === "enter" && m.platform && this.note.value().trim()) { this.sendComment(cx); cx.stop_propagation(); }
       })
       .child(h_flex().flex_none().h(44).px(16).gap(8).items_center().border_b(1).border_color(t.border)
@@ -745,23 +809,23 @@ export default class Tasks extends View {
       .child(div().flex_1().min_h(0).relative()
         .child(v_flex().id("task-body").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).px(16).pt(12).pb(20)
           .child(h_flex().flex_wrap().gap(6).items_center()
-            .children(d.columns.map((c) => pill(`tc-${c.id}`, c.name, x.column === c.id, (cx) => this.apply(ops.move(x.id, c.id, null), cx))))
+            .children(d.columns.map((c) => pill(`tc-${c.id}`, c.name, x.column === c.id, (cx) => this.apply(ops.move(x.id, c.id, null), cx), t.accent, `col:${c.id}`)))
             .child(div().w(8))
-            .child(pill("tt", x.today ? "☀ Today" : "☀ Add to today", Boolean(x.today), (cx) => this.apply(ops.patch(x.id, { today: !x.today }), cx))))
+            .child(pill("tt", x.today ? "☀ Today" : "☀ Add to today", Boolean(x.today), (cx) => this.apply(ops.patch(x.id, { today: !x.today }), cx), t.accent, "today")))
           .child(h_flex().mt(8).gap(8).text_size(10.5).text_color(t.dim)
             .when(Boolean(x.spaceName), (e) => e.child(div().px(5).rounded(5).border_1().border_color(t.border).text_color(t.muted).child(x.spaceName)))
             .child(div().child(`${x.by ? `by ${x.by} · ` : ""}created ${ago(x.created)} · updated ${ago(x.updated)}${x.assignee ? ` · @ ${x.assignee}` : ""}${this.dirty ? " · saving…" : ""}`)))
           .when(Boolean(x.proposed), (e) => e.child(h_flex().mt(10).px(10).h(32).gap(8).items_center().rounded(7).bg(t.accent + "1f").text_size(11.5).text_color(t.accent)
             .child(div().flex_1().truncate().child("Proposed by an agent: accept it to keep it (an agent may then start on it)"))
-            .child(div().id("tp-acc").px(7).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => this.apply(ops.patch(x.id, { proposed: false }), cx)).child("Accept"))
-            .child(div().id("tp-dis").px(7).rounded(4).cursor_pointer().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => { this.apply(ops.remove(x.id), cx); close(cx); }).child("Dismiss"))))
+            .child(ring("accept", div().id("tp-acc").px(7)).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => this.apply(ops.patch(x.id, { proposed: false }), cx)).child("Accept"))
+            .child(ring("dismiss", div().id("tp-dis").px(7)).rounded(4).cursor_pointer().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => { this.apply(ops.remove(x.id), cx); close(cx); }).child("Dismiss"))))
           .child(section("Description"))
           .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)
             .child(Textarea.new(this.body).w_full().text_size(12.5).text_color(t.foreground).font_family(mono)))
           .child(section(`Attachments${(x.attachments ?? []).length ? ` · ${(x.attachments ?? []).length}` : ""}`,
             h_flex().gap(6)
-              .child(btn("ta-pick", "Add files…", (cx) => this.attachWith(cx, "Choosing…", pickAndAdd)))
-              .child(btn("ta-paste", "Paste image", (cx) => this.attachWith(cx, "Pasting…", pasteImage)))))
+              .child(btn("ta-pick", "Add files…", (cx) => this.attachWith(cx, "Choosing…", pickAndAdd), t.muted, "pick"))
+              .child(btn("ta-paste", "Paste image", (cx) => this.attachWith(cx, "Pasting…", pasteImage), t.muted, "paste"))))
           .when(Boolean(this.working), (e) => e.child(div().mb(6).text_size(11).text_color(t.dim).child(this.working)))
           .child((x.attachments ?? []).length
             ? attachRow(x.attachments, t, `ta-${x.id}`, { big: true, onRemove: (a, cx) => { this.apply(ops.unattach(x.id, a.id), cx); dropFiles([a]); } })
@@ -783,15 +847,12 @@ export default class Tasks extends View {
             .child(Textarea.new(this.note).w_full().text_size(12.5).text_color(t.foreground)))
           .child(h_flex().mt(6).gap(8).items_center()
             .child(div().flex_1())
-            .child(div().id("cm-send").h(26).px(10).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground).text_size(11.5).cursor_pointer()
+            .child(ring("send", div().id("cm-send").h(26)).px(10).flex().items_center().rounded(6).bg(t.solid).text_color(t.solid_foreground).text_size(11.5).cursor_pointer()
               .hover((s) => s.opacity(0.85)).on_click((_e, cx) => this.sendComment(cx)).child("Comment"))))
         .child(Scrollbar.vertical("task-body").absolute().inset_0()))
       .child(h_flex().flex_none().h(40).px(16).gap(8).items_center().border_t(1).border_color(t.border)
-        .child(div().flex_1().text_size(10.5).text_color(t.dim).child("Esc closes · drop files anywhere here to attach"))
-        .child(btn("task-del", this.confirmDel ? "Click again to delete" : "Delete task", (cx) => {
-          if (!this.confirmDel) { this.confirmDel = true; cx.timer.after(4000, (cx) => { this.confirmDel = false; cx.notify(); }); cx.notify(); return; }
-          this.pending = null; dropFiles(x.attachments); this.apply(ops.remove(x.id), cx); close(cx);
-        }, t.ansi1)));
+        .child(div().flex_1().text_size(10.5).text_color(t.dim).child("Tab / shift-Tab move · Enter presses · Esc closes · drop files to attach"))
+        .child(btn("task-del", this.confirmDel ? (this.stop === "delete" ? "Press again to delete" : "Click again to delete") : "Delete task", (cx) => this.deleteTask(x, cx), t.ansi1, "delete")));
   }
 
   render(cx) {
