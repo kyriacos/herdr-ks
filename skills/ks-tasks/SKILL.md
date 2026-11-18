@@ -32,6 +32,12 @@ ks-task move ID "Column" | update ID --title/--body/--today | attach ID path... 
 
 IDs can be shortened to a unique prefix. `ks-task --help` lists everything.
 
+## When the user hands you a task
+
+A message like `Task t… "Title" from my board (ks-task show t… for the details)` is a reference the user pasted
+from the board to talk about that task. Run `ks-task show ID` first to read its description, comments and
+attachments, then answer what they asked. Don't `start` it unless they ask you to work on it.
+
 ## How to use it well
 
 - **Before adding, list or search** (`ks-task list words from the title`) so you don't duplicate. The same open

@@ -218,6 +218,11 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   through everything: title, the column pills, Today, description, Add files, Paste image, the comment box,
   Comment, Delete. On a button or pill (ringed in the accent colour), Enter or Space presses it. Enter in the title
   goes to the description.
+- **Right-click a card** to talk to an agent about it: **Ask about it: <agent>** (the task's space's agent first,
+  then up to three others) shows that agent and pastes the task's reference into its prompt, not sent, so you type
+  what you want to discuss and press Enter. The reference reads `Task <id> "<title>" from my board (ks-task show
+  <id> for the details)`, and the agent reads the rest with `ks-task`. **Copy reference** puts it on the
+  clipboard instead; **Open** opens the task. A task's window has **Ask agent** too.
 - Drop files onto a card to attach them to that task, or onto a column or list for a new task carrying them.
 - **New tasks:** `n` opens a box right under the selected task, `N` one at the end of its list (or column), and
   **+ Add task** at the end of each list does the same. Type and Enter: the task is saved and selected, so the next

@@ -22,7 +22,8 @@
 // undo each other), then bumps shared "ks-tasks.rev" so the other copies read it again at once.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, InputState, Input } from "gpui-base";
-import { exec, appHome, spaces, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand } from "herdr";
+import { exec, appHome, spaces, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand, run, notify } from "herdr";
+import { pickAgent, agentChoices } from "./lib/comments.js";
 import { trackActive, takeRequest, raiseStrip, claim, backToPanel } from "./lib/windows.js";
 import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
@@ -147,13 +148,39 @@ const putBack = (step, side) => Object.assign((d) => {
   if (step.cols) d.columns = clone(step.cols[side]);
 }, { label: step.label });
 
+// ---------- a card's right-click menu ----------
+// A task's reference, for an agent: its id and title, and how to read the rest (the ks-tasks skill knows ks-task).
+export const reference = (x) => `Task ${x.id} "${x.title || "Untitled"}" from my board (ks-task show ${x.id} for the details) `;
+const MENU_ROW = 30;
+function openMenu(task) {
+  const n = menuRows({ id: task.id, title: task.title, space: task.space }).length;
+  openOverlay({ mod: "ks-tasks", kind: "popup", width: 300, height: n * MENU_ROW + 22, props: { menu: { id: task.id, title: task.title, space: task.space } } });
+}
+// "Ask <agent>": the task's space's agent first (else the shown one, else the latest), then up to three others.
+// Picking one shows that agent and pastes the reference into its prompt, not sent: you add what to talk about.
+function menuRows(m) {
+  const first = pickAgent(null, m.space), others = agentChoices().filter((a) => a.address !== first?.address).slice(0, 3);
+  return [
+    ...[first, ...others].filter(Boolean).map((a, i) => ({ label: `${i ? "Ask" : "Ask about it:"} ${a.title}`, act: (cx) => askAgent(m, a, cx), sep: false, agent: true })),
+    { label: "Copy reference", act: (cx) => { cx.write_to_clipboard(reference(m)); notify({ title: "Task reference copied", body: reference(m).trim(), level: "info", timeout: 2500 }); }, sep: true },
+    { label: "Open", act: () => openOverlay({ mod: "ks-tasks", kind: "dialog", key: `ks-task-${m.id}`, width: 680, height: 720, props: { task: m.id } }) },
+  ];
+}
+function askAgent(m, a, cx) {
+  cx.write_to_clipboard(reference(m));
+  run("agent.focus", { terminal: a.address });
+  run("pane.focus", { terminal: a.address });
+  run("terminal.paste");
+}
+
 export default class Tasks extends View {
   init(_props, cx) {
     const p = props() ?? {};
     this.data = { columns: COLUMNS.map((c) => ({ ...c })), tasks: [] }; this.loaded = false;
     this.chain = Promise.resolve(); this.rev = shared(REV) ?? 0;
     this.handle = cx.focus_handle();
-    this.taskId = p.task ?? null; this.board = Boolean(p.board);
+    this.taskId = p.task ?? null; this.board = Boolean(p.board); this.menu = p.menu ?? null;
+    if (this.menu) { this.at = 0; this.handle.focus(); return; } // a card's right-click menu: needs no data
     if (this.taskId) this.initTask(cx); else this.initList(cx);
     this.reload(cx);
     cx.timer.every(3000, (cx) => { if (!this.busy) this.reload(cx); });
@@ -493,6 +520,7 @@ export default class Tasks extends View {
         .hover((s) => s.bg(t.hover))
         // Stopped here, so in the board window a press on a card drags the card, not the window.
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressCard(task, e); })
+        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openMenu(task); })
         .on_mouse_move((e, cx) => this.overCard(where, list, task, e, cx))
         .on_click((_e, cx) => this.clickCard(task, cx))
         .on_drop((e, cx) => { cx.stop_propagation(); this.droppedOn = true; cx.timer.after(100, () => { this.droppedOn = false; }); this.dropOn(task, e.paths, cx); })
@@ -695,7 +723,7 @@ export default class Tasks extends View {
     this.handle.focus();
   }
   stops(x) {
-    return ["title", ...this.data.columns.map((c) => `col:${c.id}`), "today", ...(x.proposed ? ["accept", "dismiss"] : []), "body", "pick", "paste", "note", "send", "delete"];
+    return ["title", ...this.data.columns.map((c) => `col:${c.id}`), "today", ...(x.proposed ? ["accept", "dismiss"] : []), "body", "pick", "paste", "note", "send", "ask", "delete"];
   }
   goStop(name, cx) {
     this.stop = name;
@@ -716,6 +744,7 @@ export default class Tasks extends View {
     else if (s === "pick") this.attachWith(cx, "Choosing…", pickAndAdd);
     else if (s === "paste") this.attachWith(cx, "Pasting…", pasteImage);
     else if (s === "send") this.sendComment(cx);
+    else if (s === "ask") { const a = pickAgent(null, x.space); if (a) { this.closeTask(cx); askAgent(x, a, cx); } }
     else if (s === "delete") this.deleteTask(x, cx);
     else return false;
     return true;
@@ -852,10 +881,37 @@ export default class Tasks extends View {
         .child(Scrollbar.vertical("task-body").absolute().inset_0()))
       .child(h_flex().flex_none().h(40).px(16).gap(8).items_center().border_t(1).border_color(t.border)
         .child(div().flex_1().text_size(10.5).text_color(t.dim).child("Tab / shift-Tab move · Enter presses · Esc closes · drop files to attach"))
+        .child(btn("task-ask", "Ask agent", (cx) => {
+          const a = pickAgent(null, x.space);
+          if (!a) { notify({ title: "No agent to ask", body: "Start an agent first, or right-click a card for the list", level: "warning", timeout: 3000 }); return; }
+          this.closeTask(cx); askAgent(x, a, cx);
+        }, t.muted, "ask"))
         .child(btn("task-del", this.confirmDel ? (this.stop === "delete" ? "Press again to delete" : "Click again to delete") : "Delete task", (cx) => this.deleteTask(x, cx), t.ansi1, "delete")));
   }
 
+  renderMenu() {
+    const t = theme(), rows = menuRows(this.menu);
+    const choose = (i, cx) => { closeOverlay(props().overlay); rows[i]?.act(cx); };
+    return v_flex().id("task-menu").track_focus(this.handle).size_full().p(5).bg(t.popover).text_size(12.5).text_color(t.foreground)
+      .on_key_down((e, cx) => {
+        if (e.key === "escape") { closeOverlay(props().overlay); return; }
+        if (e.key === "down" || e.key === "j") this.at = (this.at + 1) % rows.length;
+        else if (e.key === "up" || e.key === "k") this.at = (this.at + rows.length - 1) % rows.length;
+        else if (e.key === "enter") return choose(this.at, cx);
+        else return;
+        cx.stop_propagation(); cx.notify();
+      })
+      .child(div().px(8).h(16).text_size(10.5).text_color(t.dim).truncate().child(this.menu.title || "Untitled"))
+      .children(rows.map((r, i) => v_flex()
+        .when(Boolean(r.sep), (e) => e.child(div().mx(7).my(2).h(1).bg(t.border)))
+        .child(h_flex().id(`tm-${i}`).h(MENU_ROW - (r.sep ? 5 : 0)).px(8).items_center().rounded(6).cursor_pointer()
+          .when(i === this.at, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
+          .on_click((_e, cx) => choose(i, cx))
+          .child(div().flex_1().min_w(0).truncate().text_color(r.agent ? t.foreground : t.muted).child(r.label)))));
+  }
+
   render(cx) {
+    if (this.menu) return this.renderMenu();
     if (this.taskId) return this.renderTask(cx);
     return this.board ? this.renderList(cx) : dimmed(this, this.renderList(cx));
   }
