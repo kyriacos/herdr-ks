@@ -8,6 +8,7 @@ import { agents, terminals, panes, focused, spaces, run, exec, theme, shared, se
 import { readProcs, stop as stopProc } from "./procs.js";
 import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
+import { sectionHead, headAction } from "./lib/section.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -497,25 +498,10 @@ export default class Agents extends View {
       .text_size(13)
       .when(!collapsed, (el) =>
         el.child(
-          h_flex()
-            .px(16)
-            .h(41)
-            .pt(14)
-            .pb(5)
-            .flex_none()
-            .items_center()
-            .justify_between()
-            .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents"))
-            .child(
-              div()
-                .id("ag-sort")
-                .text_size(11)
-                .text_color(t.dim)
-                .hover((s) => s.text_color(t.foreground))
-                .on_click(() => openOverlay({ mod: "ks-agents", kind: "popup", width: 200, height: 140, props: { sortMenu: true } }))
-                .tooltip(`Sort agents: ${sort.label}`)
-                .child(svg(`mods/workspace-chrome/${sort.icon}.svg`).size(14)),
-            ),
+          sectionHead(t, { id: "ag", title: "Agents", count: list.length || "", actions: [
+            headAction(t, "ag-sort", svg(`mods/workspace-chrome/${sort.icon}.svg`).size(14), `Sort agents: ${sort.label}`,
+              () => openOverlay({ mod: "ks-agents", kind: "popup", width: 200, height: 140, props: { sortMenu: true } })),
+          ] }),
         ),
       )
       .when(list.length === 0 && !collapsed, (el) =>

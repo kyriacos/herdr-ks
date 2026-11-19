@@ -13,8 +13,9 @@ import { fetchPr, prKey } from "./lib/github.js";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
+import { sectionHead, sectionFrame, badge, headAction, SECTION_HEAD } from "./lib/section.js";
 
-const BLOCK = "my-prs", HEAD = 34, ROW = 50, DRAFTS = 14;
+const BLOCK = "my-prs", HEAD = SECTION_HEAD + 1, ROW = 50, DRAFTS = 14;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
   number title url isDraft repository { nameWithOwner } headRefName baseRefName reviewDecision mergeStateStatus updatedAt
   commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 80) { nodes {
@@ -211,7 +212,7 @@ export default class MyPrs extends View {
     const icon = (id, label, act) => div().id(id).flex_none().size(20).flex().items_center().justify_center().rounded(5).cursor_pointer()
       .text_size(11).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label);
-    return v_flex().id("myprs").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).track_focus(this.handle)
+    return sectionFrame(t, v_flex().id("myprs").size_full().min_h(0).bg(t.chrome).text_color(t.foreground)).track_focus(this.handle)
       .on_key_down((e, cx) => {
         const before = this.cursor;
         if (!listKey(this, e, prs.length, (i) => this.openCard(prs[i]), (k) => {
@@ -222,18 +223,15 @@ export default class MyPrs extends View {
         if (this.cursor !== before) this.scroll.scroll_to_item(this.cursor);
         cx.stop_propagation(); cx.notify();
       })
-      .child(h_flex().id("myprs-head").h(HEAD).flex_none().px(12).gap(6).items_center().cursor_pointer()
-        .on_click((_e, cx) => this.toggle(cx))
-        .child(div().w(10).flex_none().text_size(10).text_color(t.dim).child(this.collapsed ? "▸" : "▾"))
-        .child(div().flex_none().text_size(12).text_color(t.muted).child("My PRs"))
-        .child(div().flex_none().text_size(11).text_color(t.dim).child(this.loaded ? `${prs.length}` : this.loading ? "…" : ""))
-        .when(fail > 0, (e) => e.child(div().flex_none().px(5).rounded(6).bg(t.ansi1).text_size(10).text_color(t.background).child(`${fail} need you`)))
-        .when(running > 0, (e) => e.child(div().flex_none().px(5).rounded(6).border_1().border_color(pillColors(runningColor(t), t).border).bg(pillColors(runningColor(t), t).bg).text_size(10).text_color(runningColor(t)).child(`${running} running`)))
-        .child(div().flex_1())
-        // How old the list is, once that's more than a minute and a half (a look failing, or the Mac asleep).
-        .when(!this.loading && this.doneAt > 0 && Boolean(ago(Date.now() - this.doneAt)), (e) => e.child(div().flex_none().text_size(10.5).text_color(this.error ? t.ansi1 : t.dim).child(ago(Date.now() - this.doneAt))))
-        .child(icon("myprs-refresh", this.loading ? "…" : "↻", (cx) => this.refresh(cx)))
-        .child(icon("myprs-hide", "×", () => run("layout.hide", { id: BLOCK }))))
+      .child(sectionHead(t, { id: "myprs", title: "My PRs", count: this.loaded ? prs.length : this.loading ? "…" : "",
+        collapsed: this.collapsed, onToggle: (cx) => this.toggle(cx), onClick: (cx) => this.toggle(cx),
+        badges: [fail > 0 && badge(t, `${fail} need you`, t.ansi1, true), running > 0 && badge(t, `${running} running`, runningColor(t))].filter(Boolean),
+        actions: [
+          // How old the list is, once that's more than a minute and a half (a look failing, or the Mac asleep).
+          ...(!this.loading && this.doneAt > 0 && ago(Date.now() - this.doneAt) ? [div().flex_none().text_size(10).text_color(this.error ? t.ansi1 : t.dim).child(ago(Date.now() - this.doneAt))] : []),
+          headAction(t, "myprs-refresh", this.loading ? "…" : "↻", "Look again (r)", (cx) => this.refresh(cx)),
+          headAction(t, "myprs-hide", "×", "Hide (cmd-shift-m shows it)", () => run("layout.hide", { id: BLOCK })),
+        ] }))
       .when(!this.collapsed, (e) => e.child(div().flex_1().min_h(0).relative()
         .child(v_flex().id("myprs-list").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll)
           .when(Boolean(this.error), (e) => e.child(div().px(14).py(4).text_size(11).text_color(t.ansi1).child(this.error)))

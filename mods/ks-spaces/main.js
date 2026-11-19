@@ -16,6 +16,7 @@ import { docValue, quicklook, fingerprint } from "./pane-map.js";
 import { dimmed } from "./lib/focus.js";
 import { NAMES, spaceName, spaceTask, labelFor, generic } from "./lib/spacenames.js";
 import { pref } from "./lib/prefs.js";
+import { sectionHead, sectionFrame, headAction, SECTION_HEAD } from "./lib/section.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -928,12 +929,10 @@ export default class Spaces extends View {
       changed = true;
     }
     if (changed) setShared("space.colors", kept);
-    return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
-      .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
-        .when(collapsed, el => el.pl(0).pr(0).justify_center())
-        .when(!collapsed, el => el.child("Spaces"))
-        .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
-          .on_click(() => run("space.new")).child(svg("mods/workspace-chrome/plus.svg").size(14))))
+    const add = headAction(t, "space-new", svg("mods/workspace-chrome/plus.svg").size(14), "New space", () => run("space.new"));
+    return sectionFrame(t, v_flex().size_full().min_h(0).bg(t.chrome).text_size(13))
+      .child(collapsed ? h_flex().h(SECTION_HEAD).items_center().justify_center().child(add)
+        : sectionHead(t, { id: "spaces", title: "Spaces", count: sp.length || "", actions: [add] }))
       .child(v_flex().flex_1().min_h(0).px(collapsed ? 0 : 8).pb(14).gap(2).overflow_y_scrollbar().mode("always")
         .on_mouse_up("left", (_e, cx) => { this.pressed = null; this.badgePress = null; cx.notify(); })
         .children(this.grouped(t, collapsed)));

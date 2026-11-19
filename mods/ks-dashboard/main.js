@@ -10,6 +10,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextView, InputState, Input } from "gpui-base";
 import { exec, run, theme, props, notify, nextCommand } from "herdr";
 import { dimmed } from "./lib/focus.js";
+import { sectionHead, sectionFrame, badge, headAction } from "./lib/section.js";
 import { isWindow, initWindow, openPanelWindow, closeWindow, windowFrame, closeButton } from "./lib/panelwin.js";
 import { RANGES, rangeStart, ymd, loadPrompts, savePrompts, loadRuns, removeRun, activity, lastActivity, runPrompt, loadViews, saveViews, filtered, knownRepos } from "./data.js";
 
@@ -136,14 +137,11 @@ export default class Dashboard extends View {
   renderBlock() {
     const t = theme(), a = this.shown("day"), l = lines(a?.prs ?? []), v = this.view();
     const chip = (label, tone = t.muted) => div().flex_none().px(5).rounded(6).border_1().border_color(t.border).text_size(10).text_color(tone).child(label);
-    return v_flex().id("dash").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).cursor_pointer()
-      .hover((s) => s.bg(t.hover)).on_click(() => this.open())
-      .child(h_flex().h(30).flex_none().px(12).gap(6).items_center()
-        .child(div().text_size(12).text_color(t.muted).child("Dashboard"))
-        .when(Boolean(this.running), (e) => e.child(chip("running…", t.accent)))
-        .child(div().flex_1())
-        .child(div().text_size(11).text_color(t.dim).child("⤢")))
-      .child(h_flex().px(12).gap(5).items_center().flex_wrap()
+    return sectionFrame(t, v_flex().id("dash").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).cursor_pointer()
+      .hover((s) => s.bg(t.hover)).on_click(() => this.open()))
+      .child(sectionHead(t, { id: "dash", title: "Dashboard", badges: this.running ? [badge(t, "running…", t.accent)] : [],
+        actions: [headAction(t, "dash-open", "⤢", "Open the dashboard", () => this.open())] }))
+      .child(h_flex().pl(30).pr(12).gap(5).items_center().flex_wrap()
         .child(div().text_size(11).text_color(t.dim).child(v ? `Today · ${v.name}` : "Today"))
         .when(Boolean(a), (e) => e
           .child(chip(`${plural(a.prs.length, "PR")} merged`, a.prs.length ? t.accent : t.muted))

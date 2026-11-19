@@ -7,8 +7,9 @@ import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, theme, run, shared, setShared, openOverlay, settings } from "herdr";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
+import { sectionHead, sectionFrame, badge, headAction, SECTION_HEAD } from "./lib/section.js";
 
-const BLOCK = "now-tasks", HEAD = 30, ROW = 40;
+const BLOCK = "now-tasks", HEAD = SECTION_HEAD + 1, ROW = 40;
 const max = () => Math.max(1, Math.min(8, pref("nowTasksMax") ?? 3)); // how many it lists (settings)
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
@@ -75,18 +76,11 @@ export default class NowTasks extends View {
     if (r !== this.rev) { if (this.rev !== null) this.read(cx); this.rev = r; }
     const t = theme(), v = this.view(), MAX = max();
     if (this.lastMax !== MAX) { this.lastMax = MAX; this.fit(); }
-    const pill = (label, tone, filled = false) => div().flex_none().px(5).rounded(6).border_1().border_color(tone + "66").when(filled, (e) => e.bg(tone + "24")).text_size(10).text_color(tone).child(label);
-    return v_flex().id("nowtasks").size_full().min_h(0).bg(t.chrome).text_color(t.foreground)
-      .child(h_flex().id("nowtasks-head").h(HEAD).flex_none().px(12).gap(6).items_center().cursor_pointer()
-        .tooltip("Open the board, all spaces").on_click(() => this.openBoard())
-        .child(div().id("nowtasks-fold").w(14).flex_none().text_size(10).text_color(t.dim).hover((s) => s.text_color(t.foreground))
-          .on_click((_e, cx) => { cx.stop_propagation(); this.toggle(cx); }).child(this.collapsed ? "▸" : "▾"))
-        .child(div().flex_none().text_size(12).text_color(t.muted).child("Tasks"))
-        .when(v.now.length > 0, (e) => e.child(pill(`${v.now.length} doing`, t.accent, true)))
-        .when(v.today > 0, (e) => e.child(pill(`${v.today} today`, t.muted)))
-        .when(v.proposed > 0, (e) => e.child(pill(`${v.proposed} new`, t.accent)))
-        .child(div().flex_1())
-        .child(div().flex_none().text_size(11).text_color(t.dim).hover((s) => s.text_color(t.foreground)).child("⤢")))
+    return sectionFrame(t, v_flex().id("nowtasks").size_full().min_h(0).bg(t.chrome).text_color(t.foreground))
+      .child(sectionHead(t, { id: "nowtasks", title: "Tasks", collapsed: this.collapsed, onToggle: (cx) => this.toggle(cx),
+        onClick: () => this.openBoard(), tip: "Open the board, all spaces",
+        badges: [v.now.length > 0 && badge(t, `${v.now.length} doing`, t.accent, true), v.today > 0 && badge(t, `${v.today} today`, t.muted), v.proposed > 0 && badge(t, `${v.proposed} new`, t.accent)].filter(Boolean),
+        actions: [headAction(t, "nowtasks-open", "⤢", "Open the board", () => this.openBoard())] }))
       .when(!this.collapsed, (e) => e
         .when(!v.now.length, (e) => e.child(div().px(14).h(22).flex().items_center().text_size(11).text_color(t.dim)
           .child(v.open ? "Nothing in progress" : "No tasks yet")))
