@@ -158,8 +158,8 @@ export default class MyPrs extends View {
       props: { url: pr.url, repo: pr.repository.nameWithOwner, number: pr.number, windowKey: key } });
   }
 
-  // A row: a dot for how much it needs you, the title and how long since it moved, then the repo and only the
-  // states worth reading (a glyph in its colour, the words quiet). Drafts sort last, under a "Drafts" line.
+  // A row: a dot for how much it needs you, repo#number, the title and how long since it moved, then its states as
+  // badges. Drafts sort last, under a "Drafts" line.
   row(pr, t) {
     const i = this.prs.indexOf(pr), firstDraft = pr.isDraft && i > 0 && !this.prs[i - 1]?.isDraft;
     return v_flex().flex_none().h(ROW + (firstDraft ? DRAFTS : 0))
@@ -171,18 +171,15 @@ export default class MyPrs extends View {
       .child(this.card(pr, t));
   }
 
-  // The states worth showing: [glyph, words, colour]; nothing for the quiet ones (no CI, no review yet, draft).
+  // Its states as badges: checks, review, merge, each with words; what's wrong in red (stronger), what's waiting
+  // in amber, what's fine in green, nothing-yet quiet.
   marks(pr, t) {
-    const s = pr.s, run = runningColor(t), out = [];
-    if (s.ci === "fail") out.push(["✕", `${s.counts.fail} failing`, t.ansi1]);
-    else if (s.ci === "running") out.push(["◌", `${s.counts.running} running`, run]);
-    else if (s.ci === "pass") out.push(["✓", "checks", t.ansi2]);
-    if (s.review === "approved") out.push(["✓", "approved", t.ansi2]);
-    else if (s.review === "changes") out.push(["✕", "changes asked", t.ansi1]);
-    const m = { ready: ["●", "ready", t.ansi2], conflicts: ["✕", "conflicts", t.ansi1], behind: ["↓", "behind", run], unstable: ["✕", "unstable", t.ansi1],
-      approval: ["○", "needs approval", t.dim], blocked: ["○", "blocked", t.dim] }[pr.isDraft ? "" : s.merge];
-    if (m) out.push(m);
-    return out;
+    const s = pr.s, run = runningColor(t);
+    const ci = { fail: [`✕ ${s.counts.fail} failing`, t.ansi1, true], running: [`◌ ${s.counts.running} running`, run], pass: ["✓ CI", t.ansi2], none: ["no CI", t.dim] }[s.ci];
+    const review = { approved: ["✓ approved", t.ansi2], changes: ["✕ changes", t.ansi1, true], waiting: ["in review", t.muted], none: ["no review", t.dim] }[s.review];
+    const merge = pr.isDraft ? ["draft", t.dim] : { ready: ["ready", t.ansi2], conflicts: ["✕ conflicts", t.ansi1, true], behind: ["↓ behind", run], unstable: ["✕ unstable", t.ansi1, true],
+      approval: ["needs approval", t.muted], blocked: ["blocked", t.muted], waitci: ["waiting on CI", run], checking: null }[s.merge];
+    return [ci, review, merge].filter(Boolean);
   }
 
   card(pr, t) {
@@ -194,12 +191,11 @@ export default class MyPrs extends View {
       .child(div().flex_none().size(7).rounded(4).when(pr.isDraft, (e) => e.border_1().border_color(t.dim)).when(!pr.isDraft, (e) => e.bg(dot)))
       .child(v_flex().flex_1().min_w(0).gap(3)
         .child(h_flex().gap(6).items_center()
+          .child(div().flex_none().text_size(11).text_color(t.dim).child(`${repo}#${pr.number}`))
           .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(pr.isDraft ? t.muted : t.foreground).child(pr.title))
           .child(div().flex_none().text_size(10).text_color(t.dim).child(since(pr.updatedAt))))
-        .child(h_flex().gap(9).items_center().text_size(10.5).text_color(t.muted).overflow_hidden()
-          .child(div().flex_none().text_color(t.dim).child(`${repo} #${pr.number}`))
-          .children(this.marks(pr, t).map(([g, words, c]) => h_flex().flex_none().gap(3).items_center()
-            .child(div().text_color(c).child(g)).child(div().whitespace_nowrap().child(words))))));
+        .child(h_flex().gap(4).items_center().text_size(10.5).text_color(t.muted).overflow_hidden()
+          .children(this.marks(pr, t).map(([label, tone, strong]) => badge(t, label, tone, strong)))));
   }
 
   // ks: focus mode dims this until hovered (lib/focus.js).
