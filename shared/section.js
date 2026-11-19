@@ -6,6 +6,9 @@ import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 
 export const SECTION_HEAD = 32;
+// Rows in every section: 8 px in from its edges, 8 px padding, these corners, t.hover on hover and t.selected
+// when chosen; a row's title, its detail line, and a group's label in these sizes.
+export const SB = { inset: 8, pad: 8, radius: 7, title: 12.5, detail: 11, group: 10.5 };
 
 // o: { id, title, count?, collapsed?, onToggle?(cx), onClick?(cx), tip?, badges?: [element], actions?: [element] }
 export function sectionHead(t, o) {

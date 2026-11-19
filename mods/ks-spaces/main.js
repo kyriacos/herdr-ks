@@ -16,7 +16,7 @@ import { docValue, quicklook, fingerprint } from "./pane-map.js";
 import { dimmed } from "./lib/focus.js";
 import { NAMES, spaceName, spaceTask, labelFor, generic } from "./lib/spacenames.js";
 import { pref } from "./lib/prefs.js";
-import { sectionHead, sectionFrame, headAction, SECTION_HEAD } from "./lib/section.js";
+import { sectionHead, sectionFrame, headAction, SECTION_HEAD, SB } from "./lib/section.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -654,7 +654,7 @@ export default class Spaces extends View {
 
   // ks: under the name, what the agent works on, then ↑ ↓ ± (the name already says repo · branch).
   taskLine(task, g, t, id) {
-    return h_flex().min_w(0).gap(5).items_center().text_size(11.5).text_color(t.dim)
+    return h_flex().min_w(0).gap(5).items_center().text_size(SB.detail).text_color(t.dim)
       .when(Boolean(task), (el) => el.child(div().flex_1().min_w(0).truncate().child(task)))
       .when(!task, (el) => el.child(div().flex_1()))
       .when(g?.ahead > 0, (el) => el.child(div().flex_none().text_color(t.muted).child(`\u2191${g.ahead}`)))
@@ -861,12 +861,12 @@ export default class Spaces extends View {
     return this.draggable(v_flex()
       .relative()
       .id(`space-${w.id}`)
-      .pl(tree ? 12 : 8)
-      .pr(8)
+      .pl(tree ? 12 : SB.pad)
+      .pr(SB.pad)
       .h(line ? ROW_TWO : ROW)
       .flex_none()
       .justify_center()
-      .rounded(8)
+      .rounded(SB.radius)
       .when(on, (el) => el.bg(t.selected))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .when(this.pressed === w.id && this.over !== w.id && this.cards?.[w.id]?.[0] !== w.id, (el) => el.opacity(0.5))
@@ -930,10 +930,10 @@ export default class Spaces extends View {
     }
     if (changed) setShared("space.colors", kept);
     const add = headAction(t, "space-new", svg("mods/workspace-chrome/plus.svg").size(14), "New space", () => run("space.new"));
-    return sectionFrame(t, v_flex().size_full().min_h(0).bg(t.chrome).text_size(13))
+    return sectionFrame(t, v_flex().size_full().min_h(0).bg(t.chrome).text_size(SB.title))
       .child(collapsed ? h_flex().h(SECTION_HEAD).items_center().justify_center().child(add)
         : sectionHead(t, { id: "spaces", title: "Spaces", count: sp.length || "", actions: [add] }))
-      .child(v_flex().flex_1().min_h(0).px(collapsed ? 0 : 8).pb(14).gap(2).overflow_y_scrollbar().mode("always")
+      .child(v_flex().flex_1().min_h(0).px(collapsed ? 0 : SB.inset).pb(14).gap(2).overflow_y_scrollbar().mode("always")
         .on_mouse_up("left", (_e, cx) => { this.pressed = null; this.badgePress = null; cx.notify(); })
         .children(this.grouped(t, collapsed)));
   }

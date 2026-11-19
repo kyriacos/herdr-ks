@@ -8,7 +8,7 @@ import { agents, terminals, panes, focused, spaces, run, exec, theme, shared, se
 import { readProcs, stop as stopProc } from "./procs.js";
 import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
-import { sectionHead, headAction } from "./lib/section.js";
+import { sectionHead, headAction, SB } from "./lib/section.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -418,10 +418,10 @@ export default class Agents extends View {
       const name = full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
       return h_flex()
         .id(`ag-${a.address}`)
-        .px(8)
+        .px(SB.pad)
         .h(30)
         .flex_none()
-        .rounded(8)
+        .rounded(SB.radius)
         .items_center()
         .gap(9)
         .when(a.focused, (el) => el.bg(t.selected))
@@ -466,13 +466,13 @@ export default class Agents extends View {
       const top = g.members.reduce((m, a) => ((RANK[a.status] ?? 0) > (RANK[m] ?? 0) ? a.status : m), null);
       return h_flex()
         .id(g.id)
-        .px(8)
+        .px(SB.pad)
         .pt(8)
         .h(30)
         .flex_none()
         .gap(6)
         .items_center()
-        .text_size(11)
+        .text_size(SB.group)
         .font_medium()
         .cursor_pointer()
         .hover((s) => s.text_color(t.foreground))
@@ -497,7 +497,7 @@ export default class Agents extends View {
       .bg(t.chrome)
       .border_t(1)
       .border_color(t.border)
-      .text_size(13)
+      .text_size(SB.title)
       .when(!collapsed, (el) =>
         el.child(
           sectionHead(t, { id: "ag", title: "Agents", count: list.length || "", actions: [
@@ -509,7 +509,7 @@ export default class Agents extends View {
       .when(list.length === 0 && !collapsed, (el) =>
         el.child(div().px(12).text_size(12).text_color(t.dim).child("No agent status yet. Agents show up here when they report their status. Older versions and agents inside tmux may not.")),
       )
-      .child(v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : 8).overflow_y_scrollbar().mode("always").children(rows))
+      .child(v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : SB.inset).overflow_y_scrollbar().mode("always").children(rows))
       .when(collapsed, (el) =>
         el.child(
           h_flex()

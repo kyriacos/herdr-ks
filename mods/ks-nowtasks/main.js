@@ -7,7 +7,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { exec, appHome, theme, run, shared, setShared, openOverlay, settings, layout } from "herdr";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
-import { sectionHead, sectionFrame, badge, headAction, SECTION_HEAD } from "./lib/section.js";
+import { sectionHead, sectionFrame, badge, headAction, SECTION_HEAD, SB } from "./lib/section.js";
 
 const BLOCK = "now-tasks", HEAD = SECTION_HEAD + 1, ROW = 40;
 const max = () => Math.max(1, Math.min(8, pref("nowTasksMax") ?? 3)); // how many it lists (settings)
@@ -99,15 +99,15 @@ export default class NowTasks extends View {
       .when(!this.collapsed, (e) => e
         .when(!v.now.length, (e) => e.child(div().px(14).h(22).flex().items_center().text_size(11).text_color(t.dim)
           .child(v.open ? "Nothing in progress" : "No tasks yet")))
-        .children(v.now.slice(0, MAX).map((x) => v_flex().id(`nt-${x.id}`).h(ROW).flex_none().mx(6).px(8).justify_center().gap(1).rounded(6).cursor_pointer()
+        .children(v.now.slice(0, MAX).map((x) => v_flex().id(`nt-${x.id}`).h(ROW).flex_none().mx(SB.inset).px(SB.pad).justify_center().gap(2).rounded(SB.radius).cursor_pointer()
           .hover((s) => s.bg(t.hover)).on_click(() => this.openTask(x.id))
           .child(h_flex().gap(6).items_center()
             .child(div().size(6).flex_none().rounded(3).bg(t.accent))
-            .child(div().flex_1().min_w(0).truncate().text_size(12).child(x.title || "Untitled"))
+            .child(div().flex_1().min_w(0).truncate().text_size(SB.title).font_medium().child(x.title || "Untitled"))
             .when(Boolean(x.today), (e) => e.child(div().flex_none().text_size(10).text_color(t.accent).child("☀"))))
-          .child(div().pl(12).text_size(10.5).text_color(t.dim).truncate()
+          .child(div().pl(12).text_size(SB.detail).text_color(t.dim).truncate()
             .child([x.assignee ? `@ ${x.assignee}` : "", String(x.spaceName ?? "").replace(/\s*·\s*$/, ""), ago(x.updated)].filter(Boolean).join(" · ")))))
-        .when(v.now.length > MAX, (e) => e.child(div().id("nt-more").px(14).h(20).flex().items_center().text_size(10.5).text_color(t.dim).cursor_pointer()
+        .when(v.now.length > MAX, (e) => e.child(div().id("nt-more").px(SB.inset + SB.pad).h(20).flex().items_center().text_size(SB.detail).text_color(t.dim).cursor_pointer()
           .hover((s) => s.text_color(t.foreground)).on_click(() => this.openBoard()).child(`+${v.now.length - MAX} more on the board`))));
   }
 }
