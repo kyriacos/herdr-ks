@@ -318,9 +318,11 @@ export default class Agents extends View {
       const list = this.procs[a.address] ?? [], n = list.filter((p) => !p.mcp).length, open = this.procsOpen.has(a.address);
       if (!pref("agentProcs") || (!n && !open)) return null;
       const busy = list.some((p) => !p.mcp && p.ports.length);
-      return h_flex().id(`procs-${a.address}`).h(18).px(4).gap(3).flex_none().items_center().rounded(4).text_size(10.5).cursor_pointer()
-        .border_1().border_color(open ? t.accent : t.border).text_color(open ? t.foreground : busy ? t.accent : t.dim)
-        .hover((s) => s.bg(t.hover).text_color(t.foreground))
+      // The sidebar's badge look (lib/section.js): a soft pill, accent when a process serves a port or it's open.
+      const tone = open || busy ? t.accent : t.muted;
+      return h_flex().id(`procs-${a.address}`).h(16).px(6).gap(3).flex_none().items_center().rounded(8).text_size(9.5).font_medium().cursor_pointer()
+        .bg(tone + (open ? "38" : "1c")).text_color(tone)
+        .hover((s) => s.bg(tone + "38"))
         .tooltip(`${n} process${n === 1 ? "" : "es"} running under it${busy ? " (some serving a port)" : ""}`)
         .on_click((_e, cx) => { cx.stop_propagation(); this.toggleProcs(a.address, cx); })
         .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(10).flex_none())

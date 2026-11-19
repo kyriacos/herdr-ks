@@ -12,7 +12,7 @@ import { segment } from "./lib/segment.js";
 import { exec, run, theme, props, notify, nextCommand } from "herdr";
 import { dimmed } from "./lib/focus.js";
 import { linearUrl, openLinear, copyLinear } from "./lib/linear.js";
-import { sectionHead, sectionFrame, badge, headAction } from "./lib/section.js";
+import { sectionHead, sectionFrame, badge, headAction, SECTION_HEAD } from "./lib/section.js";
 import { isWindow, initWindow, openPanelWindow, closeWindow, windowFrame, closeButton } from "./lib/panelwin.js";
 import { RANGES, rangeStart, ymd, loadPrompts, savePrompts, loadRuns, removeRun, activity, lastActivity, runPrompt, loadViews, saveViews, filtered, knownRepos } from "./data.js";
 
@@ -136,14 +136,20 @@ export default class Dashboard extends View {
   render(cx) { return this.windowed ? this.renderWindow(cx) : dimmed(this, this.renderBlock(cx)); }
 
   // ---------- the sidebar block ----------
+  // The block's height: its header and one line of today (the layout's px is only where it starts).
+  fitBlock() {
+    const px = SECTION_HEAD + 1 + 30;
+    if (this.blockPx !== px) { this.blockPx = px; run("layout.resize", { id: "dashboard", px }); }
+  }
   renderBlock() {
     const t = theme(), a = this.shown("day"), l = lines(a?.prs ?? []), v = this.view();
-    const chip = (label, tone = t.muted) => div().flex_none().px(5).rounded(6).border_1().border_color(t.border).text_size(10).text_color(tone).child(label);
+    const chip = (label, tone = t.muted) => badge(t, label, tone);
+    this.fitBlock();
     return sectionFrame(t, v_flex().id("dash").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).cursor_pointer()
       .hover((s) => s.bg(t.hover)).on_click(() => this.open()))
       .child(sectionHead(t, { id: "dash", title: "Dashboard", badges: this.running ? [badge(t, "running…", t.accent)] : [],
         actions: [headAction(t, "dash-open", "⤢", "Open the dashboard", () => this.open())] }))
-      .child(h_flex().pl(30).pr(12).gap(5).items_center().flex_wrap()
+      .child(h_flex().h(24).pl(30).pr(12).gap(5).items_center().overflow_hidden()
         .child(div().text_size(11).text_color(t.dim).child(v ? `Today · ${v.name}` : "Today"))
         .when(Boolean(a), (e) => e
           .child(chip(`${plural(a.prs.length, "PR")} merged`, a.prs.length ? t.accent : t.muted))
