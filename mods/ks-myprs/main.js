@@ -158,8 +158,7 @@ export default class MyPrs extends View {
       props: { url: pr.url, repo: pr.repository.nameWithOwner, number: pr.number, windowKey: key } });
   }
 
-  // A row: a dot for how much it needs you, repo#number, the title and how long since it moved, then its states as
-  // badges. Drafts sort last, under a "Drafts" line.
+  // A row (card) in its slot, with a hairline above it. Drafts sort last, under a "Drafts" line.
   row(pr, t) {
     const i = this.prs.indexOf(pr), firstDraft = pr.isDraft && i > 0 && !this.prs[i - 1]?.isDraft;
     return v_flex().flex_none().h(ROW + (firstDraft ? DRAFTS : 0))
@@ -177,25 +176,29 @@ export default class MyPrs extends View {
     const s = pr.s, run = runningColor(t);
     const ci = { fail: [`✕ ${s.counts.fail} failing`, t.ansi1, true], running: [`◌ ${s.counts.running} running`, run], pass: ["✓ CI", t.ansi2], none: ["no CI", t.dim] }[s.ci];
     const review = { approved: ["✓ approved", t.ansi2], changes: ["✕ changes", t.ansi1, true], waiting: ["in review", t.muted], none: ["no review", t.dim] }[s.review];
-    const merge = pr.isDraft ? ["draft", t.dim] : { ready: ["ready", t.ansi2], conflicts: ["✕ conflicts", t.ansi1, true], behind: ["↓ behind", run], unstable: ["✕ unstable", t.ansi1, true],
+    // A draft still shows what's wrong with it (conflicts, unstable); otherwise just "draft".
+    const m = { ready: ["ready", t.ansi2], conflicts: ["✕ conflicts", t.ansi1, true], behind: ["↓ behind", run], unstable: ["✕ unstable", t.ansi1, true],
       approval: ["needs approval", t.muted], blocked: ["blocked", t.muted], waitci: ["waiting on CI", run], checking: null }[s.merge];
-    return [ci, review, merge].filter(Boolean);
+    const merge = pr.isDraft && !(m && m[2]) ? ["draft", t.dim] : m;
+    return { ci, rest: [review, merge, pr.isDraft && merge?.[0] !== "draft" ? ["draft", t.dim] : null].filter(Boolean) };
   }
 
+  // The row, tinted lightly: red when something's wrong (failing CI, changes asked, conflicts), green when it's
+  // ready. CI first, then repo#number, the title and its age; review and merge below.
   card(pr, t) {
-    const s = pr.s, repo = pr.repository.nameWithOwner.split("/").pop();
-    const dot = pr.isDraft ? t.dim : s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? runningColor(t) : s.urgent === 2 ? t.ansi2 : t.dim;
+    const s = pr.s, repo = pr.repository.nameWithOwner.split("/").pop(), { ci, rest } = this.marks(pr, t);
+    const tint = s.urgent === 0 ? t.ansi1 : s.urgent === 2 && !pr.isDraft ? t.ansi2 : null;
     const on = focusedNow(this, "ks-myprs") && this.prs[this.cursor] === pr;
-    return h_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 2).mx(6).px(8).gap(9).items_center().rounded(8).cursor_pointer()
-      .when(on, (e) => e.bg(t.selected ?? t.hover)).hover((st) => st.bg(t.hover)).on_click(() => this.openCard(pr))
-      .child(div().flex_none().size(7).rounded(4).when(pr.isDraft, (e) => e.border_1().border_color(t.dim)).when(!pr.isDraft, (e) => e.bg(dot)))
-      .child(v_flex().flex_1().min_w(0).gap(3)
-        .child(h_flex().gap(6).items_center()
-          .child(div().flex_none().text_size(11).text_color(t.dim).child(`${repo}#${pr.number}`))
-          .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(pr.isDraft ? t.muted : t.foreground).child(pr.title))
-          .child(div().flex_none().text_size(10).text_color(t.dim).child(since(pr.updatedAt))))
-        .child(h_flex().gap(4).items_center().text_size(10.5).text_color(t.muted).overflow_hidden()
-          .children(this.marks(pr, t).map(([label, tone, strong]) => badge(t, label, tone, strong)))));
+    return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 2).mx(6).px(8).gap(4).justify_center().rounded(8).cursor_pointer()
+      .when(Boolean(tint), (e) => e.bg(tint + "14")).when(on, (e) => e.bg(t.selected ?? t.hover))
+      .hover((st) => st.bg(tint ? tint + "26" : t.hover)).on_click(() => this.openCard(pr))
+      .child(h_flex().gap(6).items_center()
+        .child(badge(t, ci[0], ci[1], ci[2]))
+        .child(div().flex_none().text_size(11).text_color(t.dim).child(`${repo}#${pr.number}`))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(pr.isDraft ? t.muted : t.foreground).child(pr.title))
+        .child(div().flex_none().text_size(10).text_color(t.dim).child(since(pr.updatedAt))))
+      .child(h_flex().gap(4).items_center().overflow_hidden()
+        .children(rest.map(([label, tone, strong]) => badge(t, label, tone, strong))));
   }
 
   // ks: focus mode dims this until hovered (lib/focus.js).
@@ -204,7 +207,6 @@ export default class MyPrs extends View {
   renderInner(cx) {
     const t = theme(), prs = this.prs;
     const fail = prs.filter((p) => p.s.ci === "fail" || p.s.review === "changes" || p.s.merge === "conflicts").length;
-    const running = prs.filter((p) => p.s.ci === "running").length;
     const icon = (id, label, act) => div().id(id).flex_none().size(20).flex().items_center().justify_center().rounded(5).cursor_pointer()
       .text_size(11).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label);
@@ -221,7 +223,7 @@ export default class MyPrs extends View {
       })
       .child(sectionHead(t, { id: "myprs", title: "My PRs", count: this.loaded ? prs.length : this.loading ? "…" : "",
         collapsed: this.collapsed, onToggle: (cx) => this.toggle(cx), onClick: (cx) => this.toggle(cx),
-        badges: [fail > 0 && badge(t, `${fail} need you`, t.ansi1, true), running > 0 && badge(t, `${running} running`, runningColor(t))].filter(Boolean),
+        badges: [fail > 0 && badge(t, `${fail} need you`, t.ansi1, true)].filter(Boolean),
         actions: [
           // How old the list is, once that's more than a minute and a half (a look failing, or the Mac asleep).
           ...(!this.loading && this.doneAt > 0 && ago(Date.now() - this.doneAt) ? [div().flex_none().text_size(10).text_color(this.error ? t.ansi1 : t.dim).child(ago(Date.now() - this.doneAt))] : []),
