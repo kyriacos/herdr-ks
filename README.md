@@ -18,6 +18,7 @@ It installs next to whatever you already use in Herdr and changes nothing else.
 - **Review like a pull request.** A file or a whole branch, inline or side by side, with vim keys. [More](docs/GUIDE.md#reviewing)
 - **Send comments to the agent.** Comment on any line, then send them all in one message. [More](docs/GUIDE.md#comments-and-sending-them-to-an-agent)
 - **Pull requests in view.** Your open PRs with CI, review and merge state; message the agent on a PR, or start one. [More](docs/GUIDE.md#pull-requests)
+- **A dashboard of what you did.** Today, this week and this month: merged PRs, tasks done, Linear ids, for every repo or a view of the ones you pick (one GitHub org, say), and prompts that summarise it with Claude, every run kept. [More](docs/GUIDE.md#dashboard)
 - **Notes and tasks.** A scratchpad and a kanban board per space, which agents can add to with `ks-task`; a task an agent works on shows its status, PR, Linear issue and worktree, and its live screen. [More](docs/GUIDE.md#tasks)
 - **Nothing lost.** Sessions resume after a reboot, and a closed tab or space can be undone for 30 s. [More](docs/GUIDE.md#resuming-sessions-after-a-reboot)
 - **Keyboard first.** tmux-style and vim-style key modes, zen mode and focus mode. [More](docs/GUIDE.md#key-modes)

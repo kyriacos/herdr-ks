@@ -9,6 +9,7 @@ import { prefs } from "./prefs.js";
 
 // The sidebar's sections: [layout id, name, what it is].
 export const SIDEBAR = [
+  ["dashboard", "Dashboard", "Today's merged PRs, tasks done and Linear issues; opens the dashboard with week and month, prompts and runs."],
   ["now-tasks", "Tasks now", "What's in progress on the task board, every space; opens the board."],
   ["my-prs", "My PRs", "Your open GitHub pull requests with CI, review and merge state."],
   ["spaces", "Spaces", "Your spaces, named by repo and branch, with what each agent works on."],
@@ -39,7 +40,9 @@ export function arranged(tree, p = prefs()) {
   }
   const lists = find(want, "sidebar-lists");
   if (lists?.children) {
-    const order = p.sidebarOrder ?? [];
+    // A section added since the order was saved goes where the default order puts it (next to its neighbour).
+    const order = [...(p.sidebarOrder ?? [])];
+    SIDEBAR.forEach(([id], i) => { if (!order.includes(id)) { const next = SIDEBAR.slice(i + 1).map(([x]) => x).find((x) => order.includes(x)); order.splice(next ? order.indexOf(next) : order.length, 0, id); } });
     const rank = (c) => { const i = order.indexOf(c.id); return i < 0 ? order.length : i; };
     const next = [...lists.children].sort((a, b) => rank(a) - rank(b));
     if (next.some((c, i) => c !== lists.children[i])) { lists.children = next; changed = true; }
