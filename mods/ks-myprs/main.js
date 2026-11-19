@@ -31,10 +31,11 @@ async function gh(args) {
 }
 const ago = (ms) => (ms < 90000 ? "" : ms < 3600000 ? `${Math.round(ms / 60000)}m` : `${Math.round(ms / 3600000)}h`);
 
-// One PR's state: ci "pass" | "fail" | "running" | "none" (+ counts), review, merge, and how urgent it is.
 // What needs you first; drafts at the bottom.
 const byNeed = (a, b) => Number(Boolean(a.isDraft)) - Number(Boolean(b.isDraft)) || a.s.urgent - b.s.urgent || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
+const since = (iso) => { const m = (Date.now() - Date.parse(iso ?? "")) / 60000; return !(m >= 0) ? "" : m < 60 ? `${Math.max(1, Math.round(m))}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`; };
 
+// One PR's state: ci "pass" | "fail" | "running" | "none" (+ counts), review, merge, and how urgent it is.
 function stateOf(pr) {
   // Each check decides (lib/ci.js), not the rollup's own state: GitHub can count a cancelled run as a failure.
   const roll = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup;
@@ -156,37 +157,48 @@ export default class MyPrs extends View {
       props: { url: pr.url, repo: pr.repository.nameWithOwner, number: pr.number, windowKey: key } });
   }
 
-  step(label, tone, t) {
-    const c = pillColors(tone, t);
-    return div().flex_none().px(5).rounded(6).border_1().border_color(c.border).when(Boolean(c.bg), (e) => e.bg(c.bg))
-      .text_size(9.5).text_color(c.text).whitespace_nowrap().child(label);
+  // A row: a dot for how much it needs you, the title and how long since it moved, then the repo and only the
+  // states worth reading (a glyph in its colour, the words quiet). Drafts sort last, under a "Drafts" line.
+  row(pr, t) {
+    const i = this.prs.indexOf(pr), firstDraft = pr.isDraft && i > 0 && !this.prs[i - 1]?.isDraft;
+    return v_flex().flex_none().h(ROW + (firstDraft ? DRAFTS : 0))
+      .when(firstDraft, (e) => e.child(h_flex().h(DRAFTS).mx(14).gap(6).items_center()
+        .child(div().flex_none().text_size(9.5).text_color(t.dim).child(`Drafts · ${this.prs.length - i}`))
+        .child(div().flex_1().h(1).bg(t.border + "80"))))
+      .when(!firstDraft && i > 0, (e) => e.child(div().h(1).mx(14).bg(t.border + "59")))
+      .when(!firstDraft && i === 0, (e) => e.child(div().h(1)))
+      .child(this.card(pr, t));
   }
 
-  row(pr, t) {
-    // Each row in a slot of ROW px: a hairline between rows, and "Drafts" above the first draft (drafts sort last).
-    const i = this.prs.indexOf(pr), firstDraft = pr.isDraft && !this.prs[i - 1]?.isDraft && i > 0;
-    return v_flex().flex_none().h(ROW + (firstDraft ? DRAFTS : 0))
-      .child(firstDraft
-        ? h_flex().h(DRAFTS + 1).mx(12).gap(6).items_end().pb(2).child(div().flex_none().text_size(9.5).text_color(t.dim).child(`DRAFTS · ${this.prs.length - i}`)).child(div().flex_1().h(1).mb(5).bg(t.border))
-        : div().h(1).mx(12).bg(i > 0 ? t.border : t.chrome))
-      .child(this.card(pr, t));
+  // The states worth showing: [glyph, words, colour]; nothing for the quiet ones (no CI, no review yet, draft).
+  marks(pr, t) {
+    const s = pr.s, run = runningColor(t), out = [];
+    if (s.ci === "fail") out.push(["✕", `${s.counts.fail} failing`, t.ansi1]);
+    else if (s.ci === "running") out.push(["◌", `${s.counts.running} running`, run]);
+    else if (s.ci === "pass") out.push(["✓", "checks", t.ansi2]);
+    if (s.review === "approved") out.push(["✓", "approved", t.ansi2]);
+    else if (s.review === "changes") out.push(["✕", "changes asked", t.ansi1]);
+    const m = { ready: ["●", "ready", t.ansi2], conflicts: ["✕", "conflicts", t.ansi1], behind: ["↓", "behind", run], unstable: ["✕", "unstable", t.ansi1],
+      approval: ["○", "needs approval", t.dim], blocked: ["○", "blocked", t.dim] }[pr.isDraft ? "" : s.merge];
+    if (m) out.push(m);
+    return out;
   }
 
   card(pr, t) {
     const s = pr.s, repo = pr.repository.nameWithOwner.split("/").pop();
-    const ci = { pass: [`✓ CI`, t.ansi2], fail: [`✕ CI ${s.counts.fail}`, t.ansi1], running: [`◌ CI ${s.counts.running}`, runningColor(t)], none: ["no CI", t.dim] }[s.ci];
-    const review = { approved: ["✓ approved", t.ansi2], changes: ["✕ changes", t.ansi1], waiting: ["review", t.muted], none: ["no review", t.dim] }[s.review];
-    const merge = { ready: ["ready", t.ansi2], blocked: ["blocked", t.muted], approval: ["needs approval", t.muted], behind: ["behind", runningColor(t)], conflicts: ["conflicts", t.ansi1], unstable: ["unstable", t.ansi1], waitci: ["waiting on CI", runningColor(t)], draft: ["draft", t.dim], checking: ["…", t.dim] }[s.merge];
-    const mark = s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? runningColor(t) : s.urgent === 2 ? t.ansi2 : t.dim;
-    return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 5).mx(6).mt(2).mb(2).px(8).py(4).gap(3).rounded(7).cursor_pointer()
-      .when(focusedNow(this, "ks-myprs") && this.prs[this.cursor] === pr, (e) => e.bg(t.selected ?? t.hover))
-      .border_l_2().border_color(mark).hover((st) => st.bg(t.hover)).on_click(() => this.openCard(pr))
-      .child(h_flex().gap(5).items_center().text_size(11.5)
-        .child(div().flex_none().text_color(t.dim).child(`${repo}#${pr.number}`))
-        .child(div().flex_1().min_w(0).truncate().text_color(pr.isDraft ? t.muted : t.foreground).child(pr.title)))
-      .child(h_flex().gap(4).items_center()
-        .when(pr.isDraft, (e) => e.child(this.step("draft", t.dim, t)))
-        .child(this.step(ci[0], ci[1], t)).child(this.step(review[0], review[1], t)).child(this.step(merge[0], merge[1], t)));
+    const dot = pr.isDraft ? t.dim : s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? runningColor(t) : s.urgent === 2 ? t.ansi2 : t.dim;
+    const on = focusedNow(this, "ks-myprs") && this.prs[this.cursor] === pr;
+    return h_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 2).mx(6).px(8).gap(9).items_center().rounded(8).cursor_pointer()
+      .when(on, (e) => e.bg(t.selected ?? t.hover)).hover((st) => st.bg(t.hover)).on_click(() => this.openCard(pr))
+      .child(div().flex_none().size(7).rounded(4).when(pr.isDraft, (e) => e.border_1().border_color(t.dim)).when(!pr.isDraft, (e) => e.bg(dot)))
+      .child(v_flex().flex_1().min_w(0).gap(3)
+        .child(h_flex().gap(6).items_center()
+          .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(pr.isDraft ? t.muted : t.foreground).child(pr.title))
+          .child(div().flex_none().text_size(10).text_color(t.dim).child(since(pr.updatedAt))))
+        .child(h_flex().gap(9).items_center().text_size(10.5).text_color(t.muted).overflow_hidden()
+          .child(div().flex_none().text_color(t.dim).child(`${repo} #${pr.number}`))
+          .children(this.marks(pr, t).map(([g, words, c]) => h_flex().flex_none().gap(3).items_center()
+            .child(div().text_color(c).child(g)).child(div().whitespace_nowrap().child(words))))));
   }
 
   // ks: focus mode dims this until hovered (lib/focus.js).

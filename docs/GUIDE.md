@@ -288,8 +288,10 @@ lines added and removed, tasks done, Linear issue ids). Click it for the window 
 
 Needs the GitHub CLI (`gh`) logged in.
 
-**My PRs** (sidebar, above Spaces): every open PR you authored, with CI (✓, ✕ with count, ◌ running), review
-(approved, changes requested, waiting) and merge state (ready, needs approval, blocked, behind, conflicts).
+**My PRs** (sidebar, above Spaces): every open PR you authored. A dot says how much it needs you (red: failing
+checks, changes asked or conflicts; amber: checks running; green: ready; hollow: draft), then its title, how long
+since it changed, and only the states worth reading: checks (✓, ✕ failing, ◌ running), review (approved, changes
+asked) and merge (ready, needs approval, blocked, behind, conflicts).
 Ones needing you come first, drafts last under a **Drafts** line. Click the header to fold it, × to hide, `cmd-shift-m` to show or hide. Toasts when
 CI turns red or green, a review lands, or a PR is merged or closed.
 
