@@ -9,9 +9,17 @@
 import { agents, hc } from "herdr";
 import { gh } from "./lib/github.js";
 
+// The agent on a task: the terminal `ks-task start` kept; for a task started before that (or whose terminal has
+// gone), a live agent whose title is the task's assignee (ks-task writes the agent's title there).
+const clean = (s) => String(s ?? "").replace(/^[\s✳⠂⠐*·]+|[\s✳⠂⠐*·…]+$/g, "");
 export function agentOf(x) {
-  const t = x?.worker?.terminal;
-  return t ? agents().find((a) => a.address === t) ?? null : null;
+  if (!x) return null;
+  const list = agents(), t = x.worker?.terminal;
+  const kept = t ? list.find((a) => a.address === t) : null;
+  if (kept) return kept;
+  const who = clean(x.assignee);
+  if (!who) return null;
+  return list.filter((a) => clean(a.title) === who).sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0))[0] ?? null;
 }
 // A status's words and theme colour.
 export const STATUS = { working: ["working", "accent"], blocked: ["needs you", "ansi3"], done: ["waiting for you", "ansi2"], idle: ["idle", "muted"] };
