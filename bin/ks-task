@@ -23,7 +23,7 @@ Stored in <app home>/data/ks-tasks.json (HERDR_APP_HOME, default ~/.config/herdr
 (write then rename), and the panel picks changes up within a few seconds (at once when Herdr App is running).
 IDs can be shortened to any unique prefix.
 """
-import json, os, random, shutil, subprocess, sys, time
+import json, os, random, re, shutil, subprocess, sys, time
 
 APP = os.environ.get("HERDR_APP_HOME") or os.path.expanduser("~/.config/herdr-app")
 FILE = os.path.join(APP, "data", "ks-tasks.json")
@@ -348,6 +348,110 @@ def cmd_link(argv):
     print(f"linked: {line(d, t)}")
 
 
+CLAUDE = os.path.expanduser("~/.claude")
+
+
+def subagent_dirs(session):
+    import glob
+    return glob.glob(os.path.join(CLAUDE, "projects", "*", session, "subagents")) if session else []
+
+
+def tail_lines(path, size=96 * 1024):
+    """The whole JSON lines in the last `size` bytes of a file (a transcript can be tens of MB)."""
+    with open(path, "rb") as f:
+        f.seek(0, 2)
+        end = f.tell()
+        f.seek(max(0, end - size))
+        data = f.read().decode("utf-8", "replace")
+    lines = data.split("\n")
+    if end > size:
+        lines = lines[1:]
+    out = []
+    for l in lines:
+        try:
+            out.append(json.loads(l))
+        except Exception:
+            pass
+    return out
+
+
+def first_line(path):
+    try:
+        with open(path) as f:
+            return json.loads(f.readline())
+    except Exception:
+        return {}
+
+
+def short(v, n=160):
+    return " ".join(str(v or "").split())[:n]
+
+
+def event_text(d):
+    """One transcript entry as short lines: what the subagent said, the tools it ran."""
+    m = d.get("message") or {}
+    c = m.get("content")
+    if d.get("type") != "assistant" or not isinstance(c, list):
+        return []
+    out = []
+    for x in c:
+        if x.get("type") == "text" and x.get("text", "").strip():
+            out.append("◆ " + short(x["text"], 220))
+        elif x.get("type") == "tool_use":
+            i = x.get("input") or {}
+            what = i.get("description") or i.get("command") or i.get("file_path") or i.get("pattern") or i.get("prompt") or ""
+            out.append(f'▸ {x.get("name")}: {short(what)}')
+    return out
+
+
+def subagent_of_start(ident):
+    """The subagent running this `ks-task start` (its transcript already holds the command), or None."""
+    for d in subagent_dirs(os.environ.get("CLAUDE_CODE_SESSION_ID")):
+        for f in sorted(os.listdir(d)):
+            p = os.path.join(d, f)
+            if not f.endswith(".jsonl") or time.time() - os.path.getmtime(p) > 120:
+                continue
+            for e in tail_lines(p, 32 * 1024)[-12:]:
+                if f"ks-task start {ident}" in json.dumps(e):
+                    return f[len("agent-"):-len(".jsonl")]
+    return None
+
+
+def cmd_subagents(argv):
+    """For the Tasks panel: a Claude session's subagents (running, or finished in the last hour) as JSON."""
+    pos, _, o = args(argv, set(), {"--lines"})
+    n = int(o.get("--lines") or 14)
+    out = []
+    for d in subagent_dirs(pos[0] if pos else None):
+        for f in os.listdir(d):
+            if not f.endswith(".meta.json"):
+                continue
+            aid = f[len("agent-"):-len(".meta.json")]
+            log_ = os.path.join(d, f"agent-{aid}.jsonl")
+            try:
+                meta = json.load(open(os.path.join(d, f)))
+                updated = os.path.getmtime(log_)
+            except Exception:
+                continue
+            running = not meta.get("finished")
+            if not running and time.time() - updated > 3600:
+                continue
+            head = first_line(log_)
+            c = (head.get("message") or {}).get("content")
+            prompt = c if isinstance(c, str) else " ".join(x.get("text", "") for x in (c or []) if isinstance(x, dict))
+            lines, prs = [], []
+            for e in tail_lines(log_):
+                lines += event_text(e)
+                for u in re.findall(r"https://github\.com/[\w.-]+/[\w.-]+/pull/\d+", json.dumps(e)):
+                    if u not in prs:
+                        prs.append(u)
+            out.append({"id": aid, "description": meta.get("description") or "", "running": running,
+                        "updated": int(updated * 1000), "started": head.get("timestamp"), "cwd": head.get("cwd") or "",
+                        "branch": head.get("gitBranch") or "", "prompt": prompt[:3000], "lines": lines[-n:], "prs": prs[-6:]})
+    out.sort(key=lambda x: (not x["running"], -x["updated"]))
+    print(json.dumps(out))
+
+
 def cmd_start(argv):
     pos, _, o = args(argv, set(), {"--by"})
     if not pos:
@@ -362,7 +466,8 @@ def cmd_start(argv):
     # Who works on it, where: the Tasks panel shows that agent's status on the card, and its screen in the task.
     w = where()
     term = os.environ.get("HC_TERMINAL_ID") or os.environ.get("HERDR_PANE_ID")
-    t["worker"] = {"terminal": term, "folder": w["folder"], "branch": w["branch"], "at": now()} if term or by_agent() else None
+    t["worker"] = {"terminal": term, "folder": w["folder"], "branch": w["branch"], "at": now(),
+                   "session": os.environ.get("CLAUDE_CODE_SESSION_ID"), "subagent": subagent_of_start(pos[0]) if by_agent() else None} if term or by_agent() else None
     log(t, "Started", who)
     save(d)
     print(f"started: {line(d, t)}")
@@ -486,7 +591,7 @@ def cmd_columns(_argv):
 
 
 CMDS = {"add": cmd_add, "list": cmd_list, "ls": cmd_list, "show": cmd_show, "comment": cmd_comment, "start": cmd_start, "done": cmd_done,
-        "move": cmd_move, "accept": cmd_accept, "dismiss": cmd_dismiss, "update": cmd_update, "attach": cmd_attach, "link": cmd_link, "columns": cmd_columns}
+        "move": cmd_move, "accept": cmd_accept, "dismiss": cmd_dismiss, "update": cmd_update, "attach": cmd_attach, "link": cmd_link, "subagents": cmd_subagents, "columns": cmd_columns}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):

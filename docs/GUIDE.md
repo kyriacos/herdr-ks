@@ -227,6 +227,12 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   (click copies the path). PRs come from `ks-task link`, GitHub PR links in the description or comments, and the
   PR of the agent's branch, looked up with `gh`. Linear ids come from links, the title, the description and the
   branch; one with a link opens it, others copy the id.
+- **Subagents.** When the agent on a task is Claude Code and hands work to subagents, the ones for that task show
+  too: **◆ <what it's doing>** on the card, and under **Subagents** in the window (working or finished, how long
+  ago). Click one to watch it: a subagent has no terminal, so the window shows what it said and the commands it
+  ran lately, read from its transcript. **Focus agent** goes to the session that runs it. A subagent counts as the
+  task's when its prompt has the task's id, it ran `ks-task start` on it, or it shares a Linear id or several
+  title words with it. PRs a subagent opened show on the task too.
 - **Right-click a card** to talk to an agent about it: **Ask about it: <agent>** (the task's space's agent first,
   then up to three others) shows that agent and pastes the task's reference into its prompt, not sent, so you type
   what you want to discuss and press Enter. The reference reads `Task <id> "<title>" from my board (ks-task show

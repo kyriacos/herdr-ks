@@ -33,7 +33,7 @@ import { dimmed } from "./lib/focus.js";
 import { spaceName } from "./lib/spacenames.js";
 import { takeFocus, watchFocus, focusedNow, leave, toStrip } from "./lib/panelkeys.js";
 import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } from "./lib/attach.js";
-import { agentOf, agentName, STATUS, linearOf, worktreeOf, tilde, prsOf, prTone, prState, screen, rev as workRev } from "./work.js";
+import { agentOf, agentName, STATUS, linearOf, worktreeOf, tilde, prsOf, prTone, prState, screen, subagentsOf, subagentsFor, rev as workRev } from "./work.js";
 
 const FILE = () => `${appHome()}/data/ks-tasks.json`;
 const REV = "ks-tasks.rev";
@@ -196,6 +196,9 @@ export default class Tasks extends View {
     // Agents' statuses and PRs looked up in the background change what cards show: redraw when they do.
     this.workSig = "";
     cx.timer.every(2000, (cx) => {
+      // Subagents of the agents on open tasks: looked at again every 10 s (subagentsOf caches).
+      const last = doneCol(this.data);
+      for (const x of this.data.tasks) if (x.column !== last) { const a = agentOf(x); if (a) subagentsOf(a); }
       const sig = `${workRev()}|${agents().map((a) => `${a.address}:${a.status}`).join(",")}`;
       if (sig !== this.workSig) { this.workSig = sig; cx.notify(); }
     });
@@ -530,7 +533,8 @@ export default class Tasks extends View {
     const meta = [];
     const colName = this.view === "today" ? this.data.columns.find((c) => c.id === task.column)?.name : null;
     if (colName) meta.push(colName);
-    const ag = done ? null : agentOf(task), prs = prsOf(task), lin = linearOf(task), wt = worktreeOf(task);
+    const ag = done ? null : agentOf(task), subs = ag ? subagentsFor(task, ag) : [];
+    const prs = prsOf(task, subs.flatMap((s) => s.prs ?? [])), lin = linearOf(task), wt = worktreeOf(task);
     if (task.assignee && !ag) meta.push(`@ ${task.assignee}`);
     if (n) meta.push(plural(n, "comment"));
     if (files.length) meta.push(plural(files.length, "file"));
@@ -567,20 +571,22 @@ export default class Tasks extends View {
           .child(div().id(`dis-${task.id}`).flex_none().px(6).rounded(4).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover))
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.remove(task, cx); }).child("✕ Dismiss"))))
         .when(pics.length > 0, (e) => e.child(attachRow(pics, t, `cp-${task.id}`)))
-        .when(Boolean(ag) || prs.length > 0 || lin.length > 0, (e) => e.child(this.workChips(task, ag, prs, lin, wt, t)))
+        .when(Boolean(ag) || prs.length > 0 || lin.length > 0, (e) => e.child(this.workChips(task, ag, prs, lin, wt, t, subs.filter((s) => s.running))))
         .when(meta.length > 0 || Boolean(task.spaceName), (e) => e.child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
           .when(Boolean(task.spaceName), (e) => e.child(div().flex_none().px(5).rounded(5).border_1().border_color(t.border).max_w(140).truncate().text_color(t.muted).child(task.spaceName)))
           .child(div().flex_1().min_w(0).truncate().child(meta.join(" · "))))));
   }
 
   // The card's work row: the agent on it (click focuses it), its PRs (open), Linear ids, the branch.
-  workChips(task, ag, prs, lin, wt, t) {
+  workChips(task, ag, prs, lin, wt, t, running = []) {
     const stop = (e) => e.on_mouse_down("left", (_e, cx) => cx.stop_propagation());
     const chip = (id, label, tone, tip, act) => stop(div().id(id).flex_none().px(5).rounded(5).border_1().border_color(t[tone] + "66").text_color(t[tone])
       .cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(tip).on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label));
     const [words, tone] = ag ? STATUS[ag.status] ?? [ag.status, "muted"] : [];
     return h_flex().gap(5).items_center().flex_wrap().text_size(10.5)
       .when(Boolean(ag), (e) => e.child(chip(`wa-${task.id}`, `● ${ag.status === "working" ? "agent working" : `agent ${words}`}`, tone, `${agentName(ag)} · click to go to it`, () => focusAgent(ag))))
+      .children(running.slice(0, 2).map((s) => chip(`ws-${task.id}-${s.id}`, `◆ ${s.description.length > 24 ? s.description.slice(0, 23) + "…" : s.description}`, "accent",
+        `A subagent of ${agentName(ag)} is on it (${s.why}); click to see what it's doing`, () => this.openTask(task.id))))
       .children(prs.slice(0, 2).map((p) => chip(`wp-${task.id}-${p.number}`, `#${p.number} ${prState(p)}`, prTone(p), `${p.repo}#${p.number} ${p.title}`.trim(), () => exec("open", [p.url]).catch(() => null))))
       .children(lin.slice(0, 2).map((l) => chip(`wl-${task.id}-${l.id}`, l.id, "muted", l.url ? "Open in Linear" : "Copy", (cx) => openLinear(l, cx))))
       .when(Boolean(ag) && Boolean(wt.branch), (e) => e.child(div().min_w(0).truncate().text_color(t.dim).child(`⎇ ${wt.branch}`)));
@@ -759,7 +765,9 @@ export default class Tasks extends View {
     // The agent's screen, while it has one and it's shown: read again every 1,5 s.
     this.showScreen = true; this.screen = null;
     cx.timer.every(1500, (cx) => {
-      const a = this.showScreen ? agentOf(this.task()) : null;
+      const x = this.task(), live = agentOf(x);
+      if (live) subagentsFor(x, live, 2000);
+      const a = this.showScreen && !this.subPick(x) ? live : null;
       if (!a || this.reading) return;
       this.reading = true;
       cx.spawn(async (cx) => { try { const s = await screen(a.address); if (s !== this.screen) { this.screen = s; cx.notify(); } } finally { this.reading = false; } });
@@ -937,10 +945,20 @@ export default class Tasks extends View {
         .child(btn("task-del", this.confirmDel ? (this.stop === "delete" ? "Press again to delete" : "Click again to delete") : "Delete task", (cx) => this.deleteTask(x, cx), t.ansi1, "delete")));
   }
 
+  // The subagent the window shows (its id), or null for the agent's own screen. At first: a running subagent of the task.
+  subPick(x) {
+    const a = agentOf(x);
+    if (!a) return null;
+    const subs = subagentsFor(x, a, 2000);
+    if (this.sub !== undefined) return subs.some((s) => s.id === this.sub) ? this.sub : null;
+    return subs.find((s) => s.running)?.id ?? null;
+  }
+
   // The work section: the agent on it (Focus agent, its screen), PRs, Linear issues, worktree. Nothing when the task
   // has none of these.
   renderWork(x, t, section, btn, mono) {
-    const ag = agentOf(x), prs = prsOf(x), lin = linearOf(x), wt = worktreeOf(x);
+    const ag = agentOf(x), subs = ag ? subagentsFor(x, ag, 2000) : [], pick = this.subPick(x), sub = subs.find((s) => s.id === pick);
+    const prs = prsOf(x, subs.flatMap((s) => s.prs ?? [])), lin = linearOf(x), wt = worktreeOf(x);
     const done = x.column === doneCol(this.data), gone = !ag && x.worker && !done;
     if (!ag && !gone && !prs.length && !lin.length && !x.worker) return div();
     const [words, tone] = ag ? STATUS[ag.status] ?? [ag.status, "muted"] : [];
@@ -953,10 +971,20 @@ export default class Tasks extends View {
         .child(div().flex_none().text_color(t[tone]).child(`● ${words}`))
         .child(div().flex_1().min_w(0).truncate().child(agentName(ag)))
         .child(btn("tw-focus", "Focus agent", (cx) => { this.closeTask(cx); focusAgent(ag); }, t.accent, "agent"))
-        .child(btn("tw-screen", this.showScreen ? "Hide screen" : "Show screen", (cx) => { this.showScreen = !this.showScreen; cx.notify(); }, t.muted, "screen"))))
-        .when(this.showScreen, (e) => e.child(div().mt(4).mb(4).p(8).rounded(6).border_1().border_color(t.border).bg(t.chrome).overflow_hidden()
-          .text_size(10.5).font_family(mono).text_color(t.muted)
-          .children((this.screen ?? "Reading its screen…").split("\n").map((l) => div().h(15).whitespace_nowrap().overflow_hidden().child(l || "\u00a0"))))))
+        .child(btn("tw-screen", this.showScreen ? "Hide screen" : "Show screen", (cx) => { this.showScreen = !this.showScreen; if (this.showScreen) this.sub = null; cx.notify(); }, t.muted, "screen")))))
+      // Its subagents for this task (Claude Code): click one to watch it below instead of the agent's screen.
+      .when(subs.length > 0, (e) => e.child(row("Subagents", v_flex().flex_1().min_w(0).gap(2).children(subs.map((s) => h_flex().id(`tw-sub-${s.id}`).h(24).px(6).gap(8).items_center()
+        .rounded(5).cursor_pointer().bg(pick === s.id ? t.selected : t.background).hover((st) => st.bg(t.hover))
+        .tooltip(`${s.why}${s.cwd ? ` · ${tilde(s.cwd)}` : ""} · click to watch it`)
+        .on_click((_e, cx) => { this.sub = pick === s.id ? null : s.id; this.showScreen = true; cx.notify(); })
+        .child(div().flex_none().text_color(s.running ? t.accent : t.dim).child(s.running ? "◆ working" : "✓ finished"))
+        .child(div().flex_1().min_w(0).truncate().child(s.description || s.id))
+        .child(div().flex_none().text_size(10.5).text_color(t.dim).child(ago(s.updated))))))))
+      .when(Boolean(ag) && this.showScreen, (e) => e.child(v_flex().mt(4).mb(4).p(8).rounded(6).border_1().border_color(t.border).bg(t.chrome).overflow_hidden()
+        .text_size(10.5).font_family(mono).text_color(t.muted)
+        .child(div().pb(4).text_color(t.dim).child(sub ? `${sub.description}: what it's done lately (a subagent has no terminal; Focus agent goes to ${ag.title || "its agent"})` : `${agentName(ag)}: its screen`))
+        .children((sub ? (sub.lines?.length ? sub.lines.join("\n") : "Nothing yet.") : this.screen ?? "Reading its screen…").split("\n")
+          .map((l) => div().h(15).whitespace_nowrap().overflow_hidden().child(l || "\u00a0")))))
       .when(Boolean(gone), (e) => e.child(row("Agent", div().text_color(t.dim).child(`${x.assignee ? `${x.assignee}: ` : ""}its terminal is closed`))))
       .when(prs.length > 0, (e) => e.child(row("PRs", v_flex().flex_1().min_w(0).gap(3).children(prs.map((p) => h_flex().gap(8).items_center()
         .child(link(`tw-pr-${p.number}`, `${p.repo}#${p.number}`, prTone(p), "Open on GitHub", () => exec("open", [p.url]).catch(() => null)))

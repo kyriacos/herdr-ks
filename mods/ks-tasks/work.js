@@ -5,8 +5,11 @@
 //     PR of the worker's branch (gh pr list --head, looked up in the background, kept a few minutes);
 //   - its Linear issues: links, and ids in its title, description or branch (ENG-123, sam/eng-123-search-filters);
 //   - its worktree: the worker's folder and branch, else where the task was made.
-// Looked-up PRs bump `rev()`, so a view that shows them can redraw when it changes.
-import { agents, hc } from "herdr";
+//   - the agent's subagents (Claude Code): read from the session's transcripts by `ks-task subagents`; the ones
+//     for this task are those whose prompt names the task's id, that ran `ks-task start` on it, or that share a
+//     Linear id or several title words with it. A subagent has no terminal: its window shows what it does.
+// Looked-up PRs and subagents bump `rev()`, so a view that shows them can redraw when it changes.
+import { agents, hc, exec } from "herdr";
 import { gh } from "./lib/github.js";
 
 // The agent on a task: the terminal `ks-task start` kept; for a task started before that (or whose terminal has
@@ -74,9 +77,11 @@ function cached(key, args, cwd) {
   if (stale) { found.set(key, { at: c?.at ?? 0, busy: true, pr: c?.pr ?? null }); queue.push({ key, args, cwd }); pump(); }
   return found.get(key)?.pr ?? null;
 }
-// The task's PRs: [{ url, label, number, title, state, isDraft }] (state "" until gh has answered).
-export function prsOf(x) {
+// The task's PRs: [{ url, label, number, title, state, isDraft }] (state "" until gh has answered). `more`: PR URLs
+// from elsewhere (its subagents).
+export function prsOf(x, more = []) {
   const urls = new Map();
+  for (const u of more) urls.set(u, { url: u });
   for (const l of x.links ?? []) if (l.kind === "pr") urls.set(l.url, l);
   for (const text of [x.body, ...(x.comments ?? []).map((c) => c.text)]) {
     for (const m of String(text ?? "").matchAll(PR_URL)) if (!urls.has(m[0])) urls.set(m[0], { url: m[0] });
@@ -105,4 +110,59 @@ export async function screen(terminal, n = 14) {
   const lines = r.stdout.replace(ANSI, "").split("\n").map((l) => l.replace(/\s+$/, ""));
   while (lines.length && !lines[lines.length - 1]) lines.pop();
   return lines.slice(-n).join("\n");
+}
+
+// ---------- subagents ----------
+// An agent's Claude session id: its terminal's foreground process, then ~/.claude/sessions/<pid>.json.
+const sessions = new Map(); // address → { at, id }
+async function sessionOf(address) {
+  const c = sessions.get(address);
+  if (c && Date.now() - c.at < 60000) return c.id;
+  let id = null;
+  try {
+    const pid = JSON.parse((await hc(["get", address, "--json"])).stdout)?.foreground?.pid;
+    if (pid) {
+      const r = await exec("sh", ["-c", 'cat "$HOME/.claude/sessions/$1.json"', "sh", String(pid)]);
+      id = JSON.parse(r.stdout)?.sessionId ?? null;
+    }
+  } catch {}
+  sessions.set(address, { at: Date.now(), id });
+  return id;
+}
+const subs = new Map(); // address → { at, busy, list }
+// The agent's subagents (running, or finished within the hour), newest first; refreshed when older than `maxAge`.
+export function subagentsOf(a, maxAge = 10000) {
+  if (!a) return [];
+  const c = subs.get(a.address);
+  if (!c || (!c.busy && Date.now() - c.at > maxAge)) {
+    subs.set(a.address, { at: c?.at ?? 0, busy: true, list: c?.list ?? [] });
+    (async () => {
+      let list = c?.list ?? [];
+      try {
+        const id = await sessionOf(a.address);
+        if (id) {
+          const r = await exec("sh", ["-c", 'PATH="$HOME/.local/bin:$PATH" exec ks-task subagents "$1"', "sh", id]);
+          if (r.code === 0) list = JSON.parse(r.stdout);
+        } else list = [];
+      } catch {}
+      const changed = JSON.stringify(list) !== JSON.stringify(c?.list ?? []);
+      subs.set(a.address, { at: Date.now(), busy: false, list });
+      if (changed) revN++;
+    })();
+  }
+  return subs.get(a.address).list;
+}
+const STOP = new Set("the and for with from that this when should what into then than have your user users them they".split(" "));
+const words = (t) => new Set(String(t ?? "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !STOP.has(w)));
+// This task's subagents among the agent's: [{ ...subagent, why }].
+export function subagentsFor(x, a, maxAge) {
+  const lin = new Set(linearOf(x).map((l) => l.id)), title = words(x.title);
+  return subagentsOf(a, maxAge).flatMap((s) => {
+    const text = `${s.description}\n${s.prompt}`;
+    if (x.worker?.subagent === s.id) return [{ ...s, why: "started it" }];
+    if (x.id && text.includes(x.id)) return [{ ...s, why: "given the task" }];
+    if (ids(text).some((id) => lin.has(id))) return [{ ...s, why: "same Linear issue" }];
+    const shared = [...words(`${s.description} ${s.prompt.slice(0, 600)}`)].filter((w) => title.has(w));
+    return shared.length >= Math.min(3, title.size) && shared.length >= 2 ? [{ ...s, why: `about ${shared.slice(0, 3).join(", ")}` }] : [];
+  });
 }

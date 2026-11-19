@@ -51,6 +51,9 @@ attachments, then answer what they asked. Don't `start` it unless they ask you t
 - **Working from the board:** when the user points you at a task, `ks-task show ID`, then `start` it, leave a
   `comment` at real milestones (not every step), `link` the PR as soon as you open it (and the Linear issue's
   URL when you have it), and `done` with a short summary when finished.
+- **Handing a task to a subagent:** put the task id in the subagent's prompt (`Board task tm4k…`) and have it
+  run `ks-task start ID` itself, and `ks-task link ID <url>` for the PRs it opens. The board then shows that
+  subagent on the card and what it's doing in the task's window.
 - **When unsure** whether something belongs in Linear or here, ask; or propose it here and say so.
 - Tell the user briefly what you added or changed, with the ids, e.g. "Proposed 2 tasks: tm4k… (token refresh),
   tm4l… (flaky broker test)."
