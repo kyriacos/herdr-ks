@@ -6,7 +6,7 @@
 // every 20 s while a PR's CI is running, 30 s after a failed look, and at once after the Mac wakes (see `due`).
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
-import { exec, theme, run, notify, openOverlay } from "herdr";
+import { exec, theme, run, notify, openOverlay, layout } from "herdr";
 import * as cache from "./lib/cache.js";
 import { summarize, runningColor, pillColors } from "./lib/ci.js";
 import { fetchPr, prKey } from "./lib/github.js";
@@ -21,6 +21,7 @@ const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", 
   commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 80) { nodes {
     ... on CheckRun { status conclusion } ... on StatusContext { state } } } } } } } } } } }`;
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
+const findNode = (n, id) => (!n ? null : n.id === id ? n : (n.children ?? []).reduce((f, c) => f ?? findNode(c, id), null));
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
 // gh gets 20 s: a stuck call (network gone after sleep) must not hold up the next look.
@@ -54,7 +55,7 @@ function stateOf(pr) {
 export default class MyPrs extends View {
   init(_props, cx) {
     this.prs = []; this.error = null; this.loading = false; this.loaded = false; this.last = {};
-    this.collapsed = load("collapsed", false);
+    this.collapsed = load("collapsed", false); this.userPx = load("heldPx", null);
     this.draftsOpen = load("draftsOpen", false); // drafts sit folded under their "Drafts" line until opened
     // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o opens the PR, r refresh, h/l/Esc leave.
     this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.cursor = 0; this.pageRows = 6;
@@ -142,12 +143,21 @@ export default class MyPrs extends View {
   // The block's height: one line folded, else the rows (up to a few, then it scrolls).
   fit() {
     const list = this.shown(), rows = Math.min(list.length, 6), drafts = this.prs.some((p) => p.isDraft);
-    const px = this.collapsed ? HEAD : HEAD + 8 + Math.max(drafts ? 0 : 1, rows) * ROW + (drafts ? DRAFTS + 4 : 0);
-    if (px !== this.px) { this.px = px; run("layout.resize", { id: BLOCK, px }); }
+    const px = this.collapsed ? HEAD : this.userPx ?? HEAD + 8 + Math.max(drafts ? 0 : 1, rows) * ROW + (drafts ? DRAFTS + 4 : 0);
+    if (px !== this.px) { this.px = px; this.resizedAt = Date.now(); run("layout.resize", { id: BLOCK, px }); }
   }
   // The rows shown: every PR, less the drafts while they're folded.
   shown() { return this.draftsOpen ? this.prs : this.prs.filter((p) => !p.isDraft); }
   toggleDrafts(cx) { this.draftsOpen = !this.draftsOpen; save("draftsOpen", this.draftsOpen); this.cursor = 0; this.fit(); cx.notify(); }
+  // Dragged to another height: keep it (the list scrolls inside), until ↕ fits it to the PRs again.
+  // Dragged to another height? The layout's size for this block is what we last asked for unless someone dragged
+  // its edge (a squeeze by the blocks around it doesn't change it). Then keep that height.
+  sized(cx) {
+    const px = findNode(layout(), BLOCK)?.size?.px;
+    if (this.collapsed || !this.px || !px || Math.abs(px - this.px) <= 2 || Date.now() - (this.resizedAt ?? 0) < 1500) return;
+    this.userPx = Math.max(HEAD + ROW, Math.round(px)); this.px = this.userPx; save("heldPx", this.userPx); this.fit(); cx.notify();
+  }
+  unsize(cx) { this.userPx = null; save("heldPx", null); this.fit(); cx.notify(); }
   toggle(cx) { this.collapsed = !this.collapsed; save("collapsed", this.collapsed); this.fit(); cx.notify(); }
 
   async openUrl(url) {
@@ -232,7 +242,7 @@ export default class MyPrs extends View {
     const icon = (id, label, act) => div().id(id).flex_none().size(20).flex().items_center().justify_center().rounded(5).cursor_pointer()
       .text_size(11).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label);
-    return sectionFrame(t, v_flex().id("myprs").size_full().min_h(0).bg(t.chrome).text_color(t.foreground)).track_focus(this.handle)
+    return sectionFrame(t, v_flex().id("myprs").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).on_size_change((_s, cx) => this.sized(cx))).track_focus(this.handle)
       .on_key_down((e, cx) => {
         const before = this.cursor;
         if (!listKey(this, e, prs.length, (i) => this.openCard(prs[i]), (k) => {
@@ -250,6 +260,7 @@ export default class MyPrs extends View {
         actions: [
           // How old the list is, once that's more than a minute and a half (a look failing, or the Mac asleep).
           ...(!this.loading && this.doneAt > 0 && ago(Date.now() - this.doneAt) ? [div().flex_none().text_size(10).text_color(this.error ? t.ansi1 : t.dim).child(ago(Date.now() - this.doneAt))] : []),
+          ...(this.userPx ? [headAction(t, "myprs-fit", "↕", "Fit to the PRs again (you dragged it to this height)", (cx) => this.unsize(cx))] : []),
           headAction(t, "myprs-refresh", this.loading ? "…" : "↻", "Look again (r)", (cx) => this.refresh(cx)),
           headAction(t, "myprs-hide", "×", "Hide (cmd-shift-m shows it)", () => run("layout.hide", { id: BLOCK })),
         ] }))

@@ -200,7 +200,9 @@ shows this space's tasks (made in it, or in its worktrees), the board window eve
 
 **In the sidebar**, above My PRs: what's in progress now (the board's Doing column, every space, up to three),
 with how many are planned for today and how many agents proposed. Click a task to open it, the header for the
-board on all spaces; the chevron folds it.
+board on all spaces; the chevron folds it. It sizes itself to what it lists; drag its edge to make it taller and
+it keeps that height and lists as many as fit (**↕** in its header fits it to the tasks again). My PRs works the
+same way.
 
 **⤢** (or `z`) opens the board in a
 window of its own; drag its corners to resize it (or use the key modes' resize keys), and it keeps that size.
