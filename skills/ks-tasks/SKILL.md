@@ -26,7 +26,7 @@ ks-task list                     # open tasks (proposed marked); --all, --mine (
 ks-task show ID                  # details, comments, attachment paths
 ks-task start ID                 # move to the in-progress column, as yours (refused while still proposed);
                                  # run it from your own terminal and worktree: the board shows you on the card
-ks-task link ID URL...           # the PR you opened, the Linear issue: shown on the card and in the task
+ks-task link ID URL|ENG-123...   # the PR you opened, the Linear issue (URL or id): shown on the card and in the task
 ks-task comment ID "progress note"
 ks-task done ID "what was done, PR link"
 ks-task move ID "Column" | update ID --title/--body/--today | attach ID path... | accept ID | dismiss ID | columns

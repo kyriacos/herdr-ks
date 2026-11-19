@@ -48,6 +48,8 @@ export default class Settings extends View {
     this.rootInput = InputState.new({ value: prefs().worktreeRoot, placeholder: DEFAULTS.worktreeRoot });
     this.reposInput = InputState.new({ value: prefs().repoFolders, placeholder: DEFAULTS.repoFolders });
     this.reposInput.on("change", () => setPref("repoFolders", this.reposInput.value().trim() || DEFAULTS.repoFolders));
+    this.linearInput = InputState.new({ value: prefs().linearWorkspace, placeholder: "acme (from linear.app/acme/…)" });
+    this.linearInput.on("change", () => setPref("linearWorkspace", this.linearInput.value().trim().replace(/^https?:\/\/linear\.app\//, "").split("/")[0]));
     this.rootInput.on("change", () => setPref("worktreeRoot", this.rootInput.value().trim() || DEFAULTS.worktreeRoot));
     this.handle = cx.focus_handle();
     this.handle.focus();
@@ -231,6 +233,8 @@ export default class Settings extends View {
             ...choice("myprs", [[true, "Shown"], [false, "Hidden"]], Boolean(myprs && !myprs.hidden), (v) => run(v ? "layout.show" : "layout.hide", { id: "my-prs" }))))
           .child(row("Repo folders", "Where your clones live, comma-separated (~/code, ~/work). The PR window looks here, two levels deep, for the repo of a PR no open space is in.",
             Input.new(this.reposInput).w(360).h(30).px(10).items_center().rounded(6).border(1).border_color(t.input).bg(t.background).text_color(t.foreground)))
+          .child(row("Linear workspace", "Linear issue ids (in tasks, PRs and the dashboard) open at linear.app/<this>/issue/<id>. Empty: the workspace of the last Linear link seen.",
+            Input.new(this.linearInput).w(360).h(30).px(10).items_center().rounded(6).border(1).border_color(t.input).bg(t.background).text_color(t.foreground)))
           .child(row("Notifications", "A toast when a PR's CI turns red or green, it's approved, changes are requested, or it's merged or closed.",
             ...choice("toasts", [[true, "On"], [false, "Off"]], p.prToasts, (v) => setPref("prToasts", v))));
       }

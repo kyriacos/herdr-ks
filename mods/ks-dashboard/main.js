@@ -10,6 +10,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextView, InputState, Input } from "gpui-base";
 import { exec, run, theme, props, notify, nextCommand } from "herdr";
 import { dimmed } from "./lib/focus.js";
+import { linearUrl, openLinear, copyLinear } from "./lib/linear.js";
 import { sectionHead, sectionFrame, badge, headAction } from "./lib/section.js";
 import { isWindow, initWindow, openPanelWindow, closeWindow, windowFrame, closeButton } from "./lib/panelwin.js";
 import { RANGES, rangeStart, ymd, loadPrompts, savePrompts, loadRuns, removeRun, activity, lastActivity, runPrompt, loadViews, saveViews, filtered, knownRepos } from "./data.js";
@@ -254,7 +255,7 @@ export default class Dashboard extends View {
         .child(div().text_color(t.accent).child("✓")).child(div().flex_1().min_w(0).truncate().child(x.title || "Untitled"))
         .child(div().text_size(10.5).text_color(t.dim).child([x.space, when(x.doneAt)].filter(Boolean).join(" · ")))))
       .child(this.section(`Linear issues · ${a.linear.length}`, t))
-      .child(div().pb(2).text_size(10.5).text_color(t.dim).child("Ids found in the merged PRs (titles, branches, descriptions) and done tasks. Click to copy."))
+      .child(div().pb(2).text_size(10.5).text_color(t.dim).child("Ids found in the merged PRs (titles, branches, descriptions) and done tasks. Click opens one in Linear, right-click copies it."))
       .child(h_flex().gap(6).flex_wrap().children(a.linear.map((id) => this.linearChip(id, t))));
   }
 
@@ -316,8 +317,9 @@ export default class Dashboard extends View {
   }
   linearChip(id, t) {
     return div().id(`lin-${id}`).px(7).h(22).flex().items_center().rounded(11).border_1().border_color(t.border).text_size(11).text_color(t.foreground)
-      .cursor_pointer().hover((s) => s.bg(t.hover)).tooltip("Copy").on_click((_e, cx) => { cx.write_to_clipboard(id); notify({ title: `Copied ${id}`, level: "info", timeout: 1500 }); })
-      .child(id);
+      .cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(linearUrl(id) ? "Open in Linear (right-click copies)" : "Copy (set your Linear workspace in Settings to open it)")
+      .on_click((_e, cx) => openLinear(id, null, cx)).on_mouse_down("right", (_e, cx) => copyLinear(id, cx))
+      .child(linearUrl(id) ? `${id} ↗` : id);
   }
   prList(prs, t, idp) {
     if (!prs.length) return div().text_size(11.5).text_color(t.dim).child("None in this range.");

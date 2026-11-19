@@ -22,6 +22,7 @@ export const DEFAULTS = {
   worktreeRoot: "~/code/worktrees", // new worktrees go to <this>/<repo>/<branch>
   repoFolders: "~/code", // where your clones live, comma-separated; looked through two levels deep
   cacheDays: 7,        // the GitHub cache drops entries not refreshed for this many days (0: never)
+  linearWorkspace: "", // Linear issue ids open at linear.app/<this>/issue/<id> ("" : learned from the last Linear link)
   agentProcs: true,    // the Agents list's "N procs" chip and the process lookups behind it
 };
 export const prefs = () => ({ ...DEFAULTS, ...(shared(KEY) ?? {}) });

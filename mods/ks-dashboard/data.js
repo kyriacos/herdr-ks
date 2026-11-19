@@ -12,6 +12,7 @@
 // as a session) for the summary. Without claude the run keeps the data and says why there's no summary.
 import { exec, appHome } from "herdr";
 import { gh } from "./lib/github.js";
+import { learnLinear } from "./lib/linear.js";
 
 const DIR = () => `${appHome()}/data/ks-dashboard`;
 const pad = (n) => String(n).padStart(2, "0");
@@ -97,6 +98,7 @@ export async function mergedPrs(from) {
       try { d = JSON.parse(v?.stdout ?? ""); details.set(p.url, d); } catch { d = {}; }
     }
     const body = String(p.body ?? "");
+    learnLinear(body); // a Linear bot's link in the description gives the workspace issue links open in
     prs.push({
       number: p.number, title: p.title, url: p.url, repo: p.repository?.nameWithOwner ?? "",
       mergedAt: Date.parse(d.mergedAt ?? p.closedAt), additions: d.additions ?? null, deletions: d.deletions ?? null,

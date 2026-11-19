@@ -229,7 +229,9 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   changes (**Hide screen** / **Show screen**), the PRs with their titles, the Linear issues, and the worktree
   (click copies the path). PRs come from `ks-task link`, GitHub PR links in the description or comments, and the
   PR of the agent's branch, looked up with `gh`. Linear ids come from links, the title, the description and the
-  branch; one with a link opens it, others copy the id.
+  branch. Click one to open it in Linear (right-click copies the id): its link comes from the workspace set in
+  **Settings > Pull requests > Linear workspace**, or else from the last Linear link seen in a task or a PR
+  description. The dashboard's Linear ids open the same way.
 - **Subagents.** When the agent on a task is Claude Code and hands work to subagents, the ones for that task show
   too: **◆ <what it's doing>** on the card, and under **Subagents** in the window (working or finished, how long
   ago). Click one to watch it: a subagent has no terminal, so the window shows what it said and the commands it

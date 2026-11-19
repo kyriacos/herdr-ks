@@ -11,6 +11,7 @@
 // Looked-up PRs and subagents bump `rev()`, so a view that shows them can redraw when it changes.
 import { agents, hc, exec } from "herdr";
 import { gh } from "./lib/github.js";
+import { learnLinear, linearUrl } from "./lib/linear.js";
 
 // The agent on a task: the terminal `ks-task start` kept; for a task started before that (or whose terminal has
 // gone), a live agent whose title is the task's assignee (ks-task writes the agent's title there).
@@ -34,10 +35,11 @@ const ids = (text) => [...String(text ?? "").matchAll(/\b([A-Z][A-Z0-9]{1,9}-\d{
 // [{ id, url }]: url when a link gave one (clicking then opens it; otherwise it copies the id).
 export function linearOf(x) {
   const out = new Map();
-  for (const l of x.links ?? []) if (l.kind === "linear") out.set(l.label, l.url);
+  for (const l of x.links ?? []) if (l.kind === "linear") { out.set(l.label, l.url); learnLinear(l.url); }
+  learnLinear(x.body);
   const branch = String(worktreeOf(x).branch ?? "").toUpperCase().replace(/[/_]/g, " ");
   for (const id of [...ids(x.title), ...ids(x.body), ...ids(branch)]) if (!out.has(id)) out.set(id, null);
-  return [...out].map(([id, url]) => ({ id, url }));
+  return [...out].map(([id, url]) => ({ id, url: linearUrl(id, url) }));
 }
 
 // ---------- worktree ----------

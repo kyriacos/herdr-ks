@@ -14,7 +14,7 @@ for you to accept or dismiss. A task you accepted (or made yourself) is what an 
   ks-task move ID COLUMN
   ks-task update ID [--title T] [--body B] [--today | --not-today]
   ks-task attach ID PATH...
-  ks-task link ID URL...                a PR, a Linear issue or any link, shown on the card and in the task
+  ks-task link ID URL|ENG-123...        a PR, a Linear issue (link or id) or any link, shown on the card and in the task
   ks-task accept ID...                  a proposed task becomes a real one (only when the user says so)
   ks-task dismiss ID...                 drop a proposed task
   ks-task columns
@@ -327,6 +327,8 @@ def link_of(url):
     m = re.match(r"https?://linear\.app/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-\d+)", url)
     if m:
         return {"url": url, "kind": "linear", "label": m.group(1).upper()}
+    if re.match(r"^[A-Za-z][A-Za-z0-9]{1,9}-\d{1,6}$", url):  # a bare Linear id: the panel builds its link
+        return {"url": "", "kind": "linear", "label": url.upper()}
     return {"url": url, "kind": "link", "label": url}
 
 
@@ -336,9 +338,9 @@ def cmd_link(argv):
         die("link needs an id and a URL: ks-task link ID https://github.com/acme/web/pull/12")
     d = load()
     t = find(d, pos[0])
-    have = {x["url"] for x in t.get("links", [])}
+    have = {x["url"] or x["label"] for x in t.get("links", [])}
     for url in pos[1:]:
-        if url in have:
+        if url in have or url.upper() in have:
             continue
         x = link_of(url)
         t.setdefault("links", []).append(x)
