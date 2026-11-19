@@ -12,6 +12,7 @@
 // comments' buttons live outside the list.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
+import { segment } from "./lib/segment.js";
 import { props, exec, run, theme, settings, watchFolder, closeOverlay, openOverlay, shared, setShared, nextCommand } from "herdr";
 import { trackActive, takeRequest, raiseStrip } from "./lib/windows.js";
 import { langOf, colorsFor } from "./lib/highlight.js";
@@ -626,8 +627,7 @@ export default class Review extends View {
   // Branch review's left column: Files | Commits, Tree | Flat, then the branch's files grouped by repo, the
   // commit list, or one commit's files. Plain list: rows may have handlers here (unlike the diff list).
   fileList(t) {
-    const seg = (id, label, on, act) => div().id(id).h(22).px(8).flex().items_center().rounded(5).cursor_pointer().text_size(11)
-      .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted).hover((s) => s.bg(t.hover)).on_click((_e, cx) => act(cx)).child(label);
+    const seg = (id, label, on, act) => segment(t, id, label, on, act);
     const out = [];
     const showingFiles = this.left === "files" || Boolean(this.commit);
     if (this.left === "files" && !this.commit) {

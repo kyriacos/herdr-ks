@@ -7,6 +7,7 @@
 //   same branch show as extra sections, each with its own commit, so backend + web work side by side.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, VirtualListScrollHandle } from "gpui-base";
+import { segment } from "./lib/segment.js";
 import { spaces, panes, agents, focused, exec, hc, watchFolder, theme, settings, home, appHome, run, shared, setShared, openOverlay } from "herdr";
 import { langOf, colorsFor } from "./lib/highlight.js";
 import { parseDiff, wrapTokens, colsFor } from "./lib/diff.js";
@@ -616,8 +617,7 @@ export default class Changes extends View {
   }
 
   scopeBar(t) {
-    const seg = (id, label, on, act) => div().id(id).h(22).px(8).flex().items_center().rounded(5).cursor_pointer().text_size(11)
-      .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted).hover((st) => st.bg(t.hover)).on_click((_e, cx) => act(cx)).child(label);
+    const seg = (id, label, on, act) => segment(t, id, label, on, act);
     const showingFiles = this.scope !== "commits" || Boolean(this.picked);
     return h_flex().h(32).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
       .child(h_flex().gap(1).p(1).rounded(6).border_1().border_color(t.border)

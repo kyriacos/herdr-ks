@@ -8,6 +8,7 @@
 // Data and runs: ./data.js (files under <app home>/data/ks-dashboard/).
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextView, InputState, Input } from "gpui-base";
+import { segment } from "./lib/segment.js";
 import { exec, run, theme, props, notify, nextCommand } from "herdr";
 import { dimmed } from "./lib/focus.js";
 import { linearUrl, openLinear, copyLinear } from "./lib/linear.js";
@@ -170,8 +171,7 @@ export default class Dashboard extends View {
 
   renderWindow(cx) {
     const t = theme(), run = this.sel && this.runs.find((r) => r.id === this.sel);
-    const seg = (id, label, on, act) => div().id(id).h(24).px(10).flex().items_center().rounded(5).cursor_pointer().text_size(11.5)
-      .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted).hover((s) => s.bg(t.hover)).on_click((_e, cx) => act(cx)).child(label);
+    const seg = (id, label, on, act) => segment(t, id, label, on, act, { h: 24, px: 10, size: 11.5 });
     const root = v_flex().id("dash-window").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(13)
       .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       .child(h_flex().h(44).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)

@@ -16,6 +16,7 @@
 // g s grouping on / off, h/l/Esc leave.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, InputState, Input } from "gpui-base";
+import { segment } from "./lib/segment.js";
 import { exec, appHome, spaces, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand } from "herdr";
 import { trackActive, takeRequest, raiseStrip, claim, backToPanel } from "./lib/windows.js";
 import { dimmed } from "./lib/focus.js";
@@ -279,8 +280,7 @@ export default class Notes extends View {
 
   renderInner(cx) {
     const t = theme(), list = this.shown(), sp = this.space();
-    const seg = (id, label, on, act) => div().id(id).h(22).px(8).flex().items_center().rounded(5).cursor_pointer().text_size(11)
-      .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted).hover((s) => s.bg(t.hover)).on_click((_e, cx) => act(cx)).child(label);
+    const seg = (id, label, on, act) => segment(t, id, label, on, act);
     // Grouped (All): a header before each space's notes (shown() already put them in that order).
     const rows = [], focusedList = focusedNow(this, "ks-notes");
     let last;
