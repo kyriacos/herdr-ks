@@ -13,16 +13,19 @@
 // task (the next Enter opens it). A task's window opens on its description; Tab / shift-Tab go round all of it.
 // Today: what you mean to do today, then the backlog (everything else not done). t (or the card's ☀) moves a task
 // between the two; dragging works here too. A task in the board's last column counts as done and leaves both lists.
+// Work (./work.js): a task an agent started (ks-task start) shows that agent's status on its card (● working, needs
+// you, waiting for you), and its PRs, Linear issues and branch; its window has Focus agent and the agent's screen.
 // Attachments (lib/attach.js): drop files from Finder onto a card (that task), onto a column or a list (a new task),
 // or onto a task's dialog; the dialog also picks files and pastes a copied picture.
 //
 // Stored in <app home>/data/ks-tasks.json ({ columns: [{ id, name }], tasks: [{ id, title, body, column, today,
-// order, space, spaceName, folder, created, updated, doneAt, comments: [{ id, text, at }], attachments: [...] }] }).
+// order, space, spaceName, folder, created, updated, doneAt, comments: [{ id, text, at }], attachments: [...],
+// worker: { terminal, folder, branch, at }, links: [{ url, kind: "pr" | "linear" | "link", label }] }] }).
 // Every change reads the file, applies itself and writes it back (so the panel, the window and a task's dialog never
 // undo each other), then bumps shared "ks-tasks.rev" so the other copies read it again at once.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, InputState, Input } from "gpui-base";
-import { exec, appHome, spaces, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand, run, notify } from "herdr";
+import { exec, appHome, spaces, agents, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand, run, notify } from "herdr";
 import { pickAgent, agentChoices } from "./lib/comments.js";
 import { trackActive, takeRequest, raiseStrip, claim, backToPanel } from "./lib/windows.js";
 import { pref } from "./lib/prefs.js";
@@ -30,6 +33,7 @@ import { dimmed } from "./lib/focus.js";
 import { spaceName } from "./lib/spacenames.js";
 import { takeFocus, watchFocus, focusedNow, leave, toStrip } from "./lib/panelkeys.js";
 import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } from "./lib/attach.js";
+import { agentOf, agentName, STATUS, linearOf, worktreeOf, tilde, prsOf, prTone, prState, screen, rev as workRev } from "./work.js";
 
 const FILE = () => `${appHome()}/data/ks-tasks.json`;
 const REV = "ks-tasks.rev";
@@ -166,6 +170,16 @@ function menuRows(m) {
     { label: "Open", act: () => openOverlay({ mod: "ks-tasks", kind: "dialog", key: `ks-task-${m.id}`, width: 680, height: 720, props: { task: m.id } }) },
   ];
 }
+function focusAgent(a) {
+  run("agent.focus", { terminal: a.address });
+  run("pane.focus", { terminal: a.address });
+}
+// A Linear id: opens its link when it has one, else copies the id.
+function openLinear(l, cx) {
+  if (l.url) exec("open", [l.url]).catch(() => null);
+  else { cx.write_to_clipboard(l.id); notify({ title: `Copied ${l.id}`, level: "info", timeout: 1500 }); }
+}
+
 function askAgent(m, a, cx) {
   cx.write_to_clipboard(reference(m));
   run("agent.focus", { terminal: a.address });
@@ -179,6 +193,12 @@ export default class Tasks extends View {
     this.data = { columns: COLUMNS.map((c) => ({ ...c })), tasks: [] }; this.loaded = false;
     this.chain = Promise.resolve(); this.rev = shared(REV) ?? 0;
     this.handle = cx.focus_handle();
+    // Agents' statuses and PRs looked up in the background change what cards show: redraw when they do.
+    this.workSig = "";
+    cx.timer.every(2000, (cx) => {
+      const sig = `${workRev()}|${agents().map((a) => `${a.address}:${a.status}`).join(",")}`;
+      if (sig !== this.workSig) { this.workSig = sig; cx.notify(); }
+    });
     this.taskId = p.task ?? null; this.board = Boolean(p.board); this.menu = p.menu ?? null;
     if (this.menu) { this.at = 0; this.handle.focus(); return; } // a card's right-click menu: needs no data
     if (this.taskId) this.initTask(cx); else this.initList(cx);
@@ -304,6 +324,7 @@ export default class Tasks extends View {
     if (c === "board") this.openBoard();
     // z / the window-level zoom keys (ks-zen): the board window, unless it's open (then it closes itself).
     else if (c === "zoom") this.openBoard();
+    else if (c.startsWith("open:")) this.openTask(c.slice(5)); // "ks-tasks.open:<id>": that task's window
     else if (c === "new") { this.setView(this.view, cx); this.startAdd(this.view === "today" ? "@today" : this.data.columns[this.cur.col]?.id, cx); }
   }
   setAll(on, cx) { this.all = on; save(this.scopeKey, on); this.row = 0; this.cur.row = 0; cx.notify(); }
@@ -509,7 +530,8 @@ export default class Tasks extends View {
     const meta = [];
     const colName = this.view === "today" ? this.data.columns.find((c) => c.id === task.column)?.name : null;
     if (colName) meta.push(colName);
-    if (task.assignee) meta.push(`@ ${task.assignee}`);
+    const ag = done ? null : agentOf(task), prs = prsOf(task), lin = linearOf(task), wt = worktreeOf(task);
+    if (task.assignee && !ag) meta.push(`@ ${task.assignee}`);
     if (n) meta.push(plural(n, "comment"));
     if (files.length) meta.push(plural(files.length, "file"));
     return v_flex().flex_none()
@@ -545,9 +567,23 @@ export default class Tasks extends View {
           .child(div().id(`dis-${task.id}`).flex_none().px(6).rounded(4).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover))
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.remove(task, cx); }).child("✕ Dismiss"))))
         .when(pics.length > 0, (e) => e.child(attachRow(pics, t, `cp-${task.id}`)))
+        .when(Boolean(ag) || prs.length > 0 || lin.length > 0, (e) => e.child(this.workChips(task, ag, prs, lin, wt, t)))
         .when(meta.length > 0 || Boolean(task.spaceName), (e) => e.child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
           .when(Boolean(task.spaceName), (e) => e.child(div().flex_none().px(5).rounded(5).border_1().border_color(t.border).max_w(140).truncate().text_color(t.muted).child(task.spaceName)))
           .child(div().flex_1().min_w(0).truncate().child(meta.join(" · "))))));
+  }
+
+  // The card's work row: the agent on it (click focuses it), its PRs (open), Linear ids, the branch.
+  workChips(task, ag, prs, lin, wt, t) {
+    const stop = (e) => e.on_mouse_down("left", (_e, cx) => cx.stop_propagation());
+    const chip = (id, label, tone, tip, act) => stop(div().id(id).flex_none().px(5).rounded(5).border_1().border_color(t[tone] + "66").text_color(t[tone])
+      .cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(tip).on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label));
+    const [words, tone] = ag ? STATUS[ag.status] ?? [ag.status, "muted"] : [];
+    return h_flex().gap(5).items_center().flex_wrap().text_size(10.5)
+      .when(Boolean(ag), (e) => e.child(chip(`wa-${task.id}`, `● ${ag.status === "working" ? "agent working" : `agent ${words}`}`, tone, `${agentName(ag)} · click to go to it`, () => focusAgent(ag))))
+      .children(prs.slice(0, 2).map((p) => chip(`wp-${task.id}-${p.number}`, `#${p.number} ${prState(p)}`, prTone(p), `${p.repo}#${p.number} ${p.title}`.trim(), () => exec("open", [p.url]).catch(() => null))))
+      .children(lin.slice(0, 2).map((l) => chip(`wl-${task.id}-${l.id}`, l.id, "muted", l.url ? "Open in Linear" : "Copy", (cx) => openLinear(l, cx))))
+      .when(Boolean(ag) && Boolean(wt.branch), (e) => e.child(div().min_w(0).truncate().text_color(t.dim).child(`⎇ ${wt.branch}`)));
   }
 
   addBox(where, t, inline = false) {
@@ -720,10 +756,19 @@ export default class Tasks extends View {
     this.title.on("submit", (_e, cx) => this.goStop("body", cx));
     this.scroll = ScrollHandle.new();
     this.seeded = false; this.working = null;
+    // The agent's screen, while it has one and it's shown: read again every 1,5 s.
+    this.showScreen = true; this.screen = null;
+    cx.timer.every(1500, (cx) => {
+      const a = this.showScreen ? agentOf(this.task()) : null;
+      if (!a || this.reading) return;
+      this.reading = true;
+      cx.spawn(async (cx) => { try { const s = await screen(a.address); if (s !== this.screen) { this.screen = s; cx.notify(); } } finally { this.reading = false; } });
+    });
     this.handle.focus();
   }
   stops(x) {
-    return ["title", ...this.data.columns.map((c) => `col:${c.id}`), "today", ...(x.proposed ? ["accept", "dismiss"] : []), "body", "pick", "paste", "note", "send", "ask", "delete"];
+    const ag = agentOf(x) ? ["agent", "screen"] : [];
+    return ["title", ...this.data.columns.map((c) => `col:${c.id}`), "today", ...(x.proposed ? ["accept", "dismiss"] : []), ...ag, "body", "pick", "paste", "note", "send", "ask", "delete"];
   }
   goStop(name, cx) {
     this.stop = name;
@@ -741,6 +786,8 @@ export default class Tasks extends View {
     else if (s === "today") this.apply(ops.patch(x.id, { today: !x.today }), cx);
     else if (s === "accept") this.apply(ops.patch(x.id, { proposed: false }), cx);
     else if (s === "dismiss") { this.apply(ops.remove(x.id), cx); this.closeTask(cx); }
+    else if (s === "agent") { const a = agentOf(x); if (a) { this.closeTask(cx); focusAgent(a); } }
+    else if (s === "screen") this.showScreen = !this.showScreen;
     else if (s === "pick") this.attachWith(cx, "Choosing…", pickAndAdd);
     else if (s === "paste") this.attachWith(cx, "Pasting…", pasteImage);
     else if (s === "send") this.sendComment(cx);
@@ -848,6 +895,7 @@ export default class Tasks extends View {
             .child(div().flex_1().truncate().child("Proposed by an agent: accept it to keep it (an agent may then start on it)"))
             .child(ring("accept", div().id("tp-acc").px(7)).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => this.apply(ops.patch(x.id, { proposed: false }), cx)).child("Accept"))
             .child(ring("dismiss", div().id("tp-dis").px(7)).rounded(4).cursor_pointer().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => { this.apply(ops.remove(x.id), cx); close(cx); }).child("Dismiss"))))
+          .child(this.renderWork(x, t, section, btn, mono))
           .child(section("Description"))
           .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)
             .child(Textarea.new(this.body).w_full().text_size(12.5).text_color(t.foreground).font_family(mono)))
@@ -887,6 +935,38 @@ export default class Tasks extends View {
           this.closeTask(cx); askAgent(x, a, cx);
         }, t.muted, "ask"))
         .child(btn("task-del", this.confirmDel ? (this.stop === "delete" ? "Press again to delete" : "Click again to delete") : "Delete task", (cx) => this.deleteTask(x, cx), t.ansi1, "delete")));
+  }
+
+  // The work section: the agent on it (Focus agent, its screen), PRs, Linear issues, worktree. Nothing when the task
+  // has none of these.
+  renderWork(x, t, section, btn, mono) {
+    const ag = agentOf(x), prs = prsOf(x), lin = linearOf(x), wt = worktreeOf(x);
+    const done = x.column === doneCol(this.data), gone = !ag && x.worker && !done;
+    if (!ag && !gone && !prs.length && !lin.length && !x.worker) return div();
+    const [words, tone] = ag ? STATUS[ag.status] ?? [ag.status, "muted"] : [];
+    const row = (label, el) => h_flex().min_h(26).gap(8).items_center().text_size(11.5).child(div().w(70).flex_none().text_color(t.dim).child(label)).child(el);
+    const link = (id, label, tone, tip, act) => div().id(id).px(6).h(22).flex().items_center().rounded(5).border_1().border_color(t[tone] + "66").text_color(t[tone])
+      .text_size(11).cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(tip).on_click((_e, cx) => act(cx)).child(label);
+    return v_flex()
+      .child(section("Work"))
+      .when(Boolean(ag), (e) => e.child(row("Agent", h_flex().flex_1().min_w(0).gap(8).items_center()
+        .child(div().flex_none().text_color(t[tone]).child(`● ${words}`))
+        .child(div().flex_1().min_w(0).truncate().child(agentName(ag)))
+        .child(btn("tw-focus", "Focus agent", (cx) => { this.closeTask(cx); focusAgent(ag); }, t.accent, "agent"))
+        .child(btn("tw-screen", this.showScreen ? "Hide screen" : "Show screen", (cx) => { this.showScreen = !this.showScreen; cx.notify(); }, t.muted, "screen"))))
+        .when(this.showScreen, (e) => e.child(div().mt(4).mb(4).p(8).rounded(6).border_1().border_color(t.border).bg(t.chrome).overflow_hidden()
+          .text_size(10.5).font_family(mono).text_color(t.muted)
+          .children((this.screen ?? "Reading its screen…").split("\n").map((l) => div().h(15).whitespace_nowrap().overflow_hidden().child(l || "\u00a0"))))))
+      .when(Boolean(gone), (e) => e.child(row("Agent", div().text_color(t.dim).child(`${x.assignee ? `${x.assignee}: ` : ""}its terminal is closed`))))
+      .when(prs.length > 0, (e) => e.child(row("PRs", v_flex().flex_1().min_w(0).gap(3).children(prs.map((p) => h_flex().gap(8).items_center()
+        .child(link(`tw-pr-${p.number}`, `${p.repo}#${p.number}`, prTone(p), "Open on GitHub", () => exec("open", [p.url]).catch(() => null)))
+        .child(div().flex_none().text_color(t[prTone(p)]).child(prState(p)))
+        .child(div().flex_1().min_w(0).truncate().child(p.title)))))))
+      .when(lin.length > 0, (e) => e.child(row("Linear", h_flex().gap(6).flex_wrap().children(lin.map((l) => link(`tw-lin-${l.id}`, l.id, "muted", l.url ? "Open in Linear" : "Copy", (cx) => openLinear(l, cx)))))))
+      .when(Boolean(wt.folder), (e) => e.child(row("Worktree", h_flex().flex_1().min_w(0).gap(8).items_center()
+        .child(div().id("tw-wt").min_w(0).truncate().cursor_pointer().hover((s) => s.text_color(t.accent)).tooltip("Copy the path")
+          .on_click((_e, cx) => { cx.write_to_clipboard(wt.folder); notify({ title: "Copied the path", level: "info", timeout: 1500 }); }).child(tilde(wt.folder)))
+        .when(Boolean(wt.branch), (e) => e.child(div().flex_none().text_color(t.dim).child(`⎇ ${wt.branch}`))))));
   }
 
   renderMenu() {

@@ -218,6 +218,14 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   through everything: title, the column pills, Today, description, Add files, Paste image, the comment box,
   Comment, Delete. On a button or pill (ringed in the accent colour), Enter or Space presses it. Enter in the title
   goes to the description.
+- **Work on a task.** When an agent starts a task (`ks-task start`, from its own terminal), the card shows it:
+  **● agent working**, **agent needs you** or **agent waiting for you**; click it to go to that agent. The card
+  also shows the task's PRs (number and state: open, draft, merged, closed; click opens it), its Linear ids and
+  the agent's branch. In the task's window, **Work** has the agent with **Focus agent** and its screen as it
+  changes (**Hide screen** / **Show screen**), the PRs with their titles, the Linear issues, and the worktree
+  (click copies the path). PRs come from `ks-task link`, GitHub PR links in the description or comments, and the
+  PR of the agent's branch, looked up with `gh`. Linear ids come from links, the title, the description and the
+  branch; one with a link opens it, others copy the id.
 - **Right-click a card** to talk to an agent about it: **Ask about it: <agent>** (the task's space's agent first,
   then up to three others) shows that agent and pastes the task's reference into its prompt, not sent, so you type
   what you want to discuss and press Enter. The reference reads `Task <id> "<title>" from my board (ks-task show
