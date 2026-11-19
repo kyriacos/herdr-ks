@@ -147,6 +147,7 @@
             {
               "id": "main",
               "type": "block",
+              "min": 320,
               "content": {
                 "tab": "active",
                 "pane": {
@@ -181,7 +182,7 @@
                 "px": 368
               },
               "min": 280,
-              "max": 900,
+              "max": 2400,
               "children": [
                 {
                   "id": "panel-body",
