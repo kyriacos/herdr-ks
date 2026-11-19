@@ -222,6 +222,11 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   through everything: title, the column pills, Today, description, Add files, Paste image, the comment box,
   Comment, Delete. On a button or pill (ringed in the accent colour), Enter or Space presses it. Enter in the title
   goes to the description.
+- **Subtasks.** In a task's window, **Subtasks** lists them with a box to tick each done; type in **Add a
+  subtask** and Enter adds one. Each subtask is a task of its own (click to open it; **↑ Subtask of …** goes back),
+  so each can have its own agent, PR and worktree. They stay inside their parent rather than on the board; the
+  parent's card shows **☑ 2/5** and the agent working on any of them. Deleting a task deletes its subtasks (u
+  undoes it). Agents add them with `ks-task add "step" --parent ID`.
 - **Work on a task.** When an agent starts a task (`ks-task start`, from its own terminal), the card shows it:
   **● agent working**, **agent needs you** or **agent waiting for you**; click it to go to that agent. The card
   also shows the task's PRs (number and state: open, draft, merged, closed; click opens it), its Linear ids and

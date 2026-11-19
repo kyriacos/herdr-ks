@@ -5,7 +5,9 @@ Agents use it (see the ks-tasks skill) to propose tasks, follow the ones they wo
 anyone can use it from a terminal. Tasks an agent adds arrive as *proposed*: the Tasks panel shows them at the top
 for you to accept or dismiss. A task you accepted (or made yourself) is what an agent may start on.
 
-  ks-task add "title" [--body TEXT] [--column NAME] [--today] [--by NAME] [--direct]
+  ks-task add "title" [--body TEXT] [--column NAME] [--today] [--by NAME] [--direct] [--parent ID]
+                                        --parent: a subtask of that task (its own agent, PR and worktree if need be);
+                                        it lands directly when the parent is an accepted task
   ks-task list [--all] [--column NAME] [--mine] [--proposed] [--json] [SEARCH...]
   ks-task show ID [--json]
   ks-task comment ID "text" [--by NAME]
@@ -203,15 +205,17 @@ def line(d, t):
 
 
 def cmd_add(argv):
-    pos, f, o = args(argv, {"--today", "--direct"}, {"--body", "--column", "--by"})
+    pos, f, o = args(argv, {"--today", "--direct"}, {"--body", "--column", "--by", "--parent"})
     if not pos:
         die('add needs a title: ks-task add "title"')
     d, w, ts = load(), where(), now()
+    parent = find(d, o["--parent"]) if o.get("--parent") else None
     col = column(d, o.get("--column")) or d["columns"][0]
     title = " ".join(pos).strip()
     # The same open title twice (an agent retrying): the existing one, not a copy.
     done = d["columns"][-1]["id"]
-    dup = next((t for t in d["tasks"] if (t.get("title") or "").strip().lower() == title.lower() and t.get("column") != done), None)
+    dup = next((t for t in d["tasks"] if (t.get("title") or "").strip().lower() == title.lower() and t.get("column") != done
+                and t.get("parent") == (parent or {}).get("id")), None)
     if dup:
         print(f"exists: {line(d, dup)}")
         return
@@ -220,8 +224,13 @@ def cmd_add(argv):
     order = max([t.get("order", 0) for t in d["tasks"] if t.get("column") == col["id"]] or [0]) + 1
     t = {"id": uid("t"), "title": title, "body": o.get("--body", ""), "column": col["id"], "today": "--today" in f, "order": order,
          "space": (terminal().get("labels") or {}).get("herdr.space"), "spaceName": w["label"], "folder": w["folder"], "created": ts, "updated": ts, "doneAt": None,
-         "comments": [], "attachments": [], "by": who, "proposed": bool(agent and "--direct" not in f),
+         "comments": [], "attachments": [], "by": who, "proposed": bool(agent and "--direct" not in f and not (parent and not parent.get("proposed"))),
          "source": {"terminal": os.environ.get("HC_TERMINAL_ID") or os.environ.get("HERDR_PANE_ID"), "branch": w["branch"]}}
+    if parent:  # a subtask: under its parent, where the parent's work is
+        t["parent"] = parent["id"]
+        t["space"], t["spaceName"], t["folder"] = parent.get("space") or t["space"], parent.get("spaceName") or t["spaceName"], parent.get("folder") or t["folder"]
+        t["order"] = max([x.get("order", 0) for x in d["tasks"] if x.get("parent") == parent["id"]] or [0]) + 1
+        log(parent, f'Added subtask "{title}"', who)
     log(t, "Proposed" if t["proposed"] else "Created", who)
     d["tasks"].append(t)
     save(d)
@@ -250,8 +259,18 @@ def cmd_list(argv):
         return
     if not ts:
         print("no tasks")
+    # Subtasks under their parent (when it's listed too), indented.
+    shown = {t["id"] for t in ts}
+    kids = {}
     for t in ts:
+        if t.get("parent") in shown:
+            kids.setdefault(t["parent"], []).append(t)
+    for t in ts:
+        if t.get("parent") in shown:
+            continue
         print(line(d, t))
+        for k in sorted(kids.get(t["id"], []), key=lambda x: x.get("order", 0)):
+            print("  └ " + line(d, k))
 
 
 def cmd_show(argv):
@@ -269,6 +288,16 @@ def cmd_show(argv):
         print("  " + " · ".join(meta))
     if t.get("body"):
         print("\n" + t["body"])
+    if t.get("parent"):
+        p = next((x for x in d["tasks"] if x["id"] == t["parent"]), None)
+        if p:
+            print(f'  subtask of: {line(d, p)}')
+    subs = sorted([x for x in d["tasks"] if x.get("parent") == t["id"]], key=lambda x: x.get("order", 0))
+    if subs:
+        last = d["columns"][-1]["id"]
+        print(f'\nSubtasks ({sum(1 for x in subs if x.get("column") == last)}/{len(subs)} done):')
+        for x in subs:
+            print(("  [x] " if x.get("column") == last else "  [ ] ") + line(d, x))
     wk = t.get("worker") or {}
     if wk.get("folder"):
         print(f'  worktree: {wk["folder"]}' + (f' ({wk["branch"]})' if wk.get("branch") else ""))

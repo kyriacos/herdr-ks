@@ -22,6 +22,7 @@ It is not Linear, and doesn't replace it.
 ```sh
 ks-task add "Short imperative title" --body "Why, where (file:line), what done looks like"   # proposed
 ks-task add "Title" --direct [--today] [--column "To do"]                                    # user asked for it
+ks-task add "Step" --parent ID   # a subtask (lands directly under an accepted task); start/link/done it like any task
 ks-task list                     # open tasks (proposed marked); --all, --mine (this repo), --proposed, --json, search words
 ks-task show ID                  # details, comments, attachment paths
 ks-task start ID                 # move to the in-progress column, as yours (refused while still proposed);
@@ -51,6 +52,9 @@ attachments, then answer what they asked. Don't `start` it unless they ask you t
 - **Working from the board:** when the user points you at a task, `ks-task show ID`, then `start` it, leave a
   `comment` at real milestones (not every step), `link` the PR as soon as you open it (and the Linear issue's
   URL when you have it), and `done` with a short summary when finished.
+- **Subtasks:** when a task splits into steps or separate PRs, add them with `--parent ID` instead of new
+  top-level tasks. Each is a task of its own: `start` it from the terminal doing it, `link` its PR, `done` it.
+  The parent shows the progress (☑ 2/5) and its subtasks' agents and PRs.
 - **Handing a task to a subagent:** put the task id in the subagent's prompt (`Board task tm4k…`) and have it
   run `ks-task start ID` itself, and `ks-task link ID <url>` for the PRs it opens. The board then shows that
   subagent on the card and what it's doing in the task's window.

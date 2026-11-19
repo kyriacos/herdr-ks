@@ -122,7 +122,21 @@ const ops = {
     if (x.column === doneCol(d)) { const to = d.columns[today && d.columns[1] ? 1 : 0].id; log(x, `Moved from ${COLNAME(d, x.column)} to ${COLNAME(d, to)}`); x.column = to; x.doneAt = null; }
     x.updated = Date.now();
   },
-  remove: (id) => (d) => { d.tasks = d.tasks.filter((x) => x.id !== id); },
+  remove: (id) => (d) => { d.tasks = d.tasks.filter((x) => x.id !== id && x.parent !== id); }, // its subtasks go with it
+  // A subtask: a task with `parent`, where its parent's work is (space, folder), at the end of its siblings.
+  addSub: (parentId, task) => (d) => {
+    const p = find(d, parentId); if (!p || find(d, task.id)) return;
+    const sibs = d.tasks.filter((x) => x.parent === parentId);
+    Object.assign(task, { parent: parentId, space: p.space ?? null, spaceName: p.spaceName ?? "", folder: p.folder ?? "", order: (sibs.length ? Math.max(...sibs.map((x) => x.order ?? 0)) : 0) + 1 });
+    log(task, "Created"); log(p, `Added subtask "${task.title}"`); d.tasks.push(task); p.updated = Date.now();
+  },
+  // A subtask ticked (to the last column) or unticked (back to the first).
+  tick: (id, on) => (d) => {
+    const x = find(d, id); if (!x) return;
+    const to = on ? doneCol(d) : d.columns[0]?.id;
+    if (!to || x.column === to) return;
+    log(x, `Moved from ${COLNAME(d, x.column)} to ${COLNAME(d, to)}`); x.column = to; x.doneAt = on ? Date.now() : null; x.updated = Date.now();
+  },
   attach: (id, list) => (d) => {
     const x = find(d, id); if (!x) return;
     const added = list.filter((a) => !(x.attachments ?? []).some((b) => b.id === a.id));
@@ -351,7 +365,8 @@ export default class Tasks extends View {
     const f = String(task.folder ?? "").toLowerCase().replace(/\/+$/, "");
     return Boolean(f) && roots.some((r) => f === r || f.startsWith(r + "/"));
   }
-  shows(task) { return this.all || this.here(task); }
+  // A subtask lives in its parent (its window lists them), not as a card of its own.
+  shows(task) { return !task.parent && (this.all || this.here(task)); }
   colTasks(id) { return inCol(this.data, id).filter((x) => this.shows(x)); }
   setView(v, cx) { this.view = v; save(this.viewKey, v); this.adding = null; cx.notify(); }
 
@@ -543,9 +558,13 @@ export default class Tasks extends View {
     const meta = [];
     const colName = this.view === "today" ? this.data.columns.find((c) => c.id === task.column)?.name : null;
     if (colName) meta.push(colName);
-    const ag = done ? null : agentOf(task), subs = ag ? subagentsFor(task, ag) : [];
+    // The agent on it, else one on any of its subtasks.
+    const ag = done ? null : agentOf(task) ?? this.data.tasks.filter((y) => y.parent === task.id && y.column !== doneCol(this.data)).map(agentOf).find(Boolean) ?? null;
+    const subs = ag ? subagentsFor(task, ag) : [];
     const prs = prsOf(task, subs.flatMap((s) => s.prs ?? [])), lin = linearOf(task), wt = worktreeOf(task);
     if (task.assignee && !ag) meta.push(`@ ${task.assignee}`);
+    const kids = this.data.tasks.filter((y) => y.parent === task.id);
+    if (kids.length) meta.unshift(`☑ ${kids.filter((y) => y.column === doneCol(this.data)).length}/${kids.length}`);
     if (n) meta.push(plural(n, "comment"));
     if (files.length) meta.push(plural(files.length, "file"));
     return v_flex().flex_none()
@@ -770,6 +789,10 @@ export default class Tasks extends View {
     this.stop = null;
     for (const [name, box] of [["title", this.title], ["body", this.body], ["note", this.note]]) box.on("focus", (_e, cx) => { this.stop = name; cx.notify(); });
     this.title.on("submit", (_e, cx) => this.goStop("body", cx));
+    // Subtasks: Enter adds one and keeps the box open for the next.
+    this.subAdd = InputState.new({ placeholder: "Add a subtask, Enter adds it" });
+    this.subAdd.on("focus", (_e, cx) => { this.stop = "subadd"; cx.notify(); });
+    this.subAdd.on("submit", (_e, cx) => this.addSubtask(cx));
     this.scroll = ScrollHandle.new();
     this.seeded = false; this.working = null;
     // The agent's screen, while it has one and it's shown: read again every 1,5 s.
@@ -788,11 +811,12 @@ export default class Tasks extends View {
   }
   stops(x) {
     const ag = agentOf(x) ? ["agent", "screen"] : [];
-    return ["title", ...this.data.columns.map((c) => `col:${c.id}`), "today", ...(x.proposed ? ["accept", "dismiss"] : []), ...ag, "body", "pick", "paste", "note", "send", "ask", "delete"];
+    return ["title", ...this.data.columns.map((c) => `col:${c.id}`), "today", ...(x.proposed ? ["accept", "dismiss"] : []), ...ag, "body", "subadd", "pick", "paste", "note", "send", "ask", "delete"];
   }
   goStop(name, cx) {
     this.stop = name;
-    if (name === "title") this.title.focus(); else if (name === "body") this.body.focus(); else if (name === "note") this.note.focus(); else this.handle.focus();
+    if (name === "title") this.title.focus(); else if (name === "body") this.body.focus(); else if (name === "note") this.note.focus();
+    else if (name === "subadd") this.subAdd.focus(); else this.handle.focus();
     cx.notify();
   }
   tabStop(back, cx) {
@@ -858,6 +882,13 @@ export default class Tasks extends View {
       cx.notify();
     });
   }
+  addSubtask(cx) {
+    const title = this.subAdd.value().trim();
+    if (!title) return;
+    const now = Date.now(), col = this.data.columns[0]?.id;
+    this.apply(ops.addSub(this.taskId, { id: uid("t"), title, body: "", column: col, today: false, created: now, updated: now, doneAt: null, comments: [], attachments: [] }), cx);
+    this.subAdd.set_value("");
+  }
   sendComment(cx) {
     const text = this.note.value().trim();
     if (!text) return;
@@ -908,6 +939,9 @@ export default class Tasks extends View {
             .children(d.columns.map((c) => pill(`tc-${c.id}`, c.name, x.column === c.id, (cx) => this.apply(ops.move(x.id, c.id, null), cx), t.accent, `col:${c.id}`)))
             .child(div().w(8))
             .child(pill("tt", x.today ? "☀ Today" : "☀ Add to today", Boolean(x.today), (cx) => this.apply(ops.patch(x.id, { today: !x.today }), cx), t.accent, "today")))
+          .when(Boolean(x.parent && find(d, x.parent)), (e) => e.child(div().id("t-parent").mt(8).text_size(11).text_color(t.accent).cursor_pointer()
+            .hover((s) => s.text_color(t.foreground)).tooltip("Open the parent task")
+            .on_click((_e, cx) => { this.closeTask(cx); openTaskWindow(x.parent); }).child(`↑ Subtask of ${find(d, x.parent)?.title || "Untitled"}`)))
           .child(h_flex().mt(8).gap(8).text_size(10.5).text_color(t.dim)
             .when(Boolean(x.spaceName), (e) => e.child(div().px(5).rounded(5).border_1().border_color(t.border).text_color(t.muted).child(x.spaceName)))
             .child(div().child(`${x.by ? `by ${x.by} · ` : ""}created ${ago(x.created)} · updated ${ago(x.updated)}${x.assignee ? ` · @ ${x.assignee}` : ""}${this.dirty ? " · saving…" : ""}`)))
@@ -919,6 +953,7 @@ export default class Tasks extends View {
           .child(section("Description"))
           .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)
             .child(Textarea.new(this.body).w_full().text_size(12.5).text_color(t.foreground).font_family(mono)))
+          .child(this.renderSubtasks(x, t, section))
           .child(section(`Attachments${(x.attachments ?? []).length ? ` · ${(x.attachments ?? []).length}` : ""}`,
             h_flex().gap(6)
               .child(btn("ta-pick", "Add files…", (cx) => this.attachWith(cx, "Choosing…", pickAndAdd), t.muted, "pick"))
@@ -956,6 +991,29 @@ export default class Tasks extends View {
         }, t.muted, "ask"))
         .child(btn("task-del", this.confirmDel ? (this.stop === "delete" ? "Press again to delete" : "Click again to delete") : "Delete task", (cx) => this.deleteTask(x, cx), t.ansi1, "delete"))),
     t, TASK_SIZE, { mod: "ks-tasks", key: `ks-task-${x.id}`, props: { task: x.id } });
+  }
+
+  // Subtasks: each a task of its own (its own agent, PR, worktree), ticked done here or opened in its window.
+  renderSubtasks(x, t, section) {
+    const d = this.data, last = doneCol(d), kids = d.tasks.filter((y) => y.parent === x.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const doneN = kids.filter((y) => y.column === last).length;
+    return v_flex()
+      .child(section(`Subtasks${kids.length ? ` · ${doneN}/${kids.length}` : ""}`))
+      .children(kids.map((k) => {
+        const on = k.column === last, ag = on ? null : agentOf(k), prs = prsOf(k), col = d.columns.find((c) => c.id === k.column);
+        const [words, tone] = ag ? STATUS[ag.status] ?? [ag.status, "muted"] : [];
+        return h_flex().id(`sub-${k.id}`).h(28).px(6).gap(8).items_center().rounded(6).cursor_pointer().hover((s) => s.bg(t.hover))
+          .on_click((_e, cx) => { this.closeTask(cx); openTaskWindow(k.id); })
+          .child(div().id(`subx-${k.id}`).size(14).flex_none().flex().items_center().justify_center().rounded(3).border_1()
+            .border_color(on ? t.accent : t.border).bg(on ? t.accent : t.background).text_size(10).text_color(t.solid_foreground)
+            .tooltip(on ? "Not done" : "Done").on_click((_e, cx) => { cx.stop_propagation(); this.apply(ops.tick(k.id, !on), cx); }).child(on ? "✓" : ""))
+          .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(on ? t.dim : t.foreground).when(on, (e) => e.line_through()).child(k.title || "Untitled"))
+          .when(Boolean(ag), (e) => e.child(div().flex_none().text_size(10.5).text_color(t[tone]).child(`● ${words}`)))
+          .children(prs.slice(0, 2).map((p) => div().flex_none().text_size(10.5).text_color(t[prTone(p)]).child(`#${p.number} ${prState(p)}`)))
+          .when(!on && col && col.id !== d.columns[0]?.id, (e) => e.child(div().flex_none().text_size(10.5).text_color(t.dim).child(col.name)));
+      }))
+      .child(div().mt(4).h(28).px(8).flex().items_center().rounded(6).border_1().border_color(this.stop === "subadd" ? t.accent : t.border).bg(t.chrome)
+        .child(Input.new(this.subAdd).h_full().text_size(12).text_color(t.foreground)));
   }
 
   // The subagent the window shows (its id), or null for the agent's own screen. At first: a running subagent of the task.
