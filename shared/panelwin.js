@@ -59,15 +59,20 @@ export function windowCommand(view, c, mod) {
 // The window's root: its size kept, where it is (for the corner grips), and the grips themselves.
 export function windowFrame(view, el, t, mod) {
   if (!view.windowed) return el;
+  return resizable(view, el, t, sizeKey(mod), { mod, key: keyOf(mod), props: { window: true, mod } });
+}
+// Any window made resizable by its corners: its size kept in shared `size` (reopen it with that), and `reopen`, the
+// openOverlay spec ks-resize reopens it with ({ mod, key, props }).
+export function resizable(view, el, t, size, reopen) {
   return el.relative()
-    .on_size_change((size) => {
-      if (!size?.width || (size.width === view.winSize?.width && size.height === view.winSize?.height)) return;
-      view.winSize = size; setShared(sizeKey(mod), { width: Math.round(size.width), height: Math.round(size.height) });
+    .on_size_change((s) => {
+      if (!s?.width || (s.width === view.winSize?.width && s.height === view.winSize?.height)) return;
+      view.winSize = s; setShared(size, { width: Math.round(s.width), height: Math.round(s.height) });
     })
     .on_mouse_move((ev) => { if (ev.bounds) view.winRect = ev.bounds; })
-    .children(grips(view, t, mod));
+    .children(grips(view, t, reopen));
 }
-function grips(view, t, mod) {
+function grips(view, t, reopen) {
   const g = (corner) => div().id(`grip-${corner}`).absolute().size(14)
     .when(corner.includes("t"), (e) => e.top(0)).when(corner.includes("b"), (e) => e.bottom(0))
     .when(corner.includes("l"), (e) => e.left(0)).when(corner.includes("r"), (e) => e.right(0))
@@ -76,7 +81,7 @@ function grips(view, t, mod) {
       cx.stop_propagation();
       if (!view.winRect) return;
       openOverlay({ mod: "ks-resize", kind: "window", frame: "none", key: "ks-resize", width: 1, height: 1, at: { x: 0, y: 0 },
-        props: { rect: view.winRect, corner, zoom: settings().zoom || 1, reopen: { mod, key: keyOf(mod), props: { window: true, mod } } } });
+        props: { rect: view.winRect, corner, zoom: settings().zoom || 1, reopen } });
     })
     .when(corner === "br", (e) => e.child(div().absolute().right(3).bottom(3).size(7).border_r_2().border_b_2().border_color(t.dim)));
   return ["tl", "tr", "bl", "br"].map(g);

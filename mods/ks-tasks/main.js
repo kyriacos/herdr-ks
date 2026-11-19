@@ -28,6 +28,7 @@ import { v_flex, h_flex, Scrollbar, ScrollHandle, TextareaState, Textarea, Input
 import { exec, appHome, spaces, agents, theme, settings, props, openOverlay, closeOverlay, shared, setShared, nextCommand, run, notify } from "herdr";
 import { pickAgent, agentChoices } from "./lib/comments.js";
 import { trackActive, takeRequest, raiseStrip, claim, backToPanel } from "./lib/windows.js";
+import { resizable } from "./lib/panelwin.js";
 import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
 import { spaceName } from "./lib/spacenames.js";
@@ -39,6 +40,12 @@ const FILE = () => `${appHome()}/data/ks-tasks.json`;
 const REV = "ks-tasks.rev";
 const BOARD = "ks-tasks-board"; // the board window's overlay key
 const SIZE = "ks-tasks.boardSize"; // its last size (px), shared so the sidebar's Tasks opens it the same
+const TASK_SIZE = "ks-tasks.taskSize"; // a task window's last size (px): every task opens at it
+// A task's window: resizable by its corners (ks-resize reopens it under the same key), at the last size used.
+export function openTaskWindow(id) {
+  const size = shared(TASK_SIZE);
+  openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width: size?.width ?? 680, height: size?.height ?? 720, props: { task: id } });
+}
 const COLUMNS = [{ id: "backlog", name: "Backlog" }, { id: "todo", name: "To do" }, { id: "doing", name: "Doing" }, { id: "done", name: "Done" }];
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
@@ -167,7 +174,7 @@ function menuRows(m) {
   return [
     ...[first, ...others].filter(Boolean).map((a, i) => ({ label: `${i ? "Ask" : "Ask about it:"} ${a.title}`, act: (cx) => askAgent(m, a, cx), sep: false, agent: true })),
     { label: "Copy reference", act: (cx) => { cx.write_to_clipboard(reference(m)); notify({ title: "Task reference copied", body: reference(m).trim(), level: "info", timeout: 2500 }); }, sep: true },
-    { label: "Open", act: () => openOverlay({ mod: "ks-tasks", kind: "dialog", key: `ks-task-${m.id}`, width: 680, height: 720, props: { task: m.id } }) },
+    { label: "Open", act: () => openTaskWindow(m.id) },
   ];
 }
 function focusAgent(a) {
@@ -271,7 +278,7 @@ export default class Tasks extends View {
       spaceName: sp ? spaceName(sp) : "", folder: sp?.folder ?? null, created: now, updated: now, doneAt: null, comments: [], attachments: [], ...fields };
   }
   openTask(id) {
-    openOverlay({ mod: "ks-tasks", kind: "dialog", key: `ks-task-${id}`, width: 680, height: 720, props: { task: id } });
+    openTaskWindow(id);
   }
   // The board window: its last size (px, from dragging a corner or the key modes' resize keys), else 64% x 66%.
   closeBoard() { closeOverlay(props().overlay); backToPanel(BOARD, "ks-tasks"); }
@@ -763,6 +770,8 @@ export default class Tasks extends View {
     this.scroll = ScrollHandle.new();
     this.seeded = false; this.working = null;
     // The agent's screen, while it has one and it's shown: read again every 1,5 s.
+    // A window doesn't always get the keyboard when it opens: until a field has it, give it again (the description).
+    for (const ms of [120, 300, 600, 1000]) cx.timer.after(ms, () => { if (this.stop === null && !this.handle.is_focused()) { if (this.seeded) this.body.focus(); else this.handle.focus(); } });
     this.showScreen = true; this.screen = null;
     cx.timer.every(1500, (cx) => {
       const x = this.task(), live = agentOf(x);
@@ -876,7 +885,7 @@ export default class Tasks extends View {
     // Activity: comments and history in one timeline, oldest first (a task made before history existed starts here).
     const activity = [...comments.map((c) => ({ kind: "comment", at: c.at, c })), ...(x.history ?? []).map((h, i) => ({ kind: "event", at: h.at, h, i }))]
       .sort((a, b) => a.at - b.at || (a.kind === "event" ? -1 : 1));
-    return v_flex().id("task").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(13).track_focus(this.handle)
+    return resizable(this, v_flex().id("task").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_drop((e, cx) => this.attachWith(cx, "Adding…", () => addPaths(e.paths)))
       .on_key_down((e, cx) => {
         const m = e.modifiers ?? {};
@@ -942,7 +951,8 @@ export default class Tasks extends View {
           if (!a) { notify({ title: "No agent to ask", body: "Start an agent first, or right-click a card for the list", level: "warning", timeout: 3000 }); return; }
           this.closeTask(cx); askAgent(x, a, cx);
         }, t.muted, "ask"))
-        .child(btn("task-del", this.confirmDel ? (this.stop === "delete" ? "Press again to delete" : "Click again to delete") : "Delete task", (cx) => this.deleteTask(x, cx), t.ansi1, "delete")));
+        .child(btn("task-del", this.confirmDel ? (this.stop === "delete" ? "Press again to delete" : "Click again to delete") : "Delete task", (cx) => this.deleteTask(x, cx), t.ansi1, "delete"))),
+    t, TASK_SIZE, { mod: "ks-tasks", key: `ks-task-${x.id}`, props: { task: x.id } });
   }
 
   // The subagent the window shows (its id), or null for the agent's own screen. At first: a running subagent of the task.

@@ -60,7 +60,8 @@ export default class NowTasks extends View {
     const size = shared("ks-tasks.boardSize");
     openOverlay({ mod: "ks-tasks", kind: "window", key: "ks-tasks-board", width: size?.width ?? 0.64, height: size?.height ?? 0.66, props: { board: true, all: true } });
   }
-  openTask(id) { openOverlay({ mod: "ks-tasks", kind: "dialog", key: `ks-task-${id}`, width: 680, height: 720, props: { task: id } }); }
+  // The same as ks-tasks' openTaskWindow: a resizable window at the last size used.
+  openTask(id) { const s = shared("ks-tasks.taskSize"); openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width: s?.width ?? 680, height: s?.height ?? 720, props: { task: id } }); }
 
   render(cx) { return dimmed(this, this.renderInner(cx)); }
 
