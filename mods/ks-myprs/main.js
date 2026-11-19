@@ -14,7 +14,7 @@ import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 
-const BLOCK = "my-prs", HEAD = 34, ROW = 50;
+const BLOCK = "my-prs", HEAD = 34, ROW = 50, DRAFTS = 14;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
   number title url isDraft repository { nameWithOwner } headRefName baseRefName reviewDecision mergeStateStatus updatedAt
   commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 80) { nodes {
@@ -32,6 +32,9 @@ async function gh(args) {
 const ago = (ms) => (ms < 90000 ? "" : ms < 3600000 ? `${Math.round(ms / 60000)}m` : `${Math.round(ms / 3600000)}h`);
 
 // One PR's state: ci "pass" | "fail" | "running" | "none" (+ counts), review, merge, and how urgent it is.
+// What needs you first; drafts at the bottom.
+const byNeed = (a, b) => Number(Boolean(a.isDraft)) - Number(Boolean(b.isDraft)) || a.s.urgent - b.s.urgent || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
+
 function stateOf(pr) {
   // Each check decides (lib/ci.js), not the rollup's own state: GitHub can count a cancelled run as a failure.
   const roll = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup;
@@ -57,7 +60,7 @@ export default class MyPrs extends View {
     cx.spawn(async (cx) => {
       const hit = await cache.get("myprs");
       if (hit?.value && !this.loaded) {
-        this.prs = hit.value.map((pr) => ({ ...pr, s: stateOf(pr) }));
+        this.prs = hit.value.map((pr) => ({ ...pr, s: stateOf(pr) })).sort(byNeed);
         this.last = Object.fromEntries(this.prs.map((pr) => [pr.url, { ci: pr.s.ci, review: pr.s.review }]));
         this.cached = true; this.fit(); cx.notify();
       }
@@ -91,7 +94,7 @@ export default class MyPrs extends View {
           try {
             const nodes = JSON.parse(r.stdout).data.search.nodes.filter((n) => n?.url);
             const prs = nodes.map((pr) => ({ ...pr, s: stateOf(pr) }))
-              .sort((a, b) => a.s.urgent - b.s.urgent || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+              .sort(byNeed);
             if (this.cached && !this.loaded) this.loaded = true; // the cached list counts as the first look for toasts
             this.announce(prs);
             this.prs = prs; this.error = null; this.loaded = true;
@@ -135,7 +138,8 @@ export default class MyPrs extends View {
 
   // The block's height: one line folded, else the rows (up to a few, then it scrolls).
   fit() {
-    const px = this.collapsed ? HEAD : HEAD + 8 + Math.max(1, Math.min(this.prs.length, 6)) * ROW;
+    const shown = Math.min(this.prs.length, 6), drafts = this.prs.slice(1, shown).some((p, i) => p.isDraft && !this.prs[i].isDraft);
+    const px = this.collapsed ? HEAD : HEAD + 8 + Math.max(1, shown) * ROW + (drafts ? DRAFTS : 0);
     if (px !== this.px) { this.px = px; run("layout.resize", { id: BLOCK, px }); }
   }
   toggle(cx) { this.collapsed = !this.collapsed; save("collapsed", this.collapsed); this.fit(); cx.notify(); }
@@ -159,12 +163,22 @@ export default class MyPrs extends View {
   }
 
   row(pr, t) {
+    // Each row in a slot of ROW px: a hairline between rows, and "Drafts" above the first draft (drafts sort last).
+    const i = this.prs.indexOf(pr), firstDraft = pr.isDraft && !this.prs[i - 1]?.isDraft && i > 0;
+    return v_flex().flex_none().h(ROW + (firstDraft ? DRAFTS : 0))
+      .child(firstDraft
+        ? h_flex().h(DRAFTS + 1).mx(12).gap(6).items_end().pb(2).child(div().flex_none().text_size(9.5).text_color(t.dim).child(`DRAFTS · ${this.prs.length - i}`)).child(div().flex_1().h(1).mb(5).bg(t.border))
+        : div().h(1).mx(12).bg(i > 0 ? t.border : t.chrome))
+      .child(this.card(pr, t));
+  }
+
+  card(pr, t) {
     const s = pr.s, repo = pr.repository.nameWithOwner.split("/").pop();
     const ci = { pass: [`✓ CI`, t.ansi2], fail: [`✕ CI ${s.counts.fail}`, t.ansi1], running: [`◌ CI ${s.counts.running}`, runningColor(t)], none: ["no CI", t.dim] }[s.ci];
     const review = { approved: ["✓ approved", t.ansi2], changes: ["✕ changes", t.ansi1], waiting: ["review", t.muted], none: ["no review", t.dim] }[s.review];
     const merge = { ready: ["ready", t.ansi2], blocked: ["blocked", t.muted], approval: ["needs approval", t.muted], behind: ["behind", runningColor(t)], conflicts: ["conflicts", t.ansi1], unstable: ["unstable", t.ansi1], waitci: ["waiting on CI", runningColor(t)], draft: ["draft", t.dim], checking: ["…", t.dim] }[s.merge];
     const mark = s.urgent === 0 ? t.ansi1 : s.urgent === 1 ? runningColor(t) : s.urgent === 2 ? t.ansi2 : t.dim;
-    return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 4).mx(6).mb(4).px(8).py(4).gap(3).rounded(7).cursor_pointer()
+    return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 5).mx(6).mt(2).mb(2).px(8).py(4).gap(3).rounded(7).cursor_pointer()
       .when(focusedNow(this, "ks-myprs") && this.prs[this.cursor] === pr, (e) => e.bg(t.selected ?? t.hover))
       .border_l_2().border_color(mark).hover((st) => st.bg(t.hover)).on_click(() => this.openCard(pr))
       .child(h_flex().gap(5).items_center().text_size(11.5)

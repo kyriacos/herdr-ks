@@ -42,9 +42,13 @@ const BOARD = "ks-tasks-board"; // the board window's overlay key
 const SIZE = "ks-tasks.boardSize"; // its last size (px), shared so the sidebar's Tasks opens it the same
 const TASK_SIZE = "ks-tasks.taskSize"; // a task window's last size (px): every task opens at it
 // A task's window: resizable by its corners (ks-resize reopens it under the same key), at the last size used.
+// Centred every time: Herdr would put it back where it was last, and a window in a corner can't be made bigger
+// (a corner drag follows the pointer only inside the app).
 export function openTaskWindow(id) {
-  const size = shared(TASK_SIZE);
-  openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width: size?.width ?? 680, height: size?.height ?? 720, props: { task: id } });
+  const size = shared(TASK_SIZE), width = size?.width ?? 680, height = size?.height ?? 720;
+  let at;
+  try { const v = window.viewport_size(), z = settings().zoom || 1; at = { x: Math.max(0, Math.round((v.width - width * z) / 2)), y: Math.max(0, Math.round((v.height - height * z) / 2)) }; } catch {}
+  openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width, height, ...(at ? { at } : {}), props: { task: id } });
 }
 const COLUMNS = [{ id: "backlog", name: "Backlog" }, { id: "todo", name: "To do" }, { id: "doing", name: "Doing" }, { id: "done", name: "Done" }];
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };

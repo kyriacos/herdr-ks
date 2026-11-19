@@ -211,8 +211,8 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
 - **Today:** what you plan to do today, then the backlog (everything else that isn't done). The **☀** on a card
   (or `t`) moves it between the two; dragging works here too. The board's last column counts as done, and its tasks
   leave both lists.
-- **A task** (click it, or Enter) opens in a window you can move and resize by its corners; every task opens at the
-  last size. It has its title, description, column, Today, attachments, and its **Activity**: the
+- **A task** (click it, or Enter) opens in a window you can move and resize by its corners; every task opens in
+  the middle at the last size. It has its title, description, column, Today, attachments, and its **Activity**: the
   comments and everything that happened to it (created, moved, renamed, added to today, attached, started, done),
   with who did it, oldest first. `ks-task show ID` prints the same. Drop files onto
   it, or **Add files…** / **Paste image**; write a comment and **Comment** (or `cmd-enter`). Esc closes it.
@@ -290,7 +290,7 @@ Needs the GitHub CLI (`gh`) logged in.
 
 **My PRs** (sidebar, above Spaces): every open PR you authored, with CI (✓, ✕ with count, ◌ running), review
 (approved, changes requested, waiting) and merge state (ready, needs approval, blocked, behind, conflicts).
-Ones needing you come first. Click the header to fold it, × to hide, `cmd-shift-m` to show or hide. Toasts when
+Ones needing you come first, drafts last under a **Drafts** line. Click the header to fold it, × to hide, `cmd-shift-m` to show or hide. Toasts when
 CI turns red or green, a review lands, or a PR is merged or closed.
 
 - **CI colours:** yellow while checks are still running (and "waiting on CI" instead of GitHub's "unstable"), red

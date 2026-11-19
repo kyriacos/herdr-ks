@@ -4,7 +4,7 @@
 // Reads <app home>/data/ks-tasks.json (ks-tasks writes it): every 5 s, and at once when shared "ks-tasks.rev" moves.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, appHome, theme, run, shared, setShared, openOverlay } from "herdr";
+import { exec, appHome, theme, run, shared, setShared, openOverlay, settings } from "herdr";
 import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
 
@@ -61,7 +61,12 @@ export default class NowTasks extends View {
     openOverlay({ mod: "ks-tasks", kind: "window", key: "ks-tasks-board", width: size?.width ?? 0.64, height: size?.height ?? 0.66, props: { board: true, all: true } });
   }
   // The same as ks-tasks' openTaskWindow: a resizable window at the last size used.
-  openTask(id) { const s = shared("ks-tasks.taskSize"); openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width: s?.width ?? 680, height: s?.height ?? 720, props: { task: id } }); }
+  openTask(id) {
+    const s = shared("ks-tasks.taskSize"), width = s?.width ?? 680, height = s?.height ?? 720;
+    let at;
+    try { const v = window.viewport_size(), z = settings().zoom || 1; at = { x: Math.max(0, Math.round((v.width - width * z) / 2)), y: Math.max(0, Math.round((v.height - height * z) / 2)) }; } catch {}
+    openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width, height, ...(at ? { at } : {}), props: { task: id } });
+  }
 
   render(cx) { return dimmed(this, this.renderInner(cx)); }
 
