@@ -15,7 +15,7 @@ import { pref } from "./lib/prefs.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 import { sectionHead, sectionFrame, badge, headAction, SECTION_HEAD } from "./lib/section.js";
 
-const BLOCK = "my-prs", HEAD = SECTION_HEAD + 1, ROW = 50, DRAFTS = 14;
+const BLOCK = "my-prs", HEAD = SECTION_HEAD + 1, ROW = 68, DRAFTS = 18;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
   number title url isDraft repository { nameWithOwner } headRefName baseRefName reviewDecision mergeStateStatus updatedAt
   commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 80) { nodes {
@@ -55,6 +55,7 @@ export default class MyPrs extends View {
   init(_props, cx) {
     this.prs = []; this.error = null; this.loading = false; this.loaded = false; this.last = {};
     this.collapsed = load("collapsed", false);
+    this.draftsOpen = load("draftsOpen", false); // drafts sit folded under their "Drafts" line until opened
     // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o opens the PR, r refresh, h/l/Esc leave.
     this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.cursor = 0; this.pageRows = 6;
     takeFocus(this, cx, "ks-myprs"); watchFocus(this, cx, "ks-myprs");
@@ -140,10 +141,13 @@ export default class MyPrs extends View {
 
   // The block's height: one line folded, else the rows (up to a few, then it scrolls).
   fit() {
-    const shown = Math.min(this.prs.length, 6), drafts = this.prs.slice(1, shown).some((p, i) => p.isDraft && !this.prs[i].isDraft);
-    const px = this.collapsed ? HEAD : HEAD + 8 + Math.max(1, shown) * ROW + (drafts ? DRAFTS : 0);
+    const list = this.shown(), rows = Math.min(list.length, 6), drafts = this.prs.some((p) => p.isDraft);
+    const px = this.collapsed ? HEAD : HEAD + 8 + Math.max(drafts ? 0 : 1, rows) * ROW + (drafts ? DRAFTS + 4 : 0);
     if (px !== this.px) { this.px = px; run("layout.resize", { id: BLOCK, px }); }
   }
+  // The rows shown: every PR, less the drafts while they're folded.
+  shown() { return this.draftsOpen ? this.prs : this.prs.filter((p) => !p.isDraft); }
+  toggleDrafts(cx) { this.draftsOpen = !this.draftsOpen; save("draftsOpen", this.draftsOpen); this.cursor = 0; this.fit(); cx.notify(); }
   toggle(cx) { this.collapsed = !this.collapsed; save("collapsed", this.collapsed); this.fit(); cx.notify(); }
 
   async openUrl(url) {
@@ -160,11 +164,9 @@ export default class MyPrs extends View {
 
   // A row (card) in its slot, with a hairline above it. Drafts sort last, under a "Drafts" line.
   row(pr, t) {
-    const i = this.prs.indexOf(pr), firstDraft = pr.isDraft && i > 0 && !this.prs[i - 1]?.isDraft;
+    const i = this.prs.indexOf(pr), firstDraft = pr.isDraft && !this.prs[i - 1]?.isDraft;
     return v_flex().flex_none().h(ROW + (firstDraft ? DRAFTS : 0))
-      .when(firstDraft, (e) => e.child(h_flex().h(DRAFTS).mx(14).gap(6).items_center()
-        .child(div().flex_none().text_size(9.5).text_color(t.dim).child(`Drafts · ${this.prs.length - i}`))
-        .child(div().flex_1().h(1).bg(t.border + "80"))))
+      .when(firstDraft, (e) => e.child(this.draftsLine(t)))
       .when(!firstDraft && i > 0, (e) => e.child(div().h(1).mx(14).bg(t.border + "59")))
       .when(!firstDraft && i === 0, (e) => e.child(div().h(1)))
       .child(this.card(pr, t));
@@ -172,6 +174,17 @@ export default class MyPrs extends View {
 
   // Its states as badges: checks, review, merge, each with words; what's wrong in red (stronger), what's waiting
   // in amber, what's fine in green, nothing-yet quiet.
+  // "Drafts · N" with a fold arrow: click to show or hide the drafts (folded at first).
+  draftsLine(t) {
+    const drafts = this.prs.filter((p) => p.isDraft), n = drafts.length, need = drafts.filter((p) => p.s.urgent === 0).length;
+    return h_flex().id("myprs-drafts").h(DRAFTS).mx(8).px(6).gap(6).items_center().rounded(5).cursor_pointer().hover((s) => s.bg(t.hover))
+      .tooltip(this.draftsOpen ? "Hide drafts" : "Show drafts").on_click((_e, cx) => this.toggleDrafts(cx))
+      .child(div().flex_none().text_size(8).text_color(t.dim).child(this.draftsOpen ? "▼" : "▶"))
+      .child(div().flex_none().text_size(9.5).text_color(t.dim).child(`Drafts · ${n}`))
+      .when(!this.draftsOpen && need > 0, (e) => e.child(div().flex_none().text_size(9.5).text_color(t.ansi1).child(`${need} needs you`)))
+      .child(div().flex_1().h(1).bg(t.border + "80"));
+  }
+
   marks(pr, t) {
     const s = pr.s, run = runningColor(t);
     const ci = { fail: [`✕ ${s.counts.fail} failing`, t.ansi1, true], running: [`◌ ${s.counts.running} running`, run], pass: ["✓ CI", t.ansi2], none: ["no CI", t.dim] }[s.ci];
@@ -180,33 +193,42 @@ export default class MyPrs extends View {
     const m = { ready: ["ready", t.ansi2], conflicts: ["✕ conflicts", t.ansi1, true], behind: ["↓ behind", run], unstable: ["✕ unstable", t.ansi1, true],
       approval: ["needs approval", t.muted], blocked: ["blocked", t.muted], waitci: ["waiting on CI", run], checking: null }[s.merge];
     const merge = pr.isDraft && !(m && m[2]) ? ["draft", t.dim] : m;
-    return { ci, rest: [review, merge, pr.isDraft && merge?.[0] !== "draft" ? ["draft", t.dim] : null].filter(Boolean) };
+    return [ci, merge, review, pr.isDraft && merge?.[0] !== "draft" ? ["draft", t.dim] : null].filter(Boolean);
+  }
+
+  // A quiet pill: the leading symbol (✓ ✕ ◌ ↓) in the state's colour, the words muted.
+  pill(label, tone, t) {
+    const m = label.match(/^([✓✕◌↓]) (.*)$/);
+    return h_flex().flex_none().h(16).px(6).gap(3).items_center().rounded(8).bg(t.muted + "1a").text_size(9.5).whitespace_nowrap()
+      .when(Boolean(m), (e) => e.child(div().text_color(tone).child(m[1])))
+      .child(div().text_color(m || tone === t.dim ? t.muted : tone).child(m ? m[2] : label));
   }
 
   // The row, tinted lightly: red when something's wrong (failing CI, changes asked, conflicts), green when it's
-  // ready. CI first, then repo#number, the title and its age; review and merge below.
+  // ready. Three lines: the title; repo#number and its age; then CI, merge and review, as quiet pills where only the
+  // symbol has the colour (the tint already says how it stands).
   card(pr, t) {
-    const s = pr.s, repo = pr.repository.nameWithOwner.split("/").pop(), { ci, rest } = this.marks(pr, t);
+    const s = pr.s, repo = pr.repository.nameWithOwner.split("/").pop();
     const tint = s.urgent === 0 ? t.ansi1 : s.urgent === 2 && !pr.isDraft ? t.ansi2 : null;
-    const on = focusedNow(this, "ks-myprs") && this.prs[this.cursor] === pr;
-    return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 2).mx(6).px(8).gap(4).justify_center().rounded(8).cursor_pointer()
+    const on = focusedNow(this, "ks-myprs") && this.shown()[this.cursor] === pr;
+    return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 2).mx(6).px(8).gap(3).justify_center().rounded(8).cursor_pointer()
       .when(Boolean(tint), (e) => e.bg(tint + "14")).when(on, (e) => e.bg(t.selected ?? t.hover))
       .hover((st) => st.bg(tint ? tint + "26" : t.hover)).on_click(() => this.openCard(pr))
-      .child(h_flex().gap(6).items_center()
-        .child(badge(t, ci[0], ci[1], ci[2]))
-        .child(div().flex_none().text_size(11).text_color(t.dim).child(`${repo}#${pr.number}`))
-        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(pr.isDraft ? t.muted : t.foreground).child(pr.title))
-        .child(div().flex_none().text_size(10).text_color(t.dim).child(since(pr.updatedAt))))
+      .child(div().min_w(0).truncate().text_size(12).text_color(pr.isDraft ? t.muted : t.foreground).child(pr.title))
+      .child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
+        .child(div().flex_1().min_w(0).truncate().child(`${repo}#${pr.number}`))
+        .child(div().flex_none().text_size(10).child(since(pr.updatedAt))))
       .child(h_flex().gap(4).items_center().overflow_hidden()
-        .children(rest.map(([label, tone, strong]) => badge(t, label, tone, strong))));
+        .children(this.marks(pr, t).map(([label, tone]) => this.pill(label, tone, t))));
   }
 
   // ks: focus mode dims this until hovered (lib/focus.js).
   render(cx) { return dimmed(this, this.renderInner(cx)); }
 
   renderInner(cx) {
-    const t = theme(), prs = this.prs;
-    const fail = prs.filter((p) => p.s.ci === "fail" || p.s.review === "changes" || p.s.merge === "conflicts").length;
+    const t = theme(), prs = this.shown(), folded = !this.draftsOpen && this.prs.some((p) => p.isDraft);
+    const fail = this.prs.filter((p) => p.s.ci === "fail" || p.s.review === "changes" || p.s.merge === "conflicts").length;
+    const running = this.prs.filter((p) => p.s.ci === "running").length;
     const icon = (id, label, act) => div().id(id).flex_none().size(20).flex().items_center().justify_center().rounded(5).cursor_pointer()
       .text_size(11).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label);
@@ -221,9 +243,10 @@ export default class MyPrs extends View {
         if (this.cursor !== before) this.scroll.scroll_to_item(this.cursor);
         cx.stop_propagation(); cx.notify();
       })
-      .child(sectionHead(t, { id: "myprs", title: "My PRs", count: this.loaded ? prs.length : this.loading ? "…" : "",
+      .child(sectionHead(t, { id: "myprs", title: "My PRs", count: this.loaded ? this.prs.length : this.loading ? "…" : "",
         collapsed: this.collapsed, onToggle: (cx) => this.toggle(cx), onClick: (cx) => this.toggle(cx),
-        badges: [fail > 0 && badge(t, `${fail} need you`, t.ansi1, true)].filter(Boolean),
+        badges: [fail > 0 && badge(t, `${fail} need you`, t.ansi1, true),
+          running > 0 && div().flex_none().text_size(10.5).text_color(t.dim).child(`· ${running} running`)].filter(Boolean),
         actions: [
           // How old the list is, once that's more than a minute and a half (a look failing, or the Mac asleep).
           ...(!this.loading && this.doneAt > 0 && ago(Date.now() - this.doneAt) ? [div().flex_none().text_size(10).text_color(this.error ? t.ansi1 : t.dim).child(ago(Date.now() - this.doneAt))] : []),
@@ -233,8 +256,9 @@ export default class MyPrs extends View {
       .when(!this.collapsed, (e) => e.child(div().flex_1().min_h(0).relative()
         .child(v_flex().id("myprs-list").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll)
           .when(Boolean(this.error), (e) => e.child(div().px(14).py(4).text_size(11).text_color(t.ansi1).child(this.error)))
-          .when(!this.error && this.loaded && !prs.length, (e) => e.child(div().px(14).py(4).text_size(11).text_color(t.dim).child("No open pull requests")))
-          .children(prs.map((pr) => this.row(pr, t))))
+          .when(!this.error && this.loaded && !this.prs.length, (e) => e.child(div().px(14).py(4).text_size(11).text_color(t.dim).child("No open pull requests")))
+          .children(prs.map((pr) => this.row(pr, t)))
+          .when(folded, (e) => e.child(div().h(4)).child(this.draftsLine(t))))
         .child(Scrollbar.vertical("myprs-list").absolute().inset_0())));
   }
 }

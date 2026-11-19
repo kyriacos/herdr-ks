@@ -288,12 +288,13 @@ lines added and removed, tasks done, Linear issue ids). Click it for the window 
 
 Needs the GitHub CLI (`gh`) logged in.
 
-**My PRs** (sidebar, above Spaces): every open PR you authored. A row is tinted red when something's wrong
-(failing CI, changes asked, conflicts) and green when it's ready. It starts with its CI badge, then repo#number,
-its title and how long since it changed, and badges for the rest: CI (✓ CI, ✕ failing, ◌ running, no CI), review
+**My PRs** (sidebar, above Spaces): every open PR you authored, with how many need you and how many have CI
+running. A row is tinted red when something's wrong (failing CI, changes asked, conflicts) and green when it's
+ready. It shows the title, then repo#number and how long since it changed, then its states, CI first: CI (✓ CI, ✕ failing, ◌ running, no CI), review
 (✓ approved, ✕ changes, in review, no review) and merge (ready, needs approval, blocked, behind, waiting on CI,
 conflicts, draft). Red is what's wrong, amber what's waiting, green what's fine.
-Ones needing you come first, drafts last under a **Drafts** line. Click the header to fold it, × to hide, `cmd-shift-m` to show or hide. Toasts when
+Ones needing you come first. Drafts sit folded under a **Drafts** line (click it to show them; it says when one
+needs you). Click the header to fold it, × to hide, `cmd-shift-m` to show or hide. Toasts when
 CI turns red or green, a review lands, or a PR is merged or closed.
 
 - **CI colours:** yellow while checks are still running (and "waiting on CI" instead of GitHub's "unstable"), red
