@@ -24,7 +24,9 @@ ks-task add "Short imperative title" --body "Why, where (file:line), what done l
 ks-task add "Title" --direct [--today] [--column "To do"]                                    # user asked for it
 ks-task list                     # open tasks (proposed marked); --all, --mine (this repo), --proposed, --json, search words
 ks-task show ID                  # details, comments, attachment paths
-ks-task start ID                 # move to the in-progress column, as yours (refused while still proposed)
+ks-task start ID                 # move to the in-progress column, as yours (refused while still proposed);
+                                 # run it from your own terminal and worktree: the board shows you on the card
+ks-task link ID URL...           # the PR you opened, the Linear issue: shown on the card and in the task
 ks-task comment ID "progress note"
 ks-task done ID "what was done, PR link"
 ks-task move ID "Column" | update ID --title/--body/--today | attach ID path... | accept ID | dismiss ID | columns
@@ -47,7 +49,8 @@ attachments, then answer what they asked. Don't `start` it unless they ask you t
 - **Propose sparingly:** real follow-ups the user would want to know about, not every small thought. Group
   related items into one task.
 - **Working from the board:** when the user points you at a task, `ks-task show ID`, then `start` it, leave a
-  `comment` at real milestones (not every step), and `done` with a short summary when finished.
+  `comment` at real milestones (not every step), `link` the PR as soon as you open it (and the Linear issue's
+  URL when you have it), and `done` with a short summary when finished.
 - **When unsure** whether something belongs in Linear or here, ask; or propose it here and say so.
 - Tell the user briefly what you added or changed, with the ids, e.g. "Proposed 2 tasks: tm4k… (token refresh),
   tm4l… (flaky broker test)."

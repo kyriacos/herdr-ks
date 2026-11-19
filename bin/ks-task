@@ -14,6 +14,7 @@ for you to accept or dismiss. A task you accepted (or made yourself) is what an 
   ks-task move ID COLUMN
   ks-task update ID [--title T] [--body B] [--today | --not-today]
   ks-task attach ID PATH...
+  ks-task link ID URL...                a PR, a Linear issue or any link, shown on the card and in the task
   ks-task accept ID...                  a proposed task becomes a real one (only when the user says so)
   ks-task dismiss ID...                 drop a proposed task
   ks-task columns
@@ -268,6 +269,11 @@ def cmd_show(argv):
         print("  " + " · ".join(meta))
     if t.get("body"):
         print("\n" + t["body"])
+    wk = t.get("worker") or {}
+    if wk.get("folder"):
+        print(f'  worktree: {wk["folder"]}' + (f' ({wk["branch"]})' if wk.get("branch") else ""))
+    for x in t.get("links", []):
+        print(f'  {x["kind"]}: {x["url"]}')
     for a in t.get("attachments", []):
         print(f'  attachment: {os.path.join(APP, a["rel"])}')
     # Activity: history and comments, oldest first.
@@ -312,6 +318,36 @@ def move(d, t, c, who=None):
     t["updated"] = now()
 
 
+def link_of(url):
+    """{url, kind, label}: a GitHub PR ("pr", repo#123), a Linear issue ("linear", ENG-123) or any other link."""
+    import re
+    m = re.match(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)", url)
+    if m:
+        return {"url": url, "kind": "pr", "label": f"{m.group(1).split('/')[-1]}#{m.group(2)}"}
+    m = re.match(r"https?://linear\.app/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-\d+)", url)
+    if m:
+        return {"url": url, "kind": "linear", "label": m.group(1).upper()}
+    return {"url": url, "kind": "link", "label": url}
+
+
+def cmd_link(argv):
+    pos, _, o = args(argv, set(), {"--by"})
+    if len(pos) < 2:
+        die("link needs an id and a URL: ks-task link ID https://github.com/acme/web/pull/12")
+    d = load()
+    t = find(d, pos[0])
+    have = {x["url"] for x in t.get("links", [])}
+    for url in pos[1:]:
+        if url in have:
+            continue
+        x = link_of(url)
+        t.setdefault("links", []).append(x)
+        log(t, f'Linked {x["label"]}', who_from(o))
+    t["updated"] = now()
+    save(d)
+    print(f"linked: {line(d, t)}")
+
+
 def cmd_start(argv):
     pos, _, o = args(argv, set(), {"--by"})
     if not pos:
@@ -323,6 +359,10 @@ def cmd_start(argv):
     who = who_from(o)
     move(d, t, doing_col(d), who)
     t["assignee"] = who
+    # Who works on it, where: the Tasks panel shows that agent's status on the card, and its screen in the task.
+    w = where()
+    term = os.environ.get("HC_TERMINAL_ID") or os.environ.get("HERDR_PANE_ID")
+    t["worker"] = {"terminal": term, "folder": w["folder"], "branch": w["branch"], "at": now()} if term or by_agent() else None
     log(t, "Started", who)
     save(d)
     print(f"started: {line(d, t)}")
@@ -446,7 +486,7 @@ def cmd_columns(_argv):
 
 
 CMDS = {"add": cmd_add, "list": cmd_list, "ls": cmd_list, "show": cmd_show, "comment": cmd_comment, "start": cmd_start, "done": cmd_done,
-        "move": cmd_move, "accept": cmd_accept, "dismiss": cmd_dismiss, "update": cmd_update, "attach": cmd_attach, "columns": cmd_columns}
+        "move": cmd_move, "accept": cmd_accept, "dismiss": cmd_dismiss, "update": cmd_update, "attach": cmd_attach, "link": cmd_link, "columns": cmd_columns}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
