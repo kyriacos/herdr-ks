@@ -100,9 +100,17 @@ async function defaultPx(id) {
 // "resize focus=size|wide|tall by=±1" and "resize focus=size reset=true": the - + < > v ^ = keys. They act on what
 // you're in: the zen window when it's open; else the pane you're in, along its nearest split (wide: a side-by-side
 // split, tall: a stacked one, size: either); else, for a lone pane, the pane grows by shrinking the side panel (or the
-// sidebar when the panel is hidden). = puts it back: zen to its default size, centered; a split even; the panel to
+// sidebar when the panel is hidden); a side panel that has the keyboard, itself. = puts it back: zen to its default size, centered; a split even; the panel to
 // the layout's width. Returns what to show in the strip.
-async function resizeFocused(kind, dir, reset, pane, win = null) {
+// The side panel showing the mod that has the keyboard: as its own copy says (shared "ks.activePanel", kept while
+// the strip is open), or the one pane.go moved to since the strip opened (`openedAt`).
+const PANEL_BLOCKS = { "ks-files": "files", "ks-changes": "changes", "ks-prs": "prs", "ks-notes": "notes", "ks-tasks": "tasks" };
+function panelInFocus(openedAt = Infinity) {
+  const mark = shared(PANEL), mod = shared("ks.activePanel")?.mod ?? (mark?.at >= openedAt ? mark.mod : null);
+  const root = layout(), panel = findNode(root, "panel"), body = findNode(root, "panel-body");
+  return Boolean(mod && panel && !panel.hidden && body?.active === PANEL_BLOCKS[mod]);
+}
+async function resizeFocused(kind, dir, reset, pane, win = null, openedAt = Infinity) {
   // A floating window you were in (review, PR): it resizes itself (see shared/windows.js in the repo).
   if (win?.key) {
     setShared("ks.windowResize", { key: win.key, kind, dir, reset: Boolean(reset), n: Date.now() });
@@ -113,6 +121,13 @@ async function resizeFocused(kind, dir, reset, pane, win = null) {
     if (reset) return run("ks-zen.reset"), "Zen: default size, centered";
     const cmd = { size: dir > 0 ? "grow" : "shrink", wide: dir > 0 ? "wider" : "narrower", tall: dir > 0 ? "taller" : "shorter" }[kind];
     return run(`ks-zen.${cmd}`), `Zen ${cmd}`;
+  }
+  // A side panel had the keyboard (Tasks, Files, Changes, PRs, Notes): the panel itself, + wider and - narrower.
+  if (panelInFocus(openedAt)) {
+    if (reset) { const px = await defaultPx("panel"); if (px) run("layout.resize", { id: "panel", px }); return "Side panel: default width"; }
+    if (kind === "tall") return "The side panel is full height";
+    resize("panel", dir * 32);
+    return `Side panel ${dir > 0 ? "wider" : "narrower"}`;
   }
   const axis = kind === "wide" ? "row" : kind === "tall" ? "column" : null;
   if (await resizePane(pane, dir * 0.04, axis, reset)) return reset ? "Split evened out" : `Pane ${dir > 0 ? "larger" : "smaller"}`;
@@ -364,7 +379,7 @@ export default class Keys extends View {
         if (t) hc(["keys", t, ...a.send]);
       } else if (a.command === "ks-keys.editor") { openEditor(); return; }
       else if (a.command === "resize" && a.args.focus) {
-        resizeFocused(a.args.focus, Math.sign(a.args.by ?? 1) || 1, Boolean(a.args.reset), this.pane, this.window)
+        resizeFocused(a.args.focus, Math.sign(a.args.by ?? 1) || 1, Boolean(a.args.reset), this.pane, this.window, this.openedAt ?? Infinity)
           .then((msg) => { if (msg && !this.leaving) { this.flash = msg; this.shown = true; cx.notify(); } }).catch(() => {});
       }
       else if (a.command === "resize") resize(a.args.id ?? "auto", a.args.by ?? 24, this.pane);
@@ -487,6 +502,7 @@ export default class Keys extends View {
   resizeTarget() {
     if (this.window?.key) return `the ${this.window.mod === "ks-prcard" ? "PR" : "review"} window`;
     if (shared("ks-zen.state")?.win) return "the zen window";
+    if (panelInFocus(this.openedAt ?? Infinity)) return "the side panel";
     const me = panes().find((p) => p.pane === this.pane);
     if (me && panes().filter((p) => p.tab === me.tab).length > 1) return "this pane, in its split";
     const panel = findNode(layout(), "panel");
