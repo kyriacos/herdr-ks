@@ -324,9 +324,12 @@ in the folders listed in Settings > Pull requests > Repo folders (default `~/cod
 levels deep). If it says "No local clone", add the clone's parent folder there.
 Movable, resizable from the corners.
 
-**PRs panel** (`cmd-shift-u`): open PRs of the session's worktrees with CI, review state and size; **Review**
+**PRs panel** (`cmd-shift-u`): open PRs of the session's worktrees with CI, review state and size. The session's
+worktrees are every one the tab's agents went into or edited this session (read from their session logs, so an
+agent launched in `~/code/acme` that works in `~/code/acme-worktrees/search-filters` still counts), plus what the
+Changes panel shows. **Review**
 (against the PR's own base, so a stacked PR shows only its files), **Review all**, **Open on GitHub**, and
-worktrees without a PR.
+worktrees without an open PR (worktrees whose PR was merged or closed are left out).
 
 ## Resuming sessions after a reboot
 

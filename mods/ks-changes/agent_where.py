@@ -1,8 +1,9 @@
 """Where an agent is working: the git checkouts it touched last.
 
 Usage: python3 -I agent_where.py <pid>
-Prints JSON: {"roots": [checkout, ...] (most recent first), "cwd": its recorded folder, "log": the log read,
-"agent": "claude" | "codex" | "other"}
+Prints JSON: {"roots": [checkout, ...] (most recent first), "touched": [checkout, ...] (every one it edited or
+went into this session, most recent first: the PRs panel looks for their pull requests), "cwd": its recorded
+folder, "log": the log read, "agent": "claude" | "codex" | "other"}
 
 Claude Code and Codex: read from the session log (below). Any other agent: the folders its process and the
 commands it runs are in right now, which follows it only while it works there.
@@ -264,19 +265,21 @@ def main():
     out["cwd"] = cwd
     # Every checkout it edited in this session, plus where its recent commands went (reading around counts
     # only while recent). Most recently active first; worktrees of the same repo each count.
-    last = {}
+    last, every = {}, {}
     nav_from = max(0, len([s for s in signals if s[2] == "nav"]) - RECENT)
     nav_seen = 0
     tops = {}
     for i, (path, base, kind) in enumerate(signals):
-        if kind == "nav":
-            nav_seen += 1
-            if nav_seen <= nav_from:
-                continue
         key = (path, base)
         if key not in tops:
             tops[key] = top_of(path, base)
         top = tops[key]
+        if top:
+            every[top.lower()] = (i, top)
+        if kind == "nav":
+            nav_seen += 1
+            if nav_seen <= nav_from:
+                continue
         if top:
             last[top.lower()] = (i, top)
     seen = [top for _, top in sorted(last.values(), reverse=True)][:MAX_ROOTS]
@@ -285,6 +288,7 @@ def main():
         if top:
             seen.append(top)
     out["roots"] = seen
+    out["touched"] = [top for _, top in sorted(every.values(), reverse=True)][:MAX_ROOTS] or seen
     print(json.dumps(out))
 
 

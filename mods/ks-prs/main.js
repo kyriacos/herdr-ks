@@ -1,10 +1,11 @@
-// Open pull requests for this session's worktrees: the ones the Changes panel shows (it publishes them per space
-// in shared "ks.session"; following an agent, every worktree the agent touched), else the focused
-// terminal's repo. Each PR: title, branch -> base, draft and review state, CI checks, size; Review opens its diff
+// Open pull requests for this session's worktrees: every worktree the shown tab's agents went into or edited this
+// session (ks-changes' agent_where.py reads their session logs: an agent launched in ~/code/acme often works in
+// ~/code/acme-worktrees/search-filters), plus the ones the Changes panel shows (it publishes them per space in
+// shared "ks.session"), else the focused terminal's repo. Each PR: title, branch -> base, draft and review state, CI checks, size; Review opens its diff
 // against its base in ks-review, Open shows it on GitHub. Uses `gh` (GitHub CLI, logged in).
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
-import { spaces, panes, focused, exec, shared, theme, run, notify } from "herdr";
+import { spaces, panes, agents, focused, exec, hc, shared, theme, run, notify, appHome } from "herdr";
 import * as cache from "./lib/cache.js";
 import { summarize, runningColor, pillColors } from "./lib/ci.js";
 import { dimmed } from "./lib/focus.js";
@@ -28,12 +29,45 @@ function checks(rollup) {
   return { pass: counts.pass, fail: counts.fail, pending: counts.running };
 }
 
-// The worktrees to look at: what the Changes panel published for the shown space, else the focused terminal's.
-function sessionRoots() {
-  const space = spaces().find((s) => s.active);
+// The worktrees an agent went into or edited this session, most recent first; looked up in the background,
+// again when older than 20 s. `then` runs when the list changes.
+const touched = new Map(); // terminal address -> { at, busy, dirs }
+function agentDirs(a, cx, then) {
+  const c = touched.get(a.address);
+  if (!c || (!c.busy && Date.now() - c.at > 20000)) {
+    touched.set(a.address, { at: c?.at ?? 0, busy: true, dirs: c?.dirs ?? [] });
+    cx.spawn(async (cx) => {
+      let dirs = c?.dirs ?? [];
+      try {
+        const pid = JSON.parse((await hc(["get", a.address])).stdout)?.foreground?.pid;
+        if (pid) {
+          const args = ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid)];
+          // Herdr's own PATH may not have Homebrew's python3: fall back to macOS's.
+          let w = await exec("python3", args).catch(() => null);
+          if (!w || w.code !== 0) w = await exec("/usr/bin/python3", args).catch(() => null);
+          if (w?.code === 0) { const o = JSON.parse(w.stdout); dirs = o.touched ?? o.roots ?? []; }
+        }
+      } catch {}
+      const changed = JSON.stringify(dirs) !== JSON.stringify(c?.dirs ?? []);
+      touched.set(a.address, { at: Date.now(), busy: false, dirs });
+      if (changed) then(cx);
+    });
+  }
+  return touched.get(a.address).dirs;
+}
+
+// The worktrees to look at: the shown tab's agents' (the focused one first), then what the Changes panel published
+// for the shown space; else the focused terminal's folder.
+function sessionRoots(cx, then) {
+  const space = spaces().find((s) => s.active), f = focused();
+  const shown = agents().filter((a) => a.space === space?.id && (!f?.tab || a.tab === f.tab))
+    .sort((a, b) => (b.address === f?.terminal) - (a.address === f?.terminal));
+  const out = new Map();
+  for (const a of shown) for (const root of agentDirs(a, cx, then)) out.set(root, { root, on: null });
   const published = space ? shared("ks.session")?.[space.id] : null;
-  if (published?.length) return published.filter((r) => !r.on);
-  const f = focused(), pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
+  for (const r of published ?? []) if (!r.on && !out.has(r.root)) out.set(r.root, r);
+  if (out.size) return [...out.values()];
+  const pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
   const cwd = pane?.cwd || f?.cwd || space?.folder;
   return cwd ? [{ root: cwd, on: null }] : [];
 }
@@ -58,7 +92,7 @@ export default class Prs extends View {
   }
 
   refresh(cx, force = false) {
-    const roots = sessionRoots(), key = JSON.stringify(roots.map((r) => r.root));
+    const roots = sessionRoots(cx, (cx) => this.refresh(cx)), key = JSON.stringify(roots.map((r) => r.root));
     if (this.loading || (!force && key === this.key)) return;
     this.key = key; this.loading = true; this.startedAt = Date.now();
     cx.spawn(async (cx) => {
@@ -85,7 +119,8 @@ export default class Prs extends View {
             const pr = JSON.parse(r.stdout);
             if (seen.has(pr.url)) continue;
             seen.add(pr.url);
-            if (pr.state !== "OPEN") { without.push({ root: dir, branch, closed: pr.state.toLowerCase(), number: pr.number }); continue; }
+            // A merged or closed PR's worktree is an old one the agent passed through: left out.
+            if (pr.state !== "OPEN") continue;
             const repo = (await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: dir })).stdout.trim().replace(/\/\.git$/, "");
             prs.push({ ...pr, root: dir, repo: base(repo), checks: checks(pr.statusCheckRollup) });
           } catch { without.push({ root: dir, branch }); }
