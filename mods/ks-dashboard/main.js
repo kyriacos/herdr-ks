@@ -102,18 +102,13 @@ export default class Dashboard extends View {
     const ps = this.prompts.map((p) => (p.view === id ? { ...p, view: null } : p));
     if (ps.some((p, i) => p !== this.prompts[i])) { this.prompts = ps; savePrompts(ps); }
   }
-  // A prompt's view: All, then each view in turn.
-  cyclePromptView(p, cx) {
-    const ids = [null, ...this.views.views.map((v) => v.id)], next = ids[(ids.indexOf(p.view ?? null) + 1) % ids.length];
-    this.prompts = this.prompts.map((x) => (x.id === p.id ? { ...x, view: next } : x)); savePrompts(this.prompts); cx.notify();
-  }
-
   run(p, cx) {
     if (this.running) return;
     this.running = p.id; cx.notify();
     cx.spawn(async (cx) => {
       try {
-        const { run: r, whole } = await runPrompt(p);
+        // For the repos picked in the header (the current view, kept in views.json, so the sidebar's auto runs too).
+        const { run: r, whole } = await runPrompt({ ...p, view: this.views.current ?? null });
         this.runs = await loadRuns(); this.sel = this.windowed ? r.id : this.sel;
         this.act = { ...this.act, [p.range]: whole };
         notify({ title: `${p.name}: done`, body: r.error ?? `${plural(r.prs.length, "PR")}, ${plural(r.tasks.length, "task")}`, level: r.error ? "warning" : "success", timeout: 4000, action: { name: "ks-dashboard.open" } });
@@ -230,9 +225,8 @@ export default class Dashboard extends View {
               .on_click((_e, cx) => { cx.stop_propagation(); this.run(p, cx); }).child("▶ Run"))))
         .child(div().text_size(10.5).text_color(t.dim).child([RANGES.find(([r]) => r === p.range)?.[1] ?? p.range, p.auto ? `runs itself at ${p.auto}` : "", "merged PRs + tasks"].filter(Boolean).join(" · ")))
         .child(h_flex().child(div().id(`pv-${p.id}`).px(6).h(18).flex().items_center().rounded(9).border_1().border_color(t.border).text_size(10.5).text_color(t.muted)
-          .cursor_pointer().hover((s) => s.bg(t.hover)).tooltip("Which repos this prompt covers; click for the next view")
-          .on_click((_e, cx) => { cx.stop_propagation(); this.cyclePromptView(p, cx); })
-          .child(this.view(p.view)?.name ?? "All repos")))))
+          .tooltip("Runs for the repos picked in the header (the view)")
+          .child(`For ${this.view()?.name ?? "all repos"}`)))))
       .child(head(`RUNS · ${this.runs.length}`))
       .when(!this.runs.length, (e) => e.child(div().px(10).text_size(11).text_color(t.dim).child("None yet: ▶ Run a prompt.")))
       .children(this.runs.slice(0, 200).map((r) => v_flex().id(`r-${r.id}`).mx(6).px(8).py(5).gap(1).rounded(6).cursor_pointer()
@@ -278,30 +272,36 @@ export default class Dashboard extends View {
       .child(this.linearList(a.linear, t));
   }
 
-  // Each project (repo) of the range with its numbers, then its pieces of work (written by claude, data.js
-  // projectNotes): a name, what it adds up to, its parts as bullets. Until the notes come (or without claude), the
-  // PR and task titles.
+  // Each project (repo) of the range, as a short written report: the repo and its numbers as a small heading, then
+  // its pieces of work (written by claude, data.js projectNotes): the area tag, the name in bold with what it adds up
+  // to, its parts as bullets. Until the notes come (or without claude), the PR and task titles.
   renderProjects(a, t) {
     const groups = projects(a);
     if (!groups.length) return div();
     const notes = this.notes[notesKey(a)], busy = notes === "busy";
-    return v_flex().gap(8)
+    // An area keeps its colour wherever it shows: one of the theme's colours, picked by its name.
+    const TONES = [t.ansi4, t.ansi5, t.ansi6, t.ansi2, t.ansi3, t.ansi1];
+    const tone = (area) => TONES[[...area].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % TONES.length];
+    const md = (s) => String(s ?? "").replace(/([*_`[\]])/g, "\\$1");
+    return v_flex().gap(2)
       .child(this.section(`By project · ${groups.length}${busy ? " · describing…" : ""}`, t))
       .children(groups.map((g) => {
         const n = notes && !busy ? notes[g.key] : null;
         const titles = [...g.prs.map((p) => bare(p.title)), ...g.tasks.map((x) => bare(x.title))];
-        const parts = n?.groups?.length ? n.groups : [{ name: "", summary: "", bullets: titles.slice(0, 6).concat(titles.length > 6 ? [`and ${titles.length - 6} more`] : []) }];
-        const bullets = (list, on) => v_flex().gap(1).children((list ?? []).map((b) => h_flex().gap(6).items_start().text_size(12).text_color(on ? t.foreground : t.muted)
-          .child(div().flex_none().text_color(t.dim).child("•")).child(div().flex_1().min_w(0).child(b))));
+        const parts = n?.groups?.length ? n.groups : [{ area: "", name: "", summary: "", bullets: titles.slice(0, 6).concat(titles.length > 6 ? [`and ${titles.length - 6} more`] : []) }];
         const facts = [g.prs.length && plural(g.prs.length, "PR"), g.prs.length && `+${num(g.add)} −${num(g.del)}`, g.tasks.length && plural(g.tasks.length, "task")].filter(Boolean).join(" · ");
-        return v_flex().p(10).gap(6).rounded(8).border_1().border_color(t.border).bg(t.chrome)
-          .child(h_flex().gap(8).items_baseline()
-            .child(div().text_size(13).font_semibold().child(g.name))
+        return v_flex().pb(10).gap(8)
+          .child(h_flex().pt(6).gap(8).items_baseline()
+            .child(div().text_size(11).font_semibold().text_color(t.muted).child(g.name.toUpperCase()))
             .child(div().text_size(10.5).text_color(t.dim).child(facts)))
-          .children(parts.map((w, i) => v_flex().gap(3).when(i > 0, (e) => e.pt(6).border_t(1).border_color(alpha(t.border, "80")))
-            .when(Boolean(w.name), (e) => e.child(div().text_size(12).font_semibold().text_color(t.accent).child(w.name)))
-            .when(Boolean(w.summary), (e) => e.child(div().text_size(12.5).child(w.summary)))
-            .child(bullets(w.bullets, Boolean(n)))));
+          .children(parts.map((w, i) => {
+            const text = [w.name || w.summary ? `${w.name ? `**${md(w.name)}.** ` : ""}${md(w.summary)}` : "", ...(w.bullets ?? []).map((b) => `- ${md(b)}`)].filter(Boolean).join("\n");
+            return h_flex().gap(8).items_start()
+              .when(Boolean(w.area), (e) => e.child(div().flex_none().mt(2).px(6).h(17).flex().items_center().rounded(4).bg(alpha(tone(w.area), "26"))
+                .text_size(10.5).font_semibold().text_color(tone(w.area)).child(w.area)))
+              .child(div().flex_1().min_w(0).text_size(12.5).text_color(n ? t.foreground : t.muted)
+                .child(TextView.markdown(`dash-proj-${g.key}-${i}`, text).selectable(true)));
+          }));
       }));
   }
 

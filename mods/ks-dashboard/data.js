@@ -6,7 +6,7 @@
 //                    view: a view id | null (all repos) }]
 //   runs/<id>.json { id, prompt, name, range, from, at, ms, prs, tasks, linear, summary, error }
 //   activity.json  the last look at each range ({ day: { at, from, prs, tasks, linear } }), shown at once on open.
-//   projects.json  per-project notes ({ <work key>: { v: 2, at, notes: { <repo>: { groups: [{ name, summary, bullets }] } } } }), the last 40.
+//   projects.json  per-project notes ({ <work key>: { v: 2, at, notes: { <repo>: { groups: [{ area, name, summary, bullets }] } } } }), the last 40.
 //   views.json     { current: id | null, views: [{ id, name, repos: ["acme/*", "sam/web"] }] }: which repos a view shows.
 //                  "acme/*" is a whole owner (a GitHub org or user), "sam/web" one repo. null (All) shows everything.
 // A run gathers the range's data, then hands it with the prompt's text to `claude -p` (no tools, nothing saved
@@ -200,9 +200,10 @@ export function projects(a) {
 // A PR or task title without its leading [tags] ("[web][search] Add filters" → "Add filters").
 export const bare = (title) => String(title ?? "").replace(/^(\s*\[[^\]]*\]\s*)+/, "").trim() || String(title ?? "");
 
-// What each project's work came to, written by `claude -p`: { key: { groups: [{ name, summary, bullets }] } }. A repo
-// often holds several pieces of work (a feature, a fix, a refactor), each a group: its name, a sentence or two on what
-// it adds up to, and bullets for its parts. Kept in projects.json by what went in,
+// What each project's work came to, written by `claude -p`: { key: { groups: [{ area, name, summary, bullets }] } }.
+// A repo often holds several pieces of work (a feature, a fix, a refactor), each a group: the product area it's in
+// (from title tags such as "[search]"; "" when none says), its name, a sentence or two on what it adds up to, and
+// bullets for its parts. Kept in projects.json by what went in,
 // so the same work is described once. null when claude can't be run (the titles show instead).
 const NOTES = () => `${DIR()}/projects.json`;
 const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
@@ -211,7 +212,7 @@ export async function projectNotes(a) {
   const groups = projects(a);
   if (!groups.length) return {};
   const key = notesKey(a), kept = await readJson(NOTES(), {});
-  if (kept[key]?.v === 2) return kept[key].notes;
+  if (kept[key]?.v === 3) return kept[key].notes;
   const data = groups.map((g) => ({
     project: g.key, name: g.name,
     merged_prs: g.prs.map((p) => ({ title: p.title, linear: p.linear, description: p.body.slice(0, 500) })),
@@ -221,17 +222,19 @@ export async function projectNotes(a) {
 a feature, a product area, a fix or a clean-up. PRs and tasks belong together when their title tags ("[search]"),
 Linear issues or descriptions say they are the same piece of work. Usually one to four groups per project; a single
 group when it's all one piece. For each group give:
+- "area": the product or app area it belongs to, as the PR title tags name it (lower case, one word if the tags use
+  one, e.g. "search" from "[web][search] Add filters"; leave out tags that only name the repo); "" when no tag says;
 - "name": two to five words naming the piece of work;
 - "summary": one or two sentences on what it adds up to (what it lets people do now), in plain words;
 - "bullets": one to four short bullets (at most 14 words each) naming its parts, related PRs and tasks merged into one.
 Biggest group first. No PR numbers, no filler. Reply with JSON only, no code fence:
-{"<project>": {"groups": [{"name": "...", "summary": "...", "bullets": ["..."]}]}}.
+{"<project>": {"groups": [{"area": "...", "name": "...", "summary": "...", "bullets": ["..."]}]}}.
 
 ${JSON.stringify(data)}`);
   if (got.error) return null;
   let notes = null;
   try { const t = got.summary, i = t.indexOf("{"), j = t.lastIndexOf("}"); notes = JSON.parse(t.slice(i, j + 1)); } catch { return null; }
-  const entries = Object.entries({ ...kept, [key]: { v: 2, at: Date.now(), notes } }).sort((x, y) => y[1].at - x[1].at).slice(0, 40);
+  const entries = Object.entries({ ...kept, [key]: { v: 3, at: Date.now(), notes } }).sort((x, y) => y[1].at - x[1].at).slice(0, 40);
   await writeJson(NOTES(), Object.fromEntries(entries));
   return notes;
 }

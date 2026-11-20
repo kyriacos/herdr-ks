@@ -273,10 +273,11 @@ lines added and removed, tasks done, Linear issue ids). Click it for the window 
   done, Linear issues), **By project**, then the merged PRs (repo, number, size, branch, merge time, Linear ids;
   click opens it on GitHub), the tasks finished on the board, and the Linear issues with their titles (click opens
   one in Linear). `r` looks again.
-- **By project**: one card per repo (tasks without a repo go under their space) with its numbers, then its
-  separate pieces of work (a feature, a product area, a fix), each with a name, a sentence or two on what it adds
-  up to, and bullets for its parts. PRs and tasks go together when their title tags (`[search]`), Linear issues or
-  descriptions say they're the same work. `claude -p` writes them (no tools, not saved as a
+- **By project**: a short report per repo (tasks without a repo go under their space): the repo and its numbers,
+  then its separate pieces of work (a feature, a fix), each with its area as a coloured tag (`search`, from title
+  tags such as `[web][search]`; an area keeps its colour), its name in bold with a sentence or two on what it adds
+  up to, and bullets for its parts. PRs and tasks go together when their title tags, Linear issues or descriptions
+  say they're the same work. It follows the view picked in the header. `claude -p` writes them (no tools, not saved as a
   session) the first time a range's work is shown, and they're kept in `projects.json` until that work changes.
   Until then, or without `claude`, the cards list the PR and task titles.
 - **Views** (the header, beside the ranges): which repos the dashboard shows. **All repos**, or a view of your
@@ -289,13 +290,14 @@ lines added and removed, tasks done, Linear issue ids). Click it for the window 
   as `ENG-123` or a branch `sam/eng-123-search-filters`. Their titles come from what Linear's GitHub bot writes
   on a PR ("ENG-123 Title"), read by My PRs, the dashboard and the task cards; else a Linear link's own words.
   Nothing is read from Linear itself.
-- **Prompts** (left): **▶ Run** gathers the prompt's range and hands it, with the prompt's text, to `claude -p`
+- **Prompts** (left): **▶ Run** gathers the prompt's range, for the repos of the view picked in the header (the
+  sidebar's automatic runs use it too), and hands it, with the prompt's text, to `claude -p`
   (no tools, not saved as a session) for a written summary. It starts with one: **Daily: what I merged**, today's
   merged PRs with what each changed and why, grouped by repo, and possible follow-ups. It also runs on its own
   once a day after 18:00 while Herdr is open. Today's latest summary shows under Today.
 - **Runs** (left): every run kept, newest first: when, which prompt, how many PRs. Click one for its summary and
-  the PRs it covered; **Delete run** removes it. Each prompt has a view chip (**All repos** at first): click it
-  to tie the prompt to a view, so its runs cover only those repos. Without `claude` a run keeps the data and says why there's no
+  the PRs it covered; **Delete run** removes it. Each prompt's chip says which view it runs for (**For all
+  repos**, or the view's name). Without `claude` a run keeps the data and says why there's no
   summary.
 - Prompts are in `~/.config/herdr-app/data/ks-dashboard/prompts.json` (`id`, `name`, `range`: day, week or month,
   `text`, `auto`: a time like `"18:00"` or null, `view`: a view's id or null), views in `views.json`, runs in
