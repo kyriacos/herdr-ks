@@ -1,7 +1,10 @@
-// Open pull requests for this session's worktrees: every worktree the shown tab's agents went into or edited this
-// session (ks-changes' agent_where.py reads their session logs: an agent launched in ~/code/acme often works in
-// ~/code/acme-worktrees/search-filters), plus the ones the Changes panel shows (it publishes them per space in
-// shared "ks.session"), else the focused terminal's repo. Each PR: title, branch -> base, draft and review state, CI checks, size; Review opens its diff
+// Open pull requests of the worktrees in scope, picked in the header (s cycles):
+//   - Agent: the worktrees the focused agent (else the last one focused here) went into or edited this session;
+//     ks-changes' agent_where.py reads its session log, as an agent launched in ~/code/acme often works in
+//     ~/code/acme-worktrees/search-filters;
+//   - Tab: every agent's in the shown tab, and its other terminals' folders;
+//   - Space: every agent's in the shown space, and what the Changes panel shows (shared "ks.session").
+// With nothing found, the focused terminal's repo. In Tab and Space each PR names the agents it came from. Each PR: title, branch -> base, draft and review state, CI checks, size; Review opens its diff
 // against its base in ks-review, Open shows it on GitHub. Uses `gh` (GitHub CLI, logged in).
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle } from "gpui-base";
@@ -9,6 +12,7 @@ import { spaces, panes, agents, focused, exec, hc, shared, theme, run, notify, a
 import * as cache from "./lib/cache.js";
 import { summarize, runningColor, pillColors } from "./lib/ci.js";
 import { dimmed } from "./lib/focus.js";
+import { segment } from "./lib/segment.js";
 import { takeFocus, listKey, watchFocus, focusedNow, toStrip } from "./lib/panelkeys.js";
 import { isWindow, initWindow, windowCommand, zoomCommand, zoomKey, windowFrame, headerButton } from "./lib/panelwin.js";
 
@@ -56,25 +60,42 @@ function agentDirs(a, cx, then) {
   return touched.get(a.address).dirs;
 }
 
-// The worktrees to look at: the shown tab's agents' (the focused one first), then what the Changes panel published
-// for the shown space; else the focused terminal's folder.
-function sessionRoots(cx, then) {
-  const space = spaces().find((s) => s.active), f = focused();
-  const shown = agents().filter((a) => a.space === space?.id && (!f?.tab || a.tab === f.tab))
-    .sort((a, b) => (b.address === f?.terminal) - (a.address === f?.terminal));
+// The worktrees in scope: [{ root, on, from: [agent names] }], the most relevant first.
+const SCOPES = [["agent", "Agent"], ["tab", "Tab"], ["space", "Space"]];
+const clean = (s) => String(s ?? "").replace(/^[\s✳⠂⠐*·]+|[\s✳⠂⠐*·…]+$/g, "");
+function sessionRoots(view, cx, then) {
+  const space = spaces().find((s) => s.active), f = focused(), all = agents().filter((a) => a.space === space?.id);
+  const tab = f?.tab ?? all[0]?.tab;
+  const mine = all.find((a) => a.address === f?.terminal);
+  if (mine) view.lastAgent = mine.address;
   const out = new Map();
-  for (const a of shown) for (const root of agentDirs(a, cx, then)) out.set(root, { root, on: null });
-  const published = space ? shared("ks.session")?.[space.id] : null;
-  for (const r of published ?? []) if (!r.on && !out.has(r.root)) out.set(r.root, r);
+  const add = (root, from) => { const r = out.get(root) ?? { root, on: null, from: [] }; if (from && !r.from.includes(from)) r.from.push(from); out.set(root, r); };
+  const name = (a) => (view.scope === "space" && a.tab !== tab ? `${a.tab_name} · ` : "") + (clean(a.title) || a.address);
+  let shown;
+  if (view.scope === "agent") {
+    const a = mine ?? all.find((x) => x.address === view.lastAgent) ?? all.find((x) => x.tab === tab);
+    shown = a ? [a] : [];
+  } else shown = all.filter((a) => view.scope === "space" || a.tab === tab)
+    .sort((a, b) => (b.address === f?.terminal) - (a.address === f?.terminal) || (b.tab === tab) - (a.tab === tab));
+  for (const a of shown) {
+    const dirs = agentDirs(a, cx, then);
+    if (dirs.length) for (const root of dirs) add(root, name(a));
+    else { const p = panes().find((x) => x.pane === a.pane); if (p?.cwd) add(p.cwd, name(a)); }
+  }
+  if (view.scope === "tab") for (const p of panes()) if (p.tab === tab && p.terminal && p.cwd && !p.status) add(p.cwd, null);
+  if (view.scope === "space") for (const r of (space ? shared("ks.session")?.[space.id] : null) ?? []) if (!r.on) add(r.root, null);
   if (out.size) return [...out.values()];
   const pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
   const cwd = pane?.cwd || f?.cwd || space?.folder;
-  return cwd ? [{ root: cwd, on: null }] : [];
+  return cwd ? [{ root: cwd, on: null, from: [] }] : [];
 }
+
+const loadScope = () => { try { const v = localStorage.getItem("ks-prs.scope"); return SCOPES.some(([k]) => k === v) ? v : "tab"; } catch { return "tab"; } };
 
 export default class Prs extends View {
   init(_props, cx) {
     this.prs = []; this.without = []; this.loading = false; this.error = null; this.key = null;
+    this.scope = loadScope(); this.lastAgent = null;
     // Vim keys (lib/panelkeys.js): j/k, gg/G, Enter/o review, g o / O on GitHub, r refresh, h/l/Esc leave.
     this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.cursor = 0; this.pageRows = 4;
     // In its own window (lib/panelwin.js), or the panel; z / the zoom keys go between the two.
@@ -92,7 +113,7 @@ export default class Prs extends View {
   }
 
   refresh(cx, force = false) {
-    const roots = sessionRoots(cx, (cx) => this.refresh(cx)), key = JSON.stringify(roots.map((r) => r.root));
+    const roots = sessionRoots(this, cx, (cx) => this.refresh(cx)), key = JSON.stringify([this.scope, roots.map((r) => [r.root, r.from])]);
     if (this.loading || (!force && key === this.key)) return;
     this.key = key; this.loading = true; this.startedAt = Date.now();
     cx.spawn(async (cx) => {
@@ -100,9 +121,9 @@ export default class Prs extends View {
         // Stale while revalidate: the last list for these worktrees at once, then a fresh one.
         const hit = await cache.get(`prs:${key}`);
         if (hit?.value && this.key === key) { this.prs = hit.value.prs ?? []; this.without = hit.value.without ?? []; cx.notify(); }
-        const prs = [], without = [], seen = new Set();
+        const prs = [], without = [], seen = new Map();
         let error = null;
-        for (const { root } of roots) {
+        for (const { root, from } of roots) {
           const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: root }).catch(() => null);
           if (!top || top.code !== 0) continue;
           const dir = top.stdout.trim();
@@ -117,18 +138,26 @@ export default class Prs extends View {
           }
           try {
             const pr = JSON.parse(r.stdout);
-            if (seen.has(pr.url)) continue;
-            seen.add(pr.url);
+            const had = seen.get(pr.url);
+            if (had) { for (const n of from) if (!had.from.includes(n)) had.from.push(n); continue; }
             // A merged or closed PR's worktree is an old one the agent passed through: left out.
             if (pr.state !== "OPEN") continue;
             const repo = (await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: dir })).stdout.trim().replace(/\/\.git$/, "");
-            prs.push({ ...pr, root: dir, repo: base(repo), checks: checks(pr.statusCheckRollup) });
+            const item = { ...pr, root: dir, repo: base(repo), checks: checks(pr.statusCheckRollup), from: [...from] };
+            seen.set(pr.url, item); prs.push(item);
           } catch { without.push({ root: dir, branch }); }
         }
         if (this.key === key) { this.prs = prs; this.without = without; this.error = error; }
         if (!error) cache.set(`prs:${key}`, { prs, without });
       } finally { this.loading = false; this.doneAt = Date.now(); cx.notify(); }
     });
+  }
+
+  setScope(k, cx) {
+    if (this.scope === k) return;
+    this.scope = k; this.cursor = 0;
+    try { localStorage.setItem("ks-prs.scope", k); } catch {}
+    this.refresh(cx); cx.notify();
   }
 
   review(list) {
@@ -158,6 +187,7 @@ export default class Prs extends View {
         .child(div().flex_none().text_size(12).text_color(t.dim).child(`#${pr.number}`))
         .child(div().flex_1().min_w(0).text_size(12.5).font_semibold().child(pr.title)))
       .child(div().text_size(11).text_color(t.dim).truncate().child(`${pr.repo} · ${pr.headRefName} → ${pr.baseRefName} · ${base(pr.root)}`))
+      .when(this.scope !== "agent" && pr.from?.length > 0, (e) => e.child(div().text_size(11).text_color(t.muted).truncate().child(`◆ ${pr.from.join(", ")}`)))
       .child(h_flex().gap(5).items_center().flex_wrap()
         .child(pr.isDraft ? badge("draft", t.muted) : badge("open", t.ansi2))
         .when(Boolean(review), (e) => e.child(badge(review[0], review[1])))
@@ -185,6 +215,7 @@ export default class Prs extends View {
         if (zoomKey(this, e, "ks-prs")) { cx.stop_propagation(); return; }
         if (!listKey(this, e, prs.length, (i) => this.review([prs[i]]), (k) => {
           if (k === "r") { this.refresh(cx, true); return true; }
+          if (k === "s") { const i = SCOPES.findIndex(([x]) => x === this.scope); this.setScope(SCOPES[(i + 1) % SCOPES.length][0], cx); return true; }
           if (k === "O" && prs[this.cursor]) { this.openUrl(prs[this.cursor].url); return true; }
           if (k === "R" && prs.length) { this.review(prs); return true; }
           return false;
@@ -195,6 +226,8 @@ export default class Prs extends View {
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().font_semibold().child("Pull requests"))
         .child(div().px(5).py(1).rounded(4).border_1().border_color(t.border).text_size(10).text_color(t.muted).child(`${this.prs.length} open`))
+        .child(h_flex().gap(2).tooltip("Whose worktrees: the agent's, the tab's or the space's (s)")
+          .children(SCOPES.map(([k, label]) => segment(t, `prs-scope-${k}`, label, this.scope === k, (cx) => this.setScope(k, cx)))))
         .child(div().flex_1())
         .child(div().id("prs-refresh").h(24).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).text_size(11).cursor_pointer()
           .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.refresh(cx, true)).child(this.loading ? (this.prs.length ? "Updating…" : "…") : "Refresh"))
@@ -205,7 +238,7 @@ export default class Prs extends View {
         .child(v_flex().id("prs-list").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).pb(10)
           .when(Boolean(this.error), (e) => e.child(div().p(12).text_size(12).text_color(t.ansi1).child(this.error)))
           .when(!this.error && this.loading && !this.prs.length, (e) => e.child(div().p(12).text_size(12).text_color(t.dim).child("Looking for pull requests…")))
-          .when(!this.error && !this.loading && !this.prs.length, (e) => e.child(div().p(12).text_size(12).text_color(t.dim).child("No open pull requests for this session's worktrees")))
+          .when(!this.error && !this.loading && !this.prs.length, (e) => e.child(div().p(12).text_size(12).text_color(t.dim).child(`No open pull requests in ${{ agent: "this agent's", tab: "this tab's", space: "this space's" }[this.scope]} worktrees`)))
           .children(this.prs.map((pr) => this.card(pr, t)))
           .when(this.without.length > 0, (e) => e.child(v_flex().mx(8).mt(12).gap(2)
             .child(div().text_size(11).font_semibold().text_color(t.muted).child(`Worktrees without an open PR · ${this.without.length}`))

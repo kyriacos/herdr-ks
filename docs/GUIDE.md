@@ -324,10 +324,18 @@ in the folders listed in Settings > Pull requests > Repo folders (default `~/cod
 levels deep). If it says "No local clone", add the clone's parent folder there.
 Movable, resizable from the corners.
 
-**PRs panel** (`cmd-shift-u`): open PRs of the session's worktrees with CI, review state and size. The session's
-worktrees are every one the tab's agents went into or edited this session (read from their session logs, so an
-agent launched in `~/code/acme` that works in `~/code/acme-worktrees/search-filters` still counts), plus what the
-Changes panel shows. **Review**
+**PRs panel** (`cmd-shift-u`): open PRs with CI, review state and size, for the worktrees in scope. Pick the
+scope in its header, or cycle it with `s`:
+
+| Scope | Worktrees |
+|---|---|
+| Agent | the focused agent's (or the last one you focused) |
+| Tab | every agent's in the tab, and the folders of its other terminals (the default) |
+| Space | every agent's in the space, and what the Changes panel shows |
+
+An agent's worktrees are every one it went into or edited this session, read from its session log, so an agent
+launched in `~/code/acme` that works in `~/code/acme-worktrees/search-filters` still counts. In Tab and Space each
+PR shows the agents it came from. **Review**
 (against the PR's own base, so a stacked PR shows only its files), **Review all**, **Open on GitHub**, and
 worktrees without an open PR (worktrees whose PR was merged or closed are left out).
 
@@ -415,7 +423,7 @@ half a page, Enter/`o` open, `h`/`l` leave towards that side, Esc back to the te
   message, `R` review the branch, Backspace back to the commits.
 - **Files:** `j k h l` as the arrows (`l` opens a folder, `h` closes it or goes to its parent), `gg`/`G`, `o` open,
   `/` search.
-- **PRs:** Enter/`o` review, `O` on GitHub, `R` review all, `r` refresh. **My PRs:** Enter/`o` the PR window,
+- **PRs:** Enter/`o` review, `O` on GitHub, `R` review all, `r` refresh, `s` scope (Agent, Tab, Space). **My PRs:** Enter/`o` the PR window,
   `r` refresh, Space fold.
 - **Review tabs and windows** already had vim keys (see Reviewing).
 
