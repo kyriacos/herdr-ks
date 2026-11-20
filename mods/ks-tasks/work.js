@@ -11,7 +11,7 @@
 // Looked-up PRs and subagents bump `rev()`, so a view that shows them can redraw when it changes.
 import { agents, hc, exec } from "herdr";
 import { gh } from "./lib/github.js";
-import { learnLinear, linearUrl } from "./lib/linear.js";
+import { learnLinear, linearUrl, linearTitle } from "./lib/linear.js";
 
 // The agent on a task: the terminal `ks-task start` kept; for a task started before that (or whose terminal has
 // gone), a live agent whose title is the task's assignee (ks-task writes the agent's title there).
@@ -32,14 +32,15 @@ export const agentName = (a) => `${a.space_name} / ${a.title || a.address}`;
 // ---------- Linear ----------
 const NOT_LINEAR = /^(UTF|ISO|SHA|RFC|CVE|GMT|UTC|HTTP|TLS|X)-/;
 const ids = (text) => [...String(text ?? "").matchAll(/\b([A-Z][A-Z0-9]{1,9}-\d{1,6})\b/g)].map((m) => m[1]).filter((id) => !NOT_LINEAR.test(id));
-// [{ id, url }]: url when a link gave one (clicking then opens it; otherwise it copies the id).
+// [{ id, url, title }]: url when a link gave one or the workspace is known (clicking opens it; otherwise it copies
+// the id); title when one was seen (lib/linear.js learns them from PRs).
 export function linearOf(x) {
   const out = new Map();
   for (const l of x.links ?? []) if (l.kind === "linear") { out.set(l.label, l.url); learnLinear(l.url); }
   learnLinear(x.body);
   const branch = String(worktreeOf(x).branch ?? "").toUpperCase().replace(/[/_]/g, " ");
   for (const id of [...ids(x.title), ...ids(x.body), ...ids(branch)]) if (!out.has(id)) out.set(id, null);
-  return [...out].map(([id, url]) => ({ id, url: linearUrl(id, url) }));
+  return [...out].map(([id, url]) => ({ id, url: linearUrl(id, url), title: linearTitle(id) }));
 }
 
 // ---------- worktree ----------
@@ -65,13 +66,18 @@ async function pump() {
       const r = await gh(args, cwd).catch(() => null);
       let pr = null;
       try { const v = JSON.parse(r?.stdout ?? "null"); pr = Array.isArray(v) ? v[0] ?? null : v; } catch {}
-      if (pr) pr.repo = (pr.url?.match(/github\.com\/[^/]+\/([^/]+)/) ?? [])[1] ?? "";
+      if (pr) {
+        pr.repo = (pr.url?.match(/github\.com\/[^/]+\/([^/]+)/) ?? [])[1] ?? "";
+        // Linear's GitHub bot comments "ENG-123 Title": learned for the cards (lib/linear.js), then dropped.
+        learnLinear(pr.body); for (const c of pr.comments ?? []) learnLinear(c.body);
+        delete pr.body; delete pr.comments;
+      }
       found.set(key, { at: Date.now(), busy: false, pr });
       revN++;
     }
   } finally { pumping = false; }
 }
-const FIELDS = "number,title,url,state,isDraft";
+const FIELDS = "number,title,url,state,isDraft,body,comments";
 // A PR from the cache; looked up (again) when missing, or when open and older than 5 minutes.
 function cached(key, args, cwd) {
   const c = found.get(key);

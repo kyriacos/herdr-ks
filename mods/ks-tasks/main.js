@@ -618,7 +618,8 @@ export default class Tasks extends View {
       .children(running.slice(0, 2).map((s) => chip(`ws-${task.id}-${s.id}`, `◆ ${s.description.length > 24 ? s.description.slice(0, 23) + "…" : s.description}`, "accent",
         `A subagent of ${agentName(ag)} is on it (${s.why}); click to see what it's doing`, () => this.openTask(task.id))))
       .children(prs.slice(0, 2).map((p) => chip(`wp-${task.id}-${p.number}`, `#${p.number} ${prState(p)}`, prTone(p), `${p.repo}#${p.number} ${p.title}`.trim(), () => exec("open", [p.url]).catch(() => null))))
-      .children(lin.slice(0, 2).map((l) => chip(`wl-${task.id}-${l.id}`, `◇ ${l.id}`, "muted", l.url ? "Open in Linear (right-click copies the id)" : "Copy (set your Linear workspace in Settings to open it)", (cx) => openLinear(l, cx))
+      .children(lin.slice(0, 2).map((l) => chip(`wl-${task.id}-${l.id}`, `◇ ${l.id}${l.title ? ` ${l.title.length > 30 ? l.title.slice(0, 29) + "…" : l.title}` : ""}`, "muted",
+        `${l.title ? `${l.id} ${l.title} · ` : ""}${l.url ? "Open in Linear (right-click copies the id)" : "Copy (set your Linear workspace in Settings to open it)"}`, (cx) => openLinear(l, cx))
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); copyLinear(l.id, cx); })))
       .when(Boolean(ag) && Boolean(wt.branch), (e) => e.child(div().min_w(0).truncate().text_color(t.dim).child(`⎇ ${wt.branch}`)));
   }
@@ -1062,9 +1063,11 @@ export default class Tasks extends View {
         .child(link(`tw-pr-${p.number}`, `${p.repo}#${p.number}`, prTone(p), "Open on GitHub", () => exec("open", [p.url]).catch(() => null)))
         .child(div().flex_none().text_color(t[prTone(p)]).child(prState(p)))
         .child(div().flex_1().min_w(0).truncate().child(p.title)))))))
-      .when(lin.length > 0, (e) => e.child(row("Linear", h_flex().gap(6).flex_wrap().children(lin.map((l) => link(`tw-lin-${l.id}`, l.url ? `${l.id} ↗` : l.id, l.url ? "accent" : "muted",
-        l.url ? `Open ${l.url} (right-click copies the id)` : "Copy (set your Linear workspace in Settings to open it)", (cx) => openLinear(l, cx))
-        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); copyLinear(l.id, cx); }))))))
+      .when(lin.length > 0, (e) => e.child(row("Linear", v_flex().flex_1().min_w(0).gap(3).children(lin.map((l) => h_flex().gap(8).items_center()
+        .child(link(`tw-lin-${l.id}`, l.url ? `${l.id} ↗` : l.id, l.url ? "accent" : "muted",
+          l.url ? `Open ${l.url} (right-click copies the id)` : "Copy (set your Linear workspace in Settings to open it)", (cx) => openLinear(l, cx))
+          .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); copyLinear(l.id, cx); }))
+        .child(div().flex_1().min_w(0).truncate().text_color(l.title ? t.foreground : t.dim).child(l.title || "title not seen yet")))))))
       .when(Boolean(wt.folder), (e) => e.child(row("Worktree", h_flex().flex_1().min_w(0).gap(8).items_center()
         .child(div().id("tw-wt").min_w(0).truncate().cursor_pointer().hover((s) => s.text_color(t.accent)).tooltip("Copy the path")
           .on_click((_e, cx) => { cx.write_to_clipboard(wt.folder); notify({ title: "Copied the path", level: "info", timeout: 1500 }); }).child(tilde(wt.folder)))

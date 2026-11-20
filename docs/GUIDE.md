@@ -229,9 +229,9 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   undoes it). Agents add them with `ks-task add "step" --parent ID`.
 - **Work on a task.** When an agent starts a task (`ks-task start`, from its own terminal), the card shows it:
   **● agent working**, **agent needs you** or **agent waiting for you**; click it to go to that agent. The card
-  also shows the task's PRs (number and state: open, draft, merged, closed; click opens it), its Linear ids and
-  the agent's branch. In the task's window, **Work** has the agent with **Focus agent** and its screen as it
-  changes (**Hide screen** / **Show screen**), the PRs with their titles, the Linear issues, and the worktree
+  also shows the task's PRs (number and state: open, draft, merged, closed; click opens it), its Linear issues
+  (id and title) and the agent's branch. In the task's window, **Work** has the agent with **Focus agent** and its screen as it
+  changes (**Hide screen** / **Show screen**), the PRs with their titles, the Linear issues with theirs, and the worktree
   (click copies the path). PRs come from `ks-task link`, GitHub PR links in the description or comments, and the
   PR of the agent's branch, looked up with `gh`. Linear ids come from links, the title, the description and the
   branch. Click one to open it in Linear (right-click copies the id): its link comes from the workspace set in
@@ -270,8 +270,13 @@ What you did today, this week and this month. **In the sidebar**, at the top: to
 lines added and removed, tasks done, Linear issue ids). Click it for the window (resizable, Esc or ✕ closes).
 
 - **Today / This week / This month** (`1` `2` `3`, or Tab): a one-line summary, tiles (PRs merged, lines, tasks
-  done, Linear issues), then the merged PRs (repo, number, size, branch, merge time, Linear ids; click opens it
-  on GitHub), the tasks finished on the board, and the Linear issue ids (click copies). `r` looks again.
+  done, Linear issues), **By project**, then the merged PRs (repo, number, size, branch, merge time, Linear ids;
+  click opens it on GitHub), the tasks finished on the board, and the Linear issues with their titles (click opens
+  one in Linear). `r` looks again.
+- **By project**: one card per repo (tasks without a repo go under their space) with its numbers, a sentence or
+  two on what its work adds up to, and bullets for its parts. `claude -p` writes them (no tools, not saved as a
+  session) the first time a range's work is shown, and they're kept in `projects.json` until that work changes.
+  Until then, or without `claude`, the cards list the PR and task titles.
 - **Views** (the header, beside the ranges): which repos the dashboard shows. **All repos**, or a view of your
   own: **+** opens a new one, with a name and every owner and repo it has seen ticked or not. `acme/*` takes a
   whole owner (a GitHub org or user), new repos included; or tick single repos, such as `acme/web`. A view keeps
@@ -279,7 +284,9 @@ lines added and removed, tasks done, Linear issue ids). Click it for the window 
   click it again to edit or delete it; `v` steps through them. The sidebar line follows the view you pick. Repos
   show up in the editor once the dashboard has seen them, so look at This month first.
 - **Linear issues** are the ids found in your merged PRs (titles, branch names, descriptions) and done tasks, such
-  as `ENG-123` or a branch `sam/eng-123-search-filters`. Nothing is read from Linear itself.
+  as `ENG-123` or a branch `sam/eng-123-search-filters`. Their titles come from what Linear's GitHub bot writes
+  on a PR ("ENG-123 Title"), read by My PRs, the dashboard and the task cards; else a Linear link's own words.
+  Nothing is read from Linear itself.
 - **Prompts** (left): **▶ Run** gathers the prompt's range and hands it, with the prompt's text, to `claude -p`
   (no tools, not saved as a session) for a written summary. It starts with one: **Daily: what I merged**, today's
   merged PRs with what each changed and why, grouped by repo, and possible follow-ups. It also runs on its own
@@ -568,7 +575,7 @@ time the set of open spaces changes). **Clear everything** starts over.
 | Layout, mods, keys | `~/.config/herdr-app/` (`layouts/ks.json`, `mods/ks-*`, `keys.json` section `layout:ks`) |
 | Settings, choices, pending comments, session records, pending closes, key modes | Herdr's shared state, `~/.config/herdr-app/shared.json` |
 | GitHub cache | `~/.config/herdr-app/data/ks-cache/` |
-| Dashboard prompts and runs | `~/.config/herdr-app/data/ks-dashboard/` |
+| Dashboard prompts, runs and project notes | `~/.config/herdr-app/data/ks-dashboard/` |
 | This repo | install with `scripts/install.sh [--switch]`, copy back live edits with `scripts/pull.sh` |
 
 ## Troubleshooting

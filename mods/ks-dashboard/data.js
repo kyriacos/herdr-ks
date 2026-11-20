@@ -6,6 +6,7 @@
 //                    view: a view id | null (all repos) }]
 //   runs/<id>.json { id, prompt, name, range, from, at, ms, prs, tasks, linear, summary, error }
 //   activity.json  the last look at each range ({ day: { at, from, prs, tasks, linear } }), shown at once on open.
+//   projects.json  per-project notes ({ <work key>: { at, notes: { <repo>: { summary, bullets } } } }), the last 40.
 //   views.json     { current: id | null, views: [{ id, name, repos: ["acme/*", "sam/web"] }] }: which repos a view shows.
 //                  "acme/*" is a whole owner (a GitHub org or user), "sam/web" one repo. null (All) shows everything.
 // A run gathers the range's data, then hands it with the prompt's text to `claude -p` (no tools, nothing saved
@@ -94,8 +95,12 @@ export async function mergedPrs(from) {
   for (const p of list) {
     let d = details.get(p.url);
     if (!d) {
-      const v = await gh(["pr", "view", p.url, "--json", "additions,deletions,changedFiles,mergedAt,headRefName,baseRefName"]);
-      try { d = JSON.parse(v?.stdout ?? ""); details.set(p.url, d); } catch { d = {}; }
+      const v = await gh(["pr", "view", p.url, "--json", "additions,deletions,changedFiles,mergedAt,headRefName,baseRefName,comments"]);
+      try {
+        d = JSON.parse(v?.stdout ?? "");
+        for (const c of d.comments ?? []) learnLinear(c.body); // Linear's bot comment: the issues' titles
+        delete d.comments; details.set(p.url, d);
+      } catch { d = {}; }
     }
     const body = String(p.body ?? "");
     learnLinear(body); // a Linear bot's link in the description gives the workspace issue links open in
@@ -181,6 +186,49 @@ export async function activity(range) {
   return out;
 }
 export const lastActivity = () => readJson(`${DIR()}/activity.json`, {});
+
+// ---------- per project ----------
+// A range's work grouped by project: a repo (its PRs, and the tasks whose folder is in it), else the space of tasks
+// without a repo. [{ key, name, prs, tasks, add, del }], the busiest first.
+export function projects(a) {
+  const out = new Map();
+  const get = (key, name) => { if (!out.has(key)) out.set(key, { key, name, prs: [], tasks: [], add: 0, del: 0 }); return out.get(key); };
+  for (const p of a?.prs ?? []) { const g = get(lc(p.repo), p.repo.split("/").pop()); g.prs.push(p); g.add += p.additions ?? 0; g.del += p.deletions ?? 0; }
+  for (const x of a?.tasks ?? []) (x.repo ? get(lc(x.repo), x.repo.split("/").pop()) : get(`space:${x.space || "other"}`, x.space || "Other")).tasks.push(x);
+  return [...out.values()].sort((x, y) => y.prs.length + y.tasks.length - (x.prs.length + x.tasks.length));
+}
+// A PR or task title without its leading [tags] ("[web][search] Add filters" → "Add filters").
+export const bare = (title) => String(title ?? "").replace(/^(\s*\[[^\]]*\]\s*)+/, "").trim() || String(title ?? "");
+
+// What each project's work came to, written by `claude -p`: { key: { summary, bullets } }. A summary is a sentence or
+// two on the work as a whole (what it adds up to); bullets name its parts. Kept in projects.json by what went in,
+// so the same work is described once. null when claude can't be run (the titles show instead).
+const NOTES = () => `${DIR()}/projects.json`;
+const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+export const notesKey = (a) => hash(JSON.stringify(projects(a).map((g) => [g.key, g.prs.map((p) => p.url), g.tasks.map((x) => x.id)])));
+export async function projectNotes(a) {
+  const groups = projects(a);
+  if (!groups.length) return {};
+  const key = notesKey(a), kept = await readJson(NOTES(), {});
+  if (kept[key]) return kept[key].notes;
+  const data = groups.map((g) => ({
+    project: g.key, name: g.name,
+    merged_prs: g.prs.map((p) => ({ title: p.title, linear: p.linear, description: p.body.slice(0, 500) })),
+    tasks_done: g.tasks.map((x) => x.title),
+  }));
+  const got = await claude(`For each project below, describe the work that went in. Give:
+- "summary": one or two sentences on what the work adds up to as a whole (the theme, what it lets people do now), in plain words;
+- "bullets": two to four short bullets (at most 14 words each) naming its parts, related PRs and tasks merged into one bullet.
+No PR numbers, no filler. Reply with JSON only, no code fence: {"<project>": {"summary": "...", "bullets": ["..."]}}.
+
+${JSON.stringify(data)}`);
+  if (got.error) return null;
+  let notes = null;
+  try { const t = got.summary, i = t.indexOf("{"), j = t.lastIndexOf("}"); notes = JSON.parse(t.slice(i, j + 1)); } catch { return null; }
+  const entries = Object.entries({ ...kept, [key]: { at: Date.now(), notes } }).sort((x, y) => y[1].at - x[1].at).slice(0, 40);
+  await writeJson(NOTES(), Object.fromEntries(entries));
+  return notes;
+}
 
 async function claude(text) {
   const args = ["-p", "--model", "sonnet", "--tools", "", "--no-session-persistence", "--output-format", "text", text];

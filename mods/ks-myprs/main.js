@@ -15,10 +15,12 @@ import { pref } from "./lib/prefs.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 import { sectionHead, sectionFrame, badge, headAction, SECTION_HEAD, SB } from "./lib/section.js";
 import { alpha } from "./lib/color.js";
+import { learnLinear } from "./lib/linear.js";
 
 const BLOCK = "my-prs", HEAD = SECTION_HEAD + 1, ROW = 68, DRAFTS = 18;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
   number title url isDraft repository { nameWithOwner } headRefName baseRefName reviewDecision mergeStateStatus updatedAt
+  comments(first: 5) { nodes { body } }
   commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 80) { nodes {
     ... on CheckRun { status conclusion } ... on StatusContext { state } } } } } } } } } } }`;
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -98,6 +100,8 @@ export default class MyPrs extends View {
         else {
           try {
             const nodes = JSON.parse(r.stdout).data.search.nodes.filter((n) => n?.url);
+            // Linear's GitHub bot comments "ENG-123 Title": the titles the task cards show (lib/linear.js).
+            for (const n of nodes) { for (const c of n.comments?.nodes ?? []) learnLinear(c.body); delete n.comments; }
             const prs = nodes.map((pr) => ({ ...pr, s: stateOf(pr) }))
               .sort(byNeed);
             if (this.cached && !this.loaded) this.loaded = true; // the cached list counts as the first look for toasts

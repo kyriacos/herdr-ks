@@ -11,10 +11,10 @@ import { v_flex, h_flex, Scrollbar, ScrollHandle, TextView, InputState, Input } 
 import { segment } from "./lib/segment.js";
 import { exec, run, theme, props, notify, nextCommand } from "herdr";
 import { dimmed } from "./lib/focus.js";
-import { linearUrl, openLinear, copyLinear } from "./lib/linear.js";
+import { linearUrl, openLinear, copyLinear, linearTitle } from "./lib/linear.js";
 import { sectionHead, sectionFrame, badge, headAction, SECTION_HEAD } from "./lib/section.js";
 import { isWindow, initWindow, openPanelWindow, closeWindow, windowFrame, closeButton } from "./lib/panelwin.js";
-import { RANGES, rangeStart, ymd, loadPrompts, savePrompts, loadRuns, removeRun, activity, lastActivity, runPrompt, loadViews, saveViews, filtered, knownRepos } from "./data.js";
+import { RANGES, rangeStart, ymd, loadPrompts, savePrompts, loadRuns, removeRun, activity, lastActivity, runPrompt, loadViews, saveViews, filtered, knownRepos, projects, projectNotes, notesKey, bare } from "./data.js";
 
 const MOD = "ks-dashboard";
 const num = (n) => String(Math.round(n ?? 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -40,6 +40,7 @@ export default class Dashboard extends View {
   init(_props, cx) {
     this.windowed = isWindow();
     this.act = {}; this.prompts = []; this.runs = []; this.range = "day"; this.sel = null; this.running = null;
+    this.notes = {}; // notesKey → { key: { summary, bullets } } | null (no claude) | "busy"
     this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new();
     this.views = { current: null, views: [] }; this.editing = null; this.typing = false;
     this.name = InputState.new({ placeholder: "View name, e.g. Work" });
@@ -175,8 +176,18 @@ export default class Dashboard extends View {
   }
   setRange(r, cx) { this.range = r; this.sel = null; this.editing = null; if (!this.act[r] || Date.now() - this.act[r].at > 5 * 60000) this.look(r, cx); cx.notify(); }
 
+  // The range's per-project notes (data.js projectNotes), asked for once per set of work; the window only.
+  ensureNotes(a, cx) {
+    if (!a || (!a.prs?.length && !a.tasks?.length)) return;
+    const k = notesKey(a);
+    if (k in this.notes) return;
+    this.notes[k] = "busy";
+    cx.spawn(async (cx) => { this.notes[k] = await projectNotes(a).catch(() => null); cx.notify(); });
+  }
+
   renderWindow(cx) {
     const t = theme(), run = this.sel && this.runs.find((r) => r.id === this.sel);
+    if (!run && !this.editing) this.ensureNotes(this.shown(this.range), cx);
     const seg = (id, label, on, act) => segment(t, id, label, on, act, { h: 24, px: 10, size: 11.5 });
     const root = v_flex().id("dash-window").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(13)
       .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
@@ -251,6 +262,7 @@ export default class Dashboard extends View {
         .child(tile("Lines", `+${num(l.add)} −${num(l.del)}`, `${num(a.prs.reduce((n, p) => n + (p.files ?? 0), 0))} files`))
         .child(tile("Tasks done", String(a.tasks.length), spaces.size ? `in ${[...spaces].slice(0, 3).join(", ")}${spaces.size > 3 ? ` +${spaces.size - 3}` : ""}` : ""))
         .child(tile("Linear issues", String(a.linear.length), a.linear.slice(0, 3).join(", "))))
+      .child(this.renderProjects(a, t))
       .when(Boolean(latest), (e) => e.child(this.section(`Summary · ${latest.name} · ${hm(latest.at)}`, t))
         .child(div().p(10).rounded(8).border_1().border_color(t.border).bg(t.chrome).child(TextView.markdown("dash-today-md", latest.summary).selectable(true))))
       .child(this.section(`Merged PRs · ${a.prs.length}`, t))
@@ -261,8 +273,37 @@ export default class Dashboard extends View {
         .child(div().text_color(t.accent).child("✓")).child(div().flex_1().min_w(0).truncate().child(x.title || "Untitled"))
         .child(div().text_size(10.5).text_color(t.dim).child([x.space, when(x.doneAt)].filter(Boolean).join(" · ")))))
       .child(this.section(`Linear issues · ${a.linear.length}`, t))
-      .child(div().pb(2).text_size(10.5).text_color(t.dim).child("Ids found in the merged PRs (titles, branches, descriptions) and done tasks. Click opens one in Linear, right-click copies it."))
-      .child(h_flex().gap(6).flex_wrap().children(a.linear.map((id) => this.linearChip(id, t))));
+      .child(div().pb(2).text_size(10.5).text_color(t.dim).child("Ids found in the merged PRs (titles, branches, descriptions) and done tasks, with the titles Linear's GitHub bot gave them. Click opens one in Linear, right-click copies it."))
+      .child(this.linearList(a.linear, t));
+  }
+
+  // Each project (repo) of the range: what its work adds up to, its parts as bullets (written by claude, data.js
+  // projectNotes), and its numbers. Until the notes come (or without claude), the PR and task titles.
+  renderProjects(a, t) {
+    const groups = projects(a);
+    if (!groups.length) return div();
+    const notes = this.notes[notesKey(a)], busy = notes === "busy";
+    return v_flex().gap(8)
+      .child(this.section(`By project · ${groups.length}${busy ? " · describing…" : ""}`, t))
+      .children(groups.map((g) => {
+        const n = notes && !busy ? notes[g.key] : null;
+        const titles = [...g.prs.map((p) => bare(p.title)), ...g.tasks.map((x) => bare(x.title))];
+        const bullets = n?.bullets?.length ? n.bullets : titles.slice(0, 4).concat(titles.length > 4 ? [`and ${titles.length - 4} more`] : []);
+        const facts = [g.prs.length && plural(g.prs.length, "PR"), g.prs.length && `+${num(g.add)} −${num(g.del)}`, g.tasks.length && plural(g.tasks.length, "task")].filter(Boolean).join(" · ");
+        return v_flex().p(10).gap(4).rounded(8).border_1().border_color(t.border).bg(t.chrome)
+          .child(h_flex().gap(8).items_baseline()
+            .child(div().text_size(13).font_semibold().child(g.name))
+            .child(div().text_size(10.5).text_color(t.dim).child(facts)))
+          .when(Boolean(n?.summary), (e) => e.child(div().text_size(12.5).child(n.summary)))
+          .child(v_flex().gap(1).children(bullets.map((b) => h_flex().gap(6).items_start().text_size(12).text_color(n ? t.foreground : t.muted)
+            .child(div().flex_none().text_color(t.dim).child("•")).child(div().flex_1().min_w(0).child(b)))));
+      }));
+  }
+
+  // Linear ids, one per line with the issue's title when one was seen (lib/linear.js learns them from PRs).
+  linearList(ids, t) {
+    return v_flex().gap(4).children(ids.map((id) => h_flex().gap(8).items_center()
+      .child(this.linearChip(id, t)).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(linearTitle(id) ? t.foreground : t.dim).child(linearTitle(id) || "title not seen yet"))));
   }
 
   renderRun(r, t) {
@@ -280,7 +321,7 @@ export default class Dashboard extends View {
       .child(this.section(`Merged PRs · ${r.prs.length}`, t))
       .child(this.prList(r.prs, t, r.id))
       .when(r.linear?.length > 0, (e) => e.child(this.section(`Linear issues · ${r.linear.length}`, t))
-        .child(h_flex().gap(6).flex_wrap().children(r.linear.map((id) => this.linearChip(id, t)))));
+        .child(this.linearList(r.linear, t)));
   }
 
   // A view's name and the repos it shows: a whole owner (org or user) or single repos, from what the dashboard has seen.
