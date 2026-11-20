@@ -273,8 +273,10 @@ lines added and removed, tasks done, Linear issue ids). Click it for the window 
   done, Linear issues), **By project**, then the merged PRs (repo, number, size, branch, merge time, Linear ids;
   click opens it on GitHub), the tasks finished on the board, and the Linear issues with their titles (click opens
   one in Linear). `r` looks again.
-- **By project**: one card per repo (tasks without a repo go under their space) with its numbers, a sentence or
-  two on what its work adds up to, and bullets for its parts. `claude -p` writes them (no tools, not saved as a
+- **By project**: one card per repo (tasks without a repo go under their space) with its numbers, then its
+  separate pieces of work (a feature, a product area, a fix), each with a name, a sentence or two on what it adds
+  up to, and bullets for its parts. PRs and tasks go together when their title tags (`[search]`), Linear issues or
+  descriptions say they're the same work. `claude -p` writes them (no tools, not saved as a
   session) the first time a range's work is shown, and they're kept in `projects.json` until that work changes.
   Until then, or without `claude`, the cards list the PR and task titles.
 - **Views** (the header, beside the ranges): which repos the dashboard shows. **All repos**, or a view of your

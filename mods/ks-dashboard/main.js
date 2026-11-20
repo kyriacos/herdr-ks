@@ -9,6 +9,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, ScrollHandle, TextView, InputState, Input } from "gpui-base";
 import { segment } from "./lib/segment.js";
+import { alpha } from "./lib/color.js";
 import { exec, run, theme, props, notify, nextCommand } from "herdr";
 import { dimmed } from "./lib/focus.js";
 import { linearUrl, openLinear, copyLinear, linearTitle } from "./lib/linear.js";
@@ -277,8 +278,9 @@ export default class Dashboard extends View {
       .child(this.linearList(a.linear, t));
   }
 
-  // Each project (repo) of the range: what its work adds up to, its parts as bullets (written by claude, data.js
-  // projectNotes), and its numbers. Until the notes come (or without claude), the PR and task titles.
+  // Each project (repo) of the range with its numbers, then its pieces of work (written by claude, data.js
+  // projectNotes): a name, what it adds up to, its parts as bullets. Until the notes come (or without claude), the
+  // PR and task titles.
   renderProjects(a, t) {
     const groups = projects(a);
     if (!groups.length) return div();
@@ -288,15 +290,18 @@ export default class Dashboard extends View {
       .children(groups.map((g) => {
         const n = notes && !busy ? notes[g.key] : null;
         const titles = [...g.prs.map((p) => bare(p.title)), ...g.tasks.map((x) => bare(x.title))];
-        const bullets = n?.bullets?.length ? n.bullets : titles.slice(0, 4).concat(titles.length > 4 ? [`and ${titles.length - 4} more`] : []);
+        const parts = n?.groups?.length ? n.groups : [{ name: "", summary: "", bullets: titles.slice(0, 6).concat(titles.length > 6 ? [`and ${titles.length - 6} more`] : []) }];
+        const bullets = (list, on) => v_flex().gap(1).children((list ?? []).map((b) => h_flex().gap(6).items_start().text_size(12).text_color(on ? t.foreground : t.muted)
+          .child(div().flex_none().text_color(t.dim).child("•")).child(div().flex_1().min_w(0).child(b))));
         const facts = [g.prs.length && plural(g.prs.length, "PR"), g.prs.length && `+${num(g.add)} −${num(g.del)}`, g.tasks.length && plural(g.tasks.length, "task")].filter(Boolean).join(" · ");
-        return v_flex().p(10).gap(4).rounded(8).border_1().border_color(t.border).bg(t.chrome)
+        return v_flex().p(10).gap(6).rounded(8).border_1().border_color(t.border).bg(t.chrome)
           .child(h_flex().gap(8).items_baseline()
             .child(div().text_size(13).font_semibold().child(g.name))
             .child(div().text_size(10.5).text_color(t.dim).child(facts)))
-          .when(Boolean(n?.summary), (e) => e.child(div().text_size(12.5).child(n.summary)))
-          .child(v_flex().gap(1).children(bullets.map((b) => h_flex().gap(6).items_start().text_size(12).text_color(n ? t.foreground : t.muted)
-            .child(div().flex_none().text_color(t.dim).child("•")).child(div().flex_1().min_w(0).child(b)))));
+          .children(parts.map((w, i) => v_flex().gap(3).when(i > 0, (e) => e.pt(6).border_t(1).border_color(alpha(t.border, "80")))
+            .when(Boolean(w.name), (e) => e.child(div().text_size(12).font_semibold().text_color(t.accent).child(w.name)))
+            .when(Boolean(w.summary), (e) => e.child(div().text_size(12.5).child(w.summary)))
+            .child(bullets(w.bullets, Boolean(n)))));
       }));
   }
 
