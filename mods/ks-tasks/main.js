@@ -37,6 +37,7 @@ import { takeFocus, watchFocus, focusedNow, leave, toStrip } from "./lib/panelke
 import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } from "./lib/attach.js";
 import { openLinear as openIssue, copyLinear } from "./lib/linear.js";
 import { agentOf, agentName, STATUS, linearOf, worktreeOf, tilde, prsOf, prTone, prState, screen, subagentsOf, subagentsFor, rev as workRev } from "./work.js";
+import { alpha } from "./lib/color.js";
 
 const FILE = () => `${appHome()}/data/ks-tasks.json`;
 const REV = "ks-tasks.rev";
@@ -472,7 +473,7 @@ export default class Tasks extends View {
       .child(div().text_size(10.5).text_color(to ? t.accent : t.dim).child(to ? `→ ${to}` : "Drop on a column"));
   }
   // Where the card would land: a slot that opens up between the cards.
-  slot(t) { return div().h(34).mx(2).mb(6).rounded(8).border_1().border_dashed().border_color(t.accent).bg(t.accent + "14"); }
+  slot(t) { return div().h(34).mx(2).mb(6).rounded(8).border_1().border_dashed().border_color(t.accent).bg(alpha(t.accent, "14")); }
   overCard(where, list, task, e, cx) {
     if (!this.drag?.moved) return;
     const lower = e.bounds && e.local_position ? e.local_position.y > e.bounds.height / 2 : false;
@@ -570,7 +571,7 @@ export default class Tasks extends View {
     return v_flex().flex_none()
       .when(lineBefore, (e) => e.child(this.slot(t)))
       .child(v_flex().id(`card-${task.id}`).p(9).gap(5).rounded(8).border_1()
-        .border_color(dragging ? t.accent + "66" : at ? t.accent : t.border).when(dragging, (e) => e.border_dashed()).bg(t.background)
+        .border_color(dragging ? alpha(t.accent, "66") : at ? t.accent : t.border).when(dragging, (e) => e.border_dashed()).bg(t.background)
         .when(Boolean(this.drag?.moved), (e) => e.cursor_grabbing()).when(!this.drag?.moved, (e) => e.cursor_pointer()).opacity(dragging ? 0.35 : 1)
         .hover((s) => s.bg(t.hover))
         // Stopped here, so in the board window a press on a card drags the card, not the window.
@@ -583,7 +584,7 @@ export default class Tasks extends View {
           .child(div().flex_1().min_w(0).text_size(12.5).text_color(done ? t.muted : t.foreground).child(task.title || "Untitled"))
           .child(div().id(`today-${task.id}`).flex_none().px(5).rounded(5).text_size(10.5).cursor_pointer()
             .border_1().border_color(task.today ? t.accent : t.border).text_color(task.today ? t.accent : t.dim)
-            .bg(task.today ? t.accent + "1f" : t.background)
+            .bg(task.today ? alpha(t.accent, "1f") : t.background)
             .tooltip(task.today ? "On today's list (t takes it off)" : "Add to today (t)")
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
             .on_click((_e, cx) => { cx.stop_propagation(); this.toggleToday(task, cx); }).child(task.today ? "☀ Today" : "☀"))
@@ -593,7 +594,7 @@ export default class Tasks extends View {
             .on_click((_e, cx) => { cx.stop_propagation(); this.remove(task, cx); }).child("×")))
         // Proposed by an agent: who, and accept / dismiss right here.
         .when(Boolean(task.proposed), (e) => e.child(h_flex().gap(6).items_center().text_size(10.5)
-          .child(div().flex_none().px(5).rounded(5).bg(t.accent + "1f").border_1().border_color(t.accent + "66").text_color(t.accent).child("proposed"))
+          .child(div().flex_none().px(5).rounded(5).bg(alpha(t.accent, "1f")).border_1().border_color(alpha(t.accent, "66")).text_color(t.accent).child("proposed"))
           .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(task.by ? `by ${task.by}` : ""))
           .child(div().id(`acc-${task.id}`).flex_none().px(6).rounded(4).text_color(t.ansi2).cursor_pointer().hover((s) => s.bg(t.hover))
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.accept(task, cx); }).child("✓ Accept"))
@@ -609,7 +610,7 @@ export default class Tasks extends View {
   // The card's work row: the agent on it (click focuses it), its PRs (open), Linear ids, the branch.
   workChips(task, ag, prs, lin, wt, t, running = []) {
     const stop = (e) => e.on_mouse_down("left", (_e, cx) => cx.stop_propagation());
-    const chip = (id, label, tone, tip, act) => stop(div().id(id).flex_none().px(5).rounded(5).border_1().border_color(t[tone] + "66").text_color(t[tone])
+    const chip = (id, label, tone, tip, act) => stop(div().id(id).flex_none().px(5).rounded(5).border_1().border_color(alpha(t[tone], "66")).text_color(t[tone])
       .cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(tip).on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label));
     const [words, tone] = ag ? STATUS[ag.status] ?? [ag.status, "muted"] : [];
     return h_flex().gap(5).items_center().flex_wrap().text_size(10.5)
@@ -635,7 +636,7 @@ export default class Tasks extends View {
   dropList(where, list, t, at) {
     const endLine = this.over?.where === where && this.over.before === null && this.drag?.moved;
     const target = this.drag?.moved && this.over?.where === where;
-    return v_flex().gap(6).rounded(8).when(where.startsWith("@"), (e) => e.p(target ? 4 : 0).when(Boolean(target), (e) => e.bg(t.accent + "0d")))
+    return v_flex().gap(6).rounded(8).when(where.startsWith("@"), (e) => e.p(target ? 4 : 0).when(Boolean(target), (e) => e.bg(alpha(t.accent, "0d"))))
       .on_mouse_move((e, cx) => this.overList(where, e, cx))
       .on_drop((e, cx) => { cx.stop_propagation(); if (!this.droppedOn) this.dropNew(where, e.paths, cx); })
       .children(list.flatMap((x, i) => {
@@ -672,7 +673,7 @@ export default class Tasks extends View {
     // The column a dragged card would land in lights up.
     const target = this.drag?.moved && this.over?.where === c.id;
     // The whole column takes a dragged card (an empty one has no cards to point at), at its end unless over a card.
-    return v_flex().id(`col-${c.id}`).flex_none().w(W).h_full().min_h(0).rounded(9).bg(target ? t.accent + "12" : t.chrome).border_1().border_color(target ? t.accent : on ? t.accent + "88" : t.border)
+    return v_flex().id(`col-${c.id}`).flex_none().w(W).h_full().min_h(0).rounded(9).bg(target ? alpha(t.accent, "12") : t.chrome).border_1().border_color(target ? t.accent : on ? alpha(t.accent, "88") : t.border)
       .on_mouse_move((e, cx) => this.overList(c.id, e, cx))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_drop((e, cx) => { cx.stop_propagation(); if (!this.droppedOn) this.dropNew(c.id, e.paths, cx); })
@@ -756,9 +757,9 @@ export default class Tasks extends View {
           .hover((s) => s.opacity(0.85)).on_click((_e, cx) => this.startAdd(this.view === "today" ? "@today" : this.data.columns[this.cur.col]?.id, cx)).child("+ New"))
         .when(this.board, (e) => e.child(div().id("board-x").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
           .hover((s) => s.bg(t.hover)).tooltip("Close (Esc)").on_click(() => this.closeBoard()).child("✕"))))
-      .when(Boolean(toast), (e) => e.child(h_flex().flex_none().mx(8).mt(8).px(10).h(28).gap(8).items_center().rounded(7).bg(t.accent + "1f").text_size(11.5).text_color(t.accent)
+      .when(Boolean(toast), (e) => e.child(h_flex().flex_none().mx(8).mt(8).px(10).h(28).gap(8).items_center().rounded(7).bg(alpha(t.accent, "1f")).text_size(11.5).text_color(t.accent)
         .child(div().flex_1().truncate().child(toast.text))
-        .when(Boolean(toast.offer), (e) => e.child(div().id("tasks-undo").px(6).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a"))
+        .when(Boolean(toast.offer), (e) => e.child(div().id("tasks-undo").px(6).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(alpha(t.accent, "3a")))
           .on_click((_e, cx) => this.step(toast.offer === "undo", cx)).child(toast.offer === "undo" ? "Undo (u)" : "Redo (U)")))))
       .when(Boolean(this.error), (e) => e.child(div().p(12).text_size(12).text_color(t.ansi1).child(this.error)))
       .child(div().flex_1().min_h(0).relative()
@@ -909,7 +910,7 @@ export default class Tasks extends View {
     const ringed = (name) => this.stop === name && this.handle.is_focused();
     const ring = (name, e) => e.when(ringed(name), (e) => e.border_2().border_color(t.accent));
     const pill = (id, label, on, act, tone = t.accent, name = null) => ring(name, div().id(id).h(24).px(9).flex().items_center().rounded(12).text_size(11).cursor_pointer()
-      .border_1().border_color(on ? tone : t.border).bg(on ? tone + "1f" : t.background).text_color(on ? tone : t.muted)
+      .border_1().border_color(on ? tone : t.border).bg(on ? alpha(tone, "1f") : t.background).text_color(on ? tone : t.muted)
       .hover((s) => s.bg(t.hover)).on_click((_e, cx) => act(cx)).child(label));
     const btn = (id, label, act, tone = t.muted, name = null) => ring(name, div().id(id).h(26).px(10).flex().items_center().rounded(6).border_1().border_color(t.border)
       .text_size(11.5).text_color(tone).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => act(cx)).child(label));
@@ -945,10 +946,10 @@ export default class Tasks extends View {
           .child(h_flex().mt(8).gap(8).text_size(10.5).text_color(t.dim)
             .when(Boolean(x.spaceName), (e) => e.child(div().px(5).rounded(5).border_1().border_color(t.border).text_color(t.muted).child(x.spaceName)))
             .child(div().child(`${x.by ? `by ${x.by} · ` : ""}created ${ago(x.created)} · updated ${ago(x.updated)}${x.assignee ? ` · @ ${x.assignee}` : ""}${this.dirty ? " · saving…" : ""}`)))
-          .when(Boolean(x.proposed), (e) => e.child(h_flex().mt(10).px(10).h(32).gap(8).items_center().rounded(7).bg(t.accent + "1f").text_size(11.5).text_color(t.accent)
+          .when(Boolean(x.proposed), (e) => e.child(h_flex().mt(10).px(10).h(32).gap(8).items_center().rounded(7).bg(alpha(t.accent, "1f")).text_size(11.5).text_color(t.accent)
             .child(div().flex_1().truncate().child("Proposed by an agent: accept it to keep it (an agent may then start on it)"))
-            .child(ring("accept", div().id("tp-acc").px(7)).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => this.apply(ops.patch(x.id, { proposed: false }), cx)).child("Accept"))
-            .child(ring("dismiss", div().id("tp-dis").px(7)).rounded(4).cursor_pointer().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => { this.apply(ops.remove(x.id), cx); close(cx); }).child("Dismiss"))))
+            .child(ring("accept", div().id("tp-acc").px(7)).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(alpha(t.accent, "3a"))).on_click((_e, cx) => this.apply(ops.patch(x.id, { proposed: false }), cx)).child("Accept"))
+            .child(ring("dismiss", div().id("tp-dis").px(7)).rounded(4).cursor_pointer().hover((s) => s.bg(alpha(t.accent, "3a"))).on_click((_e, cx) => { this.apply(ops.remove(x.id), cx); close(cx); }).child("Dismiss"))))
           .child(this.renderWork(x, t, section, btn, mono))
           .child(section("Description"))
           .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)
@@ -1034,7 +1035,7 @@ export default class Tasks extends View {
     if (!ag && !gone && !prs.length && !lin.length && !x.worker) return div();
     const [words, tone] = ag ? STATUS[ag.status] ?? [ag.status, "muted"] : [];
     const row = (label, el) => h_flex().min_h(26).gap(8).items_center().text_size(11.5).child(div().w(70).flex_none().text_color(t.dim).child(label)).child(el);
-    const link = (id, label, tone, tip, act) => div().id(id).px(6).h(22).flex().items_center().rounded(5).border_1().border_color(t[tone] + "66").text_color(t[tone])
+    const link = (id, label, tone, tip, act) => div().id(id).px(6).h(22).flex().items_center().rounded(5).border_1().border_color(alpha(t[tone], "66")).text_color(t[tone])
       .text_size(11).cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(tip).on_click((_e, cx) => act(cx)).child(label);
     return v_flex()
       .child(section("Work"))

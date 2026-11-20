@@ -4,6 +4,7 @@
 // Source of truth: shared/section.js; scripts/install.sh copies it into each mod's lib/.
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
+import { alpha } from "./color.js";
 
 export const SECTION_HEAD = 32;
 // Rows in every section: 8 px in from its edges, 8 px padding, these corners, t.hover on hover and t.selected
@@ -28,7 +29,7 @@ export function sectionHead(t, o) {
 
 // A count or a state in a header: a soft pill in its colour (`strong` for what needs you).
 export const badge = (t, label, tone, strong = false) => div().flex_none().h(16).px(6).flex().items_center().rounded(8)
-  .bg(tone + (strong ? "38" : "1c")).text_size(9.5).font_medium().text_color(tone).whitespace_nowrap().child(label);
+  .bg(alpha(tone, strong ? "38" : "1c")).text_size(9.5).font_medium().text_color(tone).whitespace_nowrap().child(label);
 
 // A header button: a quiet glyph (or an svg element) that lights up on hover.
 export const headAction = (t, id, label, tip, act) => div().id(id).flex_none().size(22).flex().items_center().justify_center().rounded(5)

@@ -24,6 +24,7 @@ import { spaceName, spaceTask } from "./lib/spacenames.js";
 import { takeFocus, listKey, watchFocus, focusedNow, toStrip } from "./lib/panelkeys.js";
 import { pref } from "./lib/prefs.js";
 import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } from "./lib/attach.js";
+import { alpha } from "./lib/color.js";
 
 const FILE = () => `${appHome()}/data/ks-notes.json`;
 // The notes in a window of their own (⤢ or e in the panel): resizable like the Tasks board, its size kept here.
@@ -361,9 +362,9 @@ export default class Notes extends View {
           .child(chip("ns-all", "All spaces", !this.only, (cx) => { this.only = null; this.cursor = 0; cx.notify(); }))
           .children(this.noteSpaces().map((x) => chip(`ns-${x.key}`, `${x.label}${x.open ? "" : " · closed"} · ${x.count}`, this.only === x.key,
             (cx) => { this.only = this.only === x.key ? null : x.key; this.cursor = 0; cx.notify(); }))))))
-      .when(Boolean(undoing), (e) => e.child(h_flex().flex_none().mx(8).mt(8).px(10).h(28).gap(8).items_center().rounded(7).bg(t.accent + "1f").text_size(11.5).text_color(t.accent)
+      .when(Boolean(undoing), (e) => e.child(h_flex().flex_none().mx(8).mt(8).px(10).h(28).gap(8).items_center().rounded(7).bg(alpha(t.accent, "1f")).text_size(11.5).text_color(t.accent)
         .child(div().flex_1().truncate().child("Note deleted"))
-        .child(div().id("notes-undo").px(6).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(t.accent + "3a")).on_click((_e, cx) => this.restore(cx)).child("Undo"))))
+        .child(div().id("notes-undo").px(6).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(alpha(t.accent, "3a"))).on_click((_e, cx) => this.restore(cx)).child("Undo"))))
       .child(div().flex_1().min_h(0).relative()
         .child((this.window ? h_flex().flex_wrap().items_start().content_start().gap_x(0) : v_flex()).id("notes-list").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).pb(12).when(this.window, (e) => e.px(6))
           .on_drop((e, cx) => { if (this.droppedOnNote) { this.droppedOnNote = false; return; } this.dropNew(e.paths, cx); })

@@ -9,6 +9,7 @@ import { readProcs, stop as stopProc } from "./procs.js";
 import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
 import { sectionHead, headAction, SB } from "./lib/section.js";
+import { alpha } from "./lib/color.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -133,13 +134,13 @@ export default class Agents extends View {
       .child(div().flex_1().min_w(0).truncate().font_family(mono).text_size(11).text_color(p.mcp ? t.dim : t.foreground)
         .child(p.mcp ? `MCP servers · ${p.count}` : p.label))
       .when(Boolean(p.where), (el) => el.child(div().flex_none().max_w(90).truncate().px(4).rounded(4).border_1().border_color(t.border).text_size(10).text_color(t.muted).child(p.where)))
-      .children(p.ports.slice(0, 3).map((port) => div().id(`port-${key}-${port}`).flex_none().px(4).rounded(4).bg(t.accent + "1f").text_size(10).text_color(t.accent)
-        .cursor_pointer().hover((s) => s.bg(t.accent + "3a")).tooltip(`Open http://localhost:${port}`)
+      .children(p.ports.slice(0, 3).map((port) => div().id(`port-${key}-${port}`).flex_none().px(4).rounded(4).bg(alpha(t.accent, "1f")).text_size(10).text_color(t.accent)
+        .cursor_pointer().hover((s) => s.bg(alpha(t.accent, "3a"))).tooltip(`Open http://localhost:${port}`)
         .on_click((_e, cx) => { cx.stop_propagation(); exec("open", [`http://localhost:${port}`]).catch(() => null); }).child(`:${port}`)))
       .when(p.cpu > 5, (el) => el.child(div().flex_none().text_size(10).text_color(t.working).child(`${p.cpu}%`)))
       .child(div().flex_none().text_size(10.5).text_color(t.dim).child(duration(p.secs * 1000)))
       .when(!p.mcp, (el) => el.child(div().id(`stop-${key}`).flex_none().px(4).rounded(4).text_size(10.5).cursor_pointer()
-        .text_color(asking ? t.ansi1 : t.dim).when(asking, (e) => e.bg(t.ansi1 + "1f")).hover((s) => s.bg(t.hover).text_color(t.ansi1))
+        .text_color(asking ? t.ansi1 : t.dim).when(asking, (e) => e.bg(alpha(t.ansi1, "1f"))).hover((s) => s.bg(t.hover).text_color(t.ansi1))
         .tooltip(asking ? "Click again to stop it" : `Stop (${p.count} process${p.count === 1 ? "" : "es"})`)
         .on_click((_e, cx) => {
           cx.stop_propagation();
@@ -266,11 +267,11 @@ export default class Agents extends View {
   status(t, a, compact = false) {
     const color = t[a.status] ?? t.dim;
     if (a.status === "working") return svg("mods/workspace-chrome/spinner.svg").size(12).mx(1).flex_none().text_color(t.working).spin(900);
-    if (a.status === "blocked" && compact) return div().size(14).flex_none().rounded(4).bg(t.blocked + "26").text_size(10.5).font_bold().text_color(t.blocked).flex().items_center().justify_center().child("!");
-    if (a.status === "blocked") return div().flex_none().px(6).h(18).rounded(5).bg(t.blocked + "26").text_size(10.5).font_semibold().text_color(t.blocked).flex().items_center().child("Needs you");
+    if (a.status === "blocked" && compact) return div().size(14).flex_none().rounded(4).bg(alpha(t.blocked, "26")).text_size(10.5).font_bold().text_color(t.blocked).flex().items_center().justify_center().child("!");
+    if (a.status === "blocked") return div().flex_none().px(6).h(18).rounded(5).bg(alpha(t.blocked, "26")).text_size(10.5).font_semibold().text_color(t.blocked).flex().items_center().child("Needs you");
     // Idle: a ring; done: a dot.
     if (a.status === "idle") return div().size(7).mx(3).flex_none().rounded(4).border(1.5).border_color(t.idle ?? t.dim);
-    return div().size(7).mx(3).flex_none().rounded(4).bg(a.status === "done" ? color : t.dim + "00");
+    return div().size(7).mx(3).flex_none().rounded(4).bg(a.status === "done" ? color : alpha(t.dim, "00"));
   }
 
   // ks: focus mode dims this until hovered (lib/focus.js).
@@ -321,8 +322,8 @@ export default class Agents extends View {
       // The sidebar's badge look (lib/section.js): a soft pill, accent when a process serves a port or it's open.
       const tone = open || busy ? t.accent : t.muted;
       return h_flex().id(`procs-${a.address}`).h(16).px(6).gap(3).flex_none().items_center().rounded(8).text_size(9.5).font_medium().cursor_pointer()
-        .bg(tone + (open ? "38" : "1c")).text_color(tone)
-        .hover((s) => s.bg(tone + "38"))
+        .bg(alpha(tone, open ? "38" : "1c")).text_color(tone)
+        .hover((s) => s.bg(alpha(tone, "38")))
         .tooltip(`${n} process${n === 1 ? "" : "es"} running under it${busy ? " (some serving a port)" : ""}`)
         .on_click((_e, cx) => { cx.stop_propagation(); this.toggleProcs(a.address, cx); })
         .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(10).flex_none())

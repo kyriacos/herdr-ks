@@ -20,6 +20,7 @@ import { parseDiff, fileRows, splitRows, wrapTokens, colsFor, charWidth, longest
 import * as comments from "./lib/comments.js";
 import { onPasteImage, attachRow } from "./lib/attach.js";
 import { READ, git, base, WORKTREE, RECENT, branchRefs, readBranch, readCommits, readCommitFiles, treeRows, candidates } from "./lib/branch.js";
+import { alpha } from "./lib/color.js";
 
 const MAX_LINES = 20000, ROW = 20;
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -527,7 +528,7 @@ export default class Review extends View {
 
   cell(row, side, colors, t) {
     const n = row ? (side === "old" ? row.old : row.new) : null;
-    const bg = this.marked(side, n) ? t.accent + "33" : row?.kind === "+" ? t.ansi2 + "1c" : row?.kind === "-" ? t.ansi1 + "1c" : null;
+    const bg = this.marked(side, n) ? alpha(t.accent, "33") : row?.kind === "+" ? alpha(t.ansi2, "1c") : row?.kind === "-" ? alpha(t.ansi1, "1c") : null;
     return h_flex().flex_1().min_w(0).h_full().items_start().overflow_hidden().when(Boolean(bg), (e) => e.bg(bg)).when(!row, (e) => e.bg(t.raised))
       .child(div().w(44).flex_none().pr(8).text_right().text_color(t.dim).child(n == null ? "" : String(n)))
       .child(div().w(14).flex_none().text_color(row?.kind === "+" ? t.ansi2 : t.ansi1).child(row?.kind === "+" ? "+" : row?.kind === "-" ? "−" : ""))
@@ -540,7 +541,7 @@ export default class Review extends View {
       .child(this.cell(item.left, "old", colors, t)).child(div().w(1).h_full().bg(t.border)).child(this.cell(item.right, "new", colors, t));
     if (item.t === "code") {
       const r = item.r, side = r.kind === "-" ? "old" : "new", n = side === "old" ? r.old : r.new;
-      const bg = this.marked(side, n) ? t.accent + "33" : r.kind === "+" ? t.ansi2 + "1c" : r.kind === "-" ? t.ansi1 + "1c" : null;
+      const bg = this.marked(side, n) ? alpha(t.accent, "33") : r.kind === "+" ? alpha(t.ansi2, "1c") : r.kind === "-" ? alpha(t.ansi1, "1c") : null;
       return h_flex().w_full().h(this.height(item)).items_start().cursor_pointer().when(Boolean(bg), (e) => e.bg(bg))
         .child(div().w(44).flex_none().pr(8).text_right().text_color(t.dim).child(r.old == null ? "" : String(r.old)))
         .child(div().w(44).flex_none().pr(8).text_right().text_color(t.dim).child(r.new == null ? "" : String(r.new)))

@@ -13,6 +13,7 @@ import { focusOn, focusLevel, setFocus } from "./lib/focus.js";
 import { prefs, setPref, DEFAULTS } from "./lib/prefs.js";
 import * as cache from "./lib/cache.js";
 import { SIDEBAR, PANELS, arrange, node } from "./lib/arrange.js";
+import { alpha } from "./lib/color.js";
 
 const SECTIONS = [
   ["layout", "Layout"],
@@ -89,7 +90,7 @@ export default class Settings extends View {
 
   ui(t) {
     const btn = (id, label, act, active = false) => h_flex().id(id).h(28).px(11).items_center().justify_center().rounded(7).border_1()
-      .border_color(active ? t.accent : t.input).bg(active ? t.accent + "22" : t.raised).text_color(active ? t.accent : t.foreground)
+      .border_color(active ? t.accent : t.input).bg(active ? alpha(t.accent, "22") : t.raised).text_color(active ? t.accent : t.foreground)
       .text_size(12).cursor_pointer().hover((s) => s.opacity(0.88)).on_click((_e, cx) => { act(cx); cx.notify(); }).child(label);
     const row = (title, help, ...controls) => v_flex().gap(6).pb(16)
       .child(div().text_size(13).font_medium().child(title))

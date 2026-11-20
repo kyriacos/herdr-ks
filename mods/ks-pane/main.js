@@ -24,6 +24,7 @@ import { menuView, shortcut } from "./menu.js";
 import { folder, paneId, cutName } from "./header-text.js";
 import * as sessions from "./lib/sessions.js";
 import { focusOn, focusLevel } from "./lib/focus.js";
+import { alpha } from "./lib/color.js";
 
 function icon(p, size, color) {
   if (!p?.icon) return null;
@@ -107,7 +108,7 @@ export default class Pane extends View {
       .on_click((_e, cx) => { cx.stop_propagation(); act(); }).child(text);
     return h_flex().flex_none().gap(4).items_center()
       .child(h_flex().id(`ph-resume-${p.pane}`).flex_none().h(20).px(7).gap(6).items_center().rounded(5)
-        .bg(t.accent + "22").text_size(11).text_color(t.accent).hover((s) => s.bg(t.accent + "40"))
+        .bg(alpha(t.accent, "22")).text_size(11).text_color(t.accent).hover((s) => s.bg(alpha(t.accent, "40")))
         .tooltip(`${rec.app === "codex" ? "codex resume" : "claude --resume"} ${rec.sessionId}\nin ${folder(rec.cwd, home())}`)
         .on_click((_e, cx) => { cx.stop_propagation(); sessions.resume(p.terminal, rec); })
         .child(div().font_semibold().child("↻ Resume")))
@@ -193,7 +194,7 @@ export default class Pane extends View {
         .flex()
         .items_center()
         .rounded(4)
-        .bg(this.copied ? t.accent + "26" : t.hover)
+        .bg(this.copied ? alpha(t.accent, "26") : t.hover)
         .font_family(settings().font_family ?? "JetBrains Mono")
         .text_size(10.5)
         .text_color(this.copied ? t.accent : t.dim)
@@ -204,15 +205,15 @@ export default class Pane extends View {
       .child(div().flex_1().truncate().text_color(t.dim).child(folder(p.cwd, home())))
       // ks: zoomed, say so and what it hides; a click zooms back out.
       .when(zoomed, (el) => el.child(h_flex().id(`ph-zoomed-${pane}`).flex_none().h(18).px(6).gap(4).items_center().rounded(5)
-        .bg(t.accent + "26").border_1().border_color(t.accent + "66").text_size(10.5).font_semibold().text_color(t.accent).cursor_pointer()
-        .hover((s) => s.bg(t.accent + "40"))
+        .bg(alpha(t.accent, "26")).border_1().border_color(alpha(t.accent, "66")).text_size(10.5).font_semibold().text_color(t.accent).cursor_pointer()
+        .hover((s) => s.bg(alpha(t.accent, "40")))
         .tooltip(`Zoomed: ${[p.zoomed && hiddenPanes > 0 ? `${hiddenPanes} other pane${hiddenPanes === 1 ? "" : "s"}` : null, winZoom ? "the sidebar and side panel" : null].filter(Boolean).join(" and ")} hidden. Click to unzoom.`)
         .on_click((_e, cx) => { cx.stop_propagation(); run(`ks-zen.zoom:${pane}`); })
         .child("⤢ Zoomed").when(p.zoomed && hiddenPanes > 0, (e) => e.child(div().child(`· ${hiddenPanes} hidden`)))))
       // ks: Claude ran here before this terminal was lost (a reboot): resume that session (lib/sessions.js).
       .when(Boolean(lost), (el) => el.child(this.resumePill(t, p, lost)))
       .when(st === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
-      .when(st === "blocked", el => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.blocked + "26").text_size(10.5).font_semibold().text_color(t.blocked).child("Needs you")))
+      .when(st === "blocked", el => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(alpha(t.blocked, "26")).text_size(10.5).font_semibold().text_color(t.blocked).child("Needs you")))
       .when(st === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(t.done)))
       .when(this.hovered, el => el
         .child(this.button(t, `ph-n-${pane}`, "rename", "Rename", () => this.openRename(p, given, fallback)))

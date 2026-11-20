@@ -17,6 +17,7 @@ import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
 import { takeFocus, listKey, watchFocus, focusedNow, toStrip } from "./lib/panelkeys.js";
 import { isWindow, initWindow, windowCommand, zoomCommand, zoomKey, windowFrame, headerButton } from "./lib/panelwin.js";
+import { alpha } from "./lib/color.js";
 
 // ---------- stored choices (this mod's localStorage) ----------
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -545,7 +546,7 @@ export default class Changes extends View {
     if (kind === "@") return div().w_full().px(12).h(20).flex_none().truncate().bg(t.raised).text_color(t.dim).child(text);
     const span = (k) => div().flex_none().whitespace_nowrap().text_color(colors[k.kind] ?? t.foreground).child(k.text);
     const lines = cols && kind ? wrapTokens(row, cols) : null;
-    return h_flex().w_full().h(20 * (lines?.length ?? 1)).flex_none().items_start().when(kind === "+", (e) => e.bg(t.ansi2 + "1c")).when(kind === "-", (e) => e.bg(t.ansi1 + "1c"))
+    return h_flex().w_full().h(20 * (lines?.length ?? 1)).flex_none().items_start().when(kind === "+", (e) => e.bg(alpha(t.ansi2, "1c"))).when(kind === "-", (e) => e.bg(alpha(t.ansi1, "1c")))
       .child(div().w(34).h(20).flex_none().pr(6).text_right().text_color(t.dim).child(n == null ? "" : String(n)))
       .child(div().w(12).h(20).flex_none().text_color(kind === "+" ? t.ansi2 : t.ansi1).child(kind === "+" ? "+" : kind === "-" ? "−" : ""))
       .children(lines ? [v_flex().flex_1().min_w(0).children(lines.map((l) => h_flex().h(20).flex_none().children(l.map(span))))]
@@ -724,7 +725,7 @@ export default class Changes extends View {
       (range) => this.rows.slice(range.start, range.end).map((row, j) => {
         const el = this.diffRow(row, t, colors, cols);
         // ks: the diff's line cursor while the keyboard is in the diff (vim keys).
-        return this.inDiff && range.start + j === this.diffTop && focusedNow(this, "ks-changes") ? el.border_l_2().border_color(t.accent).bg(t.accent + "26") : el;
+        return this.inDiff && range.start + j === this.diffTop && focusedNow(this, "ks-changes") ? el.border_l_2().border_color(t.accent).bg(alpha(t.accent, "26")) : el;
       })).size_full().track_scroll(this.diffScroll);
     return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focusedNow(this, "ks-changes") ? t.accent : t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {

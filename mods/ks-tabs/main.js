@@ -9,6 +9,7 @@ import { arrange } from "./lib/arrange.js";
 import { prune } from "./lib/cache.js";
 import { menuView, shortcut } from "./menu.js";
 import { dimmed } from "./lib/focus.js";
+import { alpha } from "./lib/color.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -225,7 +226,7 @@ export default class Tabs extends View {
       const program = tabProgram(c), name = tabName(c, program), lost = resumables(c);
       const lifted = dragging?.i === i, over = dragging && dragging.over === i && dragging.i !== i;
       const el = h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
-        .border(1).border_color(lifted ? t.accent + "66" : c.active ? t.border : t.chrome).when(lifted, e => e.border_dashed()).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
+        .border(1).border_color(lifted ? alpha(t.accent, "66") : c.active ? t.border : t.chrome).when(lifted, e => e.border_dashed()).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
         .opacity(lifted ? 0.4 : 1).when(Boolean(dragging), e => e.cursor_grabbing())
         .hover(s => s.bg(t.hover))
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; this.drag = { i, id: c.id, name, x: e.position.x, moved: false, over: null, after: false }; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
@@ -245,9 +246,9 @@ export default class Tabs extends View {
         .child(div().max_w(170).truncate().child(name))
         // ks: a pane in this tab is zoomed (Herdr's, or ks-zen's over the window): a badge, as on the pane's header.
         .when(c.zoomed || shared("ks-zen.zoom")?.tab === c.id, el => el.child(div().id(`zoomed-${c.id}`).flex_none().h(16).px(4).flex().items_center()
-          .rounded(4).bg(t.accent + "26").text_size(10).font_semibold().text_color(t.accent).tooltip("A pane here is zoomed").child("⤢")))
+          .rounded(4).bg(alpha(t.accent, "26")).text_size(10).font_semibold().text_color(t.accent).tooltip("A pane here is zoomed").child("⤢")))
         .when(lost.length > 0, el => el.child(div().id(`resume-${c.id}`).flex_none().h(18).px(6).flex().items_center().rounded(5)
-          .bg(t.accent + "22").text_size(10.5).font_semibold().text_color(t.accent).hover(s => s.bg(t.accent + "40"))
+          .bg(alpha(t.accent, "22")).text_size(10.5).font_semibold().text_color(t.accent).hover(s => s.bg(alpha(t.accent, "40")))
           .tooltip(`Resume ${lost.map(x => `"${sessions.label(x.rec)}"`).join(", ")} · ${sessions.nameOf(lost[0].rec)} ran here ${sessions.ago(Math.max(...lost.map(x => x.rec.at ?? 0)))}`)
           .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); run("tab.select", { id: c.id }); for (const x of lost) sessions.resume(x.address, x.rec); })
           .child(lost.length > 1 ? `↻ Resume ${lost.length}` : "↻ Resume")))
@@ -298,7 +299,7 @@ export default class Tabs extends View {
       .when(closing.pending().length > 0, el => {
         const list = closing.pending(), last = list[list.length - 1], left = Math.max(0, Math.ceil((last.until - Date.now()) / 1000));
         return el.child(h_flex().id("undo-close").flex_none().h(24).px(8).gap(6).items_center().rounded(6)
-          .bg(t.accent + "1f").text_size(11.5).text_color(t.accent).hover(s => s.bg(t.accent + "3a"))
+          .bg(alpha(t.accent, "1f")).text_size(11.5).text_color(t.accent).hover(s => s.bg(alpha(t.accent, "3a")))
           .tooltip(list.length > 1 ? `${list.length} closing: ${list.map(e => `${e.kind} ${e.name}`).join(", ")}. ⌘⇧T undoes the latest.` : "⌘⇧T")
           .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); closing.undo(last.key); })
           .child(div().font_semibold().child("↶ Undo"))

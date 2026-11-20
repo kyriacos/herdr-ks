@@ -9,6 +9,7 @@
 // Window points: what events report and what `at` takes. openOverlay's width/height are mod pixels (× zoom).
 import { View, div } from "gpui-kit";
 import { props, openOverlay, closeOverlay, theme } from "herdr";
+import { alpha } from "./lib/color.js";
 
 const MIN_W = 360, MIN_H = 240; // window points
 
@@ -57,7 +58,7 @@ export default class Resize extends View {
       .on_mouse_down("left", (e) => { this.pt = { x: e.position.x, y: e.position.y }; this.finish(true); })
       .on_key_down((e) => { if (e.key === "escape") this.finish(false); else if (e.key === "enter") this.finish(true); })
       // The outline, in mod pixels (window points / zoom).
-      .child(div().absolute().left(b.x / z).top(b.y / z).w(b.w / z).h(b.h / z).rounded(10).border_2().border_color(t.accent).bg(t.accent + "14"))
+      .child(div().absolute().left(b.x / z).top(b.y / z).w(b.w / z).h(b.h / z).rounded(10).border_2().border_color(t.accent).bg(alpha(t.accent, "14")))
       .child(div().absolute().left((b.x + b.w) / z - 120).top((b.y + b.h) / z + 6).w(120).text_right().text_size(11).text_color(t.accent)
         .child(`${Math.round(b.w / z)} × ${Math.round(b.h / z)}`));
   }

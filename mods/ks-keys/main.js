@@ -13,6 +13,7 @@ import { View, div } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { props, run, theme, openOverlay, closeOverlay, nextCommand, shared, setShared, spaces, focused, hc, exec, appHome, settings, notify, layout, panes, agents } from "herdr";
 import * as km from "./keymap.js";
+import { alpha } from "./lib/color.js";
 
 const OPEN = "ks-keys.open"; // the mode popup's overlay id, so a second entry key replaces it
 // The popup: four columns of keys (CELL wide, GAP apart) inside PAD on each side.
@@ -472,7 +473,7 @@ export default class Keys extends View {
     const list = shownBindings(m).filter((b) => (!b.do.startsWith("mode:") || km.usable(cfg, b.do.slice(5).trim())) && this.fits(b, w));
     const cell = (b, i) => h_flex().id(`b-${i}`).w(CELL).h(ROW).flex_none().gap(8).items_center().px(6).rounded(5).hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => this.act(b, cx))
-      .child(div().min_w(34).h(18).px(5).flex().items_center().justify_center().rounded(4).bg(t.accent + "26").text_color(t.accent).text_size(11.5).font_semibold().child(keyLabel(b.key)))
+      .child(div().min_w(34).h(18).px(5).flex().items_center().justify_center().rounded(4).bg(alpha(t.accent, "26")).text_color(t.accent).text_size(11.5).font_semibold().child(keyLabel(b.key)))
       .child(div().flex_1().truncate().text_size(11.5).text_color(b.do.startsWith("mode:") ? t.accent : t.foreground).child(b.label));
     return v_flex().id("mode-wrap").track_focus(this.handle).size_full().justify_end()
       .on_key_down((e, cx) => { cx.stop_propagation(); this.key(e, cx); })

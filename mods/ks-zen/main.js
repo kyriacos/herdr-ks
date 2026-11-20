@@ -15,6 +15,7 @@ import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { run, spaces, panes, focused, nextCommand, shared, setShared, notify, theme, props, openOverlay, closeOverlay, exec, appHome, settings, layout } from "herdr";
 import { focusOn, focusLevel, setFocus } from "./lib/focus.js";
+import { alpha } from "./lib/color.js";
 
 // Shared "ks-zen.state" while zen is open: { terminal (or content: a mod copy, and its pane), win (overlay id), backdrop (overlay id), rect: the zen
 // window in window points { x, y, width, height } }.
@@ -339,7 +340,7 @@ export default class Zen extends View {
   renderSettings() {
     const t = theme(), p = prefs(), level = focusLevel(), on = focusOn();
     const btn = (id, label, act, active = false) => h_flex().id(id).h(28).px(11).items_center().justify_center().rounded(7).border_1()
-      .border_color(active ? t.accent : t.input).bg(active ? t.accent + "22" : t.raised).text_color(active ? t.accent : t.foreground)
+      .border_color(active ? t.accent : t.input).bg(active ? alpha(t.accent, "22") : t.raised).text_color(active ? t.accent : t.foreground)
       .text_size(12).cursor_pointer().hover((s) => s.opacity(0.88)).on_click((_e, cx) => { act(); cx.notify(); }).child(label);
     const label = (text) => div().pt(14).pb(6).text_size(11.5).text_color(t.dim).child(text);
     const pct = Math.round(level * 100);

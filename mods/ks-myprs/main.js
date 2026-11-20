@@ -14,6 +14,7 @@ import { dimmed } from "./lib/focus.js";
 import { pref } from "./lib/prefs.js";
 import { takeFocus, listKey, watchFocus, focusedNow } from "./lib/panelkeys.js";
 import { sectionHead, sectionFrame, badge, headAction, SECTION_HEAD, SB } from "./lib/section.js";
+import { alpha } from "./lib/color.js";
 
 const BLOCK = "my-prs", HEAD = SECTION_HEAD + 1, ROW = 68, DRAFTS = 18;
 const QUERY = `query { search(query: "is:pr is:open author:@me archived:false", type: ISSUE, first: 40) { nodes { ... on PullRequest {
@@ -177,7 +178,7 @@ export default class MyPrs extends View {
     const i = this.prs.indexOf(pr), firstDraft = pr.isDraft && !this.prs[i - 1]?.isDraft;
     return v_flex().flex_none().h(ROW + (firstDraft ? DRAFTS : 0))
       .when(firstDraft, (e) => e.child(this.draftsLine(t)))
-      .when(!firstDraft && i > 0, (e) => e.child(div().h(1).mx(SB.inset + SB.pad).bg(t.border + "59")))
+      .when(!firstDraft && i > 0, (e) => e.child(div().h(1).mx(SB.inset + SB.pad).bg(alpha(t.border, "59"))))
       .when(!firstDraft && i === 0, (e) => e.child(div().h(1)))
       .child(this.card(pr, t));
   }
@@ -192,7 +193,7 @@ export default class MyPrs extends View {
       .child(div().flex_none().text_size(8).text_color(t.dim).child(this.draftsOpen ? "▼" : "▶"))
       .child(div().flex_none().text_size(SB.group).text_color(t.dim).child(`Drafts · ${n}`))
       .when(!this.draftsOpen && need > 0, (e) => e.child(div().flex_none().text_size(SB.group).text_color(t.ansi1).child(`${need} needs you`)))
-      .child(div().flex_1().h(1).bg(t.border + "80"));
+      .child(div().flex_1().h(1).bg(alpha(t.border, "80")));
   }
 
   marks(pr, t) {
@@ -209,7 +210,7 @@ export default class MyPrs extends View {
   // A quiet pill: the leading symbol (✓ ✕ ◌ ↓) in the state's colour, the words muted.
   pill(label, tone, t) {
     const m = label.match(/^([✓✕◌↓]) (.*)$/);
-    return h_flex().flex_none().h(16).px(6).gap(3).items_center().rounded(8).bg(t.muted + "1a").text_size(9.5).whitespace_nowrap()
+    return h_flex().flex_none().h(16).px(6).gap(3).items_center().rounded(8).bg(alpha(t.muted, "1a")).text_size(9.5).whitespace_nowrap()
       .when(Boolean(m), (e) => e.child(div().text_color(tone).child(m[1])))
       .child(div().text_color(m || tone === t.dim ? t.muted : tone).child(m ? m[2] : label));
   }
@@ -222,8 +223,8 @@ export default class MyPrs extends View {
     const tint = s.urgent === 0 ? t.ansi1 : s.urgent === 2 && !pr.isDraft ? t.ansi2 : null;
     const on = focusedNow(this, "ks-myprs") && this.shown()[this.cursor] === pr;
     return v_flex().id(`mypr-${pr.url}`).flex_none().h(ROW - 2).mx(SB.inset).px(SB.pad).gap(3).justify_center().rounded(SB.radius).cursor_pointer()
-      .when(Boolean(tint), (e) => e.bg(tint + "14")).when(on, (e) => e.bg(t.selected ?? t.hover))
-      .hover((st) => st.bg(tint ? tint + "26" : t.hover)).on_click(() => this.openCard(pr))
+      .when(Boolean(tint), (e) => e.bg(alpha(tint, "14"))).when(on, (e) => e.bg(t.selected ?? t.hover))
+      .hover((st) => st.bg(tint ? alpha(tint, "26") : t.hover)).on_click(() => this.openCard(pr))
       .child(div().min_w(0).truncate().text_size(SB.title).font_medium().text_color(pr.isDraft ? t.muted : t.foreground).child(pr.title))
       .child(h_flex().gap(6).items_center().text_size(SB.detail).text_color(t.dim)
         .child(div().flex_1().min_w(0).truncate().child(`${repo}#${pr.number}`))

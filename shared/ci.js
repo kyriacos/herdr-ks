@@ -1,3 +1,4 @@
+import { alpha } from "./color.js";
 // CI checks from GitHub's statusCheckRollup, one rule for My PRs, the PRs panel and the PR window.
 // Source of truth: shared/ci.js; scripts/install.sh copies it into each mod's lib/.
 //
@@ -44,5 +45,5 @@ function hex(c) {
 export function pillColors(tone, t) {
   if (tone === t.dim || tone === t.muted || !hex(tone)) return { bg: null, border: tone, text: tone };
   const base = "#" + String(tone).replace(/^#/, "").slice(0, 6);
-  return { bg: base + "24", border: base + "66", text: base };
+  return { bg: alpha(base, "24"), border: alpha(base, "66"), text: base };
 }
