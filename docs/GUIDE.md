@@ -300,7 +300,7 @@ lines added and removed, tasks done, Linear issue ids). Click it for the window 
   repos**, or the view's name). Without `claude` a run keeps the data and says why there's no
   summary.
 - Prompts are in `~/.config/herdr-app/data/ks-dashboard/prompts.json` (`id`, `name`, `range`: day, week or month,
-  `text`, `auto`: a time like `"18:00"` or null, `view`: a view's id or null), views in `views.json`, runs in
+  `text`, `auto`: a time like `"18:00"` or null), views in `views.json`, runs in
   `runs/`. Edit the file to change or add prompts.
 - Needs `gh` signed in; summaries need Claude Code (`claude`).
 
