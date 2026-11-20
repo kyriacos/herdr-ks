@@ -494,6 +494,7 @@ does. Layout choices are kept in Herdr's shared state and put back after a reins
 | Section | What you can change |
 |---|---|
 | Layout | Side panel left or right (the sidebar's sections include Dashboard); which side panels get a tab bar button; the sidebar's sections shown or hidden, and their order (↑ ↓); reset to the defaults |
+| Zoom & text | The interface zoom (− / + by 5%, or 90 to 150%) and the terminals' text size as you see it (px), kept apart: zooming here leaves the terminals' text as it is unless **Terminals follow the interface zoom** is on. Writes Herdr's `zoom` and `font_size` (font_size = text size ÷ zoom). Herdr's own zoom keys still zoom both |
 | Tasks | Panel starts on this space or all; how many tasks the sidebar lists; toasts for agents' proposals |
 | Notes | Panel starts on this space or all |
 | Spaces & agents | Name spaces by repo and branch; what each agent works on under its space; the processes chip under agents |

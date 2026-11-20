@@ -8,7 +8,7 @@
 //   sidebar's order (lib/arrange.js applies those with layout.set).
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
-import { run, theme, props, closeOverlay, shared, setShared, layout, exec, appHome, notify } from "herdr";
+import { run, theme, props, closeOverlay, shared, setShared, layout, exec, appHome, notify, settings } from "herdr";
 import { focusOn, focusLevel, setFocus } from "./lib/focus.js";
 import { prefs, setPref, DEFAULTS } from "./lib/prefs.js";
 import * as cache from "./lib/cache.js";
@@ -17,6 +17,7 @@ import { alpha } from "./lib/color.js";
 
 const SECTIONS = [
   ["layout", "Layout"],
+  ["zoom", "Zoom & text"],
   ["tasks", "Tasks"],
   ["notes", "Notes"],
   ["spaces", "Spaces & agents"],
@@ -35,6 +36,27 @@ const ZEN = "ks-zen.prefs";
 const zenPrefs = () => ({ backdrop: "theme", opacity: 1, share: 0.64, ...(shared(ZEN) ?? {}) });
 const setZen = (patch) => setShared(ZEN, { ...zenPrefs(), ...patch });
 const round = (v) => Math.round(v * 100) / 100;
+
+// Herdr's own settings.json (zoom, font_size): Herdr reloads it when it changes. Merged, so other keys stay.
+async function writeSettings(patch) {
+  const code = "import json,os,sys\np=sys.argv[1]\nd=json.load(open(p)) if os.path.exists(p) else {}\nd.update(json.loads(sys.argv[2]))\n" +
+    "t=p+'.tmp'\njson.dump(d,open(t,'w'),indent=2)\nos.replace(t,p)";
+  const args = ["-I", "-c", code, `${appHome()}/settings.json`, JSON.stringify(patch)];
+  let r = await exec("python3", args).catch(() => null);
+  if (!r || r.code !== 0) r = await exec("/usr/bin/python3", args).catch(() => null);
+  if (!r || r.code !== 0) notify({ title: "Couldn't change Herdr's settings.json", body: r?.stderr ?? "", level: "warning", timeout: 4000 });
+}
+// Zoom scales the whole app, terminals included; font_size is the terminals' text at zoom 1. The terminals' text
+// as seen is font_size × zoom, so keeping it while the interface zooms means font_size = seen / zoom.
+const zoomNow = () => Number(settings().zoom) || 1;
+const seenPx = () => round((Number(settings().font_size) || 14) * zoomNow());
+const fontFor = (px, zoom) => Math.round((px / zoom) * 10) / 10;
+function setZoom(zoom) {
+  zoom = Math.min(3, Math.max(0.5, round(zoom)));
+  return writeSettings(prefs().zoomTerminals ? { zoom } : { zoom, font_size: fontFor(seenPx(), zoom) });
+}
+const setTerminalPx = (px) => writeSettings({ font_size: fontFor(Math.min(40, Math.max(8, px)), zoomNow()) });
+const pct = (z) => `${Math.round(z * 100)}%`;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -139,6 +161,27 @@ export default class Settings extends View {
               for (const [sid] of SIDEBAR) run("layout.show", { id: sid });
               arrange();
             })));
+      }
+      case "zoom": {
+        const z = zoomNow(), px = seenPx(), follow = Boolean(p.zoomTerminals);
+        // Redrawn once settings.json is written, so the numbers show the new values.
+        const then = (write) => (cx) => { write(); cx.timer.after(300, (cx) => cx.notify()); };
+        const step = (id, label, act) => btn(id, label, then(act));
+        return v_flex().child(heading("Zoom & text"))
+          .child(row("Interface zoom", follow
+            ? "The sidebar, panels, tabs and windows, and the terminals with them."
+            : "The sidebar, panels, tabs and windows. The terminals keep their text size (below).",
+            step("zoom-out", "−", () => setZoom(z - 0.05)),
+            div().w(52).text_size(13).font_semibold().flex().justify_center().child(pct(z)),
+            step("zoom-in", "+", () => setZoom(z + 0.05)),
+            ...[0.9, 1, 1.1, 1.25, 1.5].map((v) => btn(`zoom-${v}`, pct(v), then(() => setZoom(v)), Math.abs(z - v) < 0.001))))
+          .child(row("Terminal text", "The terminals' text size as you see it, in px.",
+            step("tpx-down", "−", () => setTerminalPx(px - 0.5)),
+            div().w(52).text_size(13).font_semibold().flex().justify_center().child(`${px.toLocaleString("de-DE")} px`),
+            step("tpx-up", "+", () => setTerminalPx(px + 0.5)),
+            ...[12, 13, 14, 15, 16].map((v) => btn(`tpx-${v}`, `${v}`, then(() => setTerminalPx(v)), Math.abs(px - v) < 0.06))))
+          .child(row("Terminals follow the interface zoom", "Off: changing the zoom here keeps the terminals' text as it is. Herdr's zoom keys (cmd-+ / cmd--) always zoom both.",
+            ...choice("zoomfollow", [[false, "Off"], [true, "On"]], follow, (v) => setPref("zoomTerminals", v))));
       }
       case "tasks": {
         return v_flex().child(heading("Tasks"))
