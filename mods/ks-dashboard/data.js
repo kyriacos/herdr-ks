@@ -215,7 +215,8 @@ export async function projectNotes(a) {
   if (kept[key]?.v === 3) return kept[key].notes;
   const data = groups.map((g) => ({
     project: g.key, name: g.name,
-    merged_prs: g.prs.map((p) => ({ title: p.title, linear: p.linear, description: p.body.slice(0, 500) })),
+    // A short piece of each description: enough to tell the work apart, and a month of PRs stays quick.
+    merged_prs: g.prs.map((p) => ({ title: p.title, linear: p.linear, description: p.body.slice(0, g.prs.length > 12 ? 160 : 320) })),
     tasks_done: g.tasks.map((x) => x.title),
   }));
   const got = await claude(`For each project (a repo) below, split the work that went in into its separate pieces of work:

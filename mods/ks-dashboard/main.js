@@ -172,18 +172,21 @@ export default class Dashboard extends View {
   }
   setRange(r, cx) { this.range = r; this.sel = null; this.editing = null; if (!this.act[r] || Date.now() - this.act[r].at > 5 * 60000) this.look(r, cx); cx.notify(); }
 
-  // The range's per-project notes (data.js projectNotes), asked for once per set of work; the window only.
+  // A range's per-project notes (data.js projectNotes), asked for once per set of work; the window only. One at a
+  // time, in the order asked: the shown range first, then the others, so switching to them finds them ready.
   ensureNotes(a, cx) {
     if (!a || (!a.prs?.length && !a.tasks?.length)) return;
     const k = notesKey(a);
     if (k in this.notes) return;
     this.notes[k] = "busy";
-    cx.spawn(async (cx) => { this.notes[k] = await projectNotes(a).catch(() => null); cx.notify(); });
+    this.notesQueue = (this.notesQueue ?? Promise.resolve()).then(() => new Promise((done) => cx.spawn(async (cx) => {
+      try { this.notes[k] = await projectNotes(a).catch(() => null); } finally { cx.notify(); done(); }
+    })));
   }
 
   renderWindow(cx) {
     const t = theme(), run = this.sel && this.runs.find((r) => r.id === this.sel);
-    if (!run && !this.editing) this.ensureNotes(this.shown(this.range), cx);
+    if (!run && !this.editing) for (const r of [this.range, ...RANGES.map(([x]) => x).filter((x) => x !== this.range)]) this.ensureNotes(this.shown(r), cx);
     const seg = (id, label, on, act) => segment(t, id, label, on, act, { h: 24, px: 10, size: 11.5 });
     const root = v_flex().id("dash-window").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(13)
       .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
@@ -288,7 +291,8 @@ export default class Dashboard extends View {
       .children(groups.map((g) => {
         const n = notes && !busy ? notes[g.key] : null;
         const titles = [...g.prs.map((p) => bare(p.title)), ...g.tasks.map((x) => bare(x.title))];
-        const parts = n?.groups?.length ? n.groups : [{ area: "", name: "", summary: "", bullets: titles.slice(0, 6).concat(titles.length > 6 ? [`and ${titles.length - 6} more`] : []) }];
+        const parts = n?.groups?.length ? n.groups : [{ area: "", name: "", summary: busy ? "Describing this work… (a minute or so for a busy week or month); its PRs and tasks meanwhile:" : notes === null ? "No description (claude couldn't be run); its PRs and tasks:" : "",
+          bullets: titles.slice(0, 6).concat(titles.length > 6 ? [`and ${titles.length - 6} more`] : []) }];
         const facts = [g.prs.length && plural(g.prs.length, "PR"), g.prs.length && `+${num(g.add)} −${num(g.del)}`, g.tasks.length && plural(g.tasks.length, "task")].filter(Boolean).join(" · ");
         return v_flex().pb(10).gap(8)
           .child(h_flex().pt(6).gap(8).items_baseline()

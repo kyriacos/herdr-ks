@@ -278,8 +278,9 @@ lines added and removed, tasks done, Linear issue ids). Click it for the window 
   tags such as `[web][search]`; an area keeps its colour), its name in bold with a sentence or two on what it adds
   up to, and bullets for its parts. PRs and tasks go together when their title tags, Linear issues or descriptions
   say they're the same work. It follows the view picked in the header. `claude -p` writes them (no tools, not saved as a
-  session) the first time a range's work is shown, and they're kept in `projects.json` until that work changes.
-  Until then, or without `claude`, the cards list the PR and task titles.
+  session) when the window opens, the shown range first and then the others, so switching ranges finds them
+  ready; they're kept in `projects.json` until that work changes. A busy week or month takes a minute or so: until
+  then, or without `claude`, it says so and lists the PR and task titles.
 - **Views** (the header, beside the ranges): which repos the dashboard shows. **All repos**, or a view of your
   own: **+** opens a new one, with a name and every owner and repo it has seen ticked or not. `acme/*` takes a
   whole owner (a GitHub org or user), new repos included; or tick single repos, such as `acme/web`. A view keeps
