@@ -122,10 +122,10 @@ async function resizeFocused(kind, dir, reset, pane, win = null, openedAt = Infi
     const cmd = { size: dir > 0 ? "grow" : "shrink", wide: dir > 0 ? "wider" : "narrower", tall: dir > 0 ? "taller" : "shorter" }[kind];
     return run(`ks-zen.${cmd}`), `Zen ${cmd}`;
   }
-  // A side panel had the keyboard (Tasks, Files, Changes, PRs, Notes): the panel itself, + wider and - narrower.
+  // A side panel had the keyboard (Tasks, Files, Changes, PRs, Notes): the panel itself, wider or narrower. It's
+  // already full height, so taller / shorter (vim's + -) widen and narrow it too.
   if (panelInFocus(openedAt)) {
     if (reset) { const px = await defaultPx("panel"); if (px) run("layout.resize", { id: "panel", px }); return "Side panel: default width"; }
-    if (kind === "tall") return "The side panel is full height";
     resize("panel", dir * 32);
     return `Side panel ${dir > 0 ? "wider" : "narrower"}`;
   }

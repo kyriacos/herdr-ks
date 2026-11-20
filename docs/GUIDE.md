@@ -524,7 +524,7 @@ does. Layout choices are kept in Herdr's shared state and put back after a reins
 
 In service mode (and in the sticky **resize** mode, service `r`) the resize keys act on **what you're in**: a floating
 window (a review or PR window) when it had the keyboard, else the zen window when it's open, else the side panel when
-it had the keyboard (Tasks, Files, Changes, PRs, Notes: wider makes the panel wider), else the pane you're in along its
+it had the keyboard (Tasks, Files, Changes, PRs, Notes: wider and taller both make the panel wider, as it's already full height), else the pane you're in along its
 split, else (a lone pane) the pane against the side panel.
 The plain key goes one way, the same key with Shift the other; the strip shows which thing they act on.
 
