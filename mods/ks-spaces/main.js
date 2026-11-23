@@ -709,10 +709,10 @@ export default class Spaces extends View {
         .text_size(SB.detail).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { if (task) openTaskWindow(it.id); else openLinear(it.id, null, cx); })
-        .when(task, (e) => e.child(div().flex_none().text_color(t.dim).child("◇")))
-        .when(!task, (e) => e.child(chip(it, "i")))
-        .child(div().flex_1().min_w(0).truncate().child(task ? it.title : it.title || (it.repos?.join(" + ") ?? "")))
-        .when(task, (e) => e.children((it.issues ?? []).filter(Boolean).slice(0, 2).map((x) => chip(x, `t${i}`))));
+        // A mark (↗ an issue, opened in Linear; ◇ a task), its title, then its Linear id(s) on the right.
+        .child(div().flex_none().w(10).text_color(t.dim).child(task ? "◇" : "↗"))
+        .child(div().flex_1().min_w(0).truncate().child(task ? it.title : it.title || (it.repos?.join(" + ") ?? it.id)))
+        .children((task ? (it.issues ?? []).filter(Boolean).slice(0, 2) : [it]).map((x) => chip(x, `${task ? "t" : "i"}${i}`)));
     };
     return v_flex().id(`space-wrap-${w.id}`).flex_none().gap(1).child(el).children(list.map(line));
   }
