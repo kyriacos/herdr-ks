@@ -48,12 +48,16 @@ export function spaceTask(s) {
 // "repo · main".
 export function labelFor(trees) {
   if (!trees.length) return null;
-  const main = trees.find((t) => !["main", "master"].includes(t.branch)) ?? trees[0], b = short(main.branch);
-  const same = [...new Set(trees.filter((t) => short(t.branch) === b).map((t) => t.repo))];
-  const more = new Set(trees.filter((t) => short(t.branch) !== b).map((t) => `${t.repo}\n${t.branch}`)).size;
+  // Named after where its agents mainly work (trees marked primary, when any are).
+  const pool = trees.some((t) => t.primary) ? trees.filter((t) => t.primary) : trees;
+  const main = pool.find((t) => !["main", "master"].includes(t.branch)) ?? pool[0], b = short(main.branch);
+  // On main many repos share the branch: only the primary ones are named. Off main every repo on it is.
+  const onMain = !b || ["main", "master"].includes(b);
+  const same = [...new Set((onMain ? pool : trees).filter((t) => short(t.branch) === b).map((t) => t.repo))];
+  const more = new Set(trees.filter((t) => !same.includes(t.repo) || short(t.branch) !== b).map((t) => `${t.repo}\n${t.branch}`)).size;
   // Off main the branch is what tells spaces apart, so it goes first (the sidebar cuts the end off a long name).
   const repos = same.join(" + "), plus = more > 0 ? ` +${more}` : "";
-  return !b || ["main", "master"].includes(b) ? `${repos} · ${b || tail(main.root)}${plus}` : `${b} · ${repos}${plus}`;
+  return onMain ? `${repos} · ${b || tail(main.root)}${plus}` : `${b} · ${repos}${plus}`;
 }
 
 // ---------- names you gave ----------

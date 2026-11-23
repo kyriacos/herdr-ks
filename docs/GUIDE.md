@@ -50,7 +50,10 @@ The interface font is whatever you pick in Herdr's Settings (the layout sets non
   first, then the repos on it; `+2` for other worktrees), or `herdr-ks · main` on main. Under the name: what the
   agent is working on and git's ↑ ↓ ±. When it has issues or tasks in Doing (even one), **▸ N** beside the name unfolds
   them under the space (click an issue to open it in Linear, a task to open its window); it stays as you left it.
-  The worktrees are where its Claude agents worked lately (as Follow agent finds them) and the Changes panel's.
+  The worktrees are where its Claude agents worked lately (as Follow agent finds them) and the Changes panel's; the
+  name comes from the folder each agent mainly works in, the others only add to `+N` (a detached worktree goes by its
+  folder). A task in Doing sits in the space of the agent working on it (its Claude session), else the one it was
+  made in.
 - **Names you give** (right-click → Rename on a space or tab, or the key modes' rename keys) are kept as yours and
   never replaced; **Reset name to automatic** in the same menu hands it back. Names other tools give (Cockpit's
   renamer, Herdr's folder names) are ignored: ks shows its own. A tab's automatic name is its agent's title as it is

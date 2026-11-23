@@ -881,7 +881,9 @@ export default class Spaces extends View {
           if (hit && Date.now() - hit.at < 30000) return hit.info;
           const r = await exec("git", ["-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir", "--abbrev-ref", "HEAD"], { on, timeout: 5000 }).catch(() => null);
           const [common, branch] = r?.code === 0 ? r.stdout.trim().split("\n") : [];
-          const info = common ? { root, repo: common.replace(/\/\.git\/?$/, "").split("/").pop(), branch: branch === "HEAD" ? "detached" : branch } : null;
+          // A detached worktree goes by its folder (worktrees are named after their work); a detached main checkout by "detached".
+          const top = common?.replace(/\/\.git\/?$/, ""), linked = top && root.replace(/\/+$/, "") !== top;
+          const info = common ? { root, repo: top.split("/").pop(), branch: branch === "HEAD" ? (linked ? root.replace(/\/+$/, "").split("/").pop() : "detached") : branch } : null;
           this.trees[k] = { info, at: Date.now() };
           return info;
         };
@@ -891,21 +893,41 @@ export default class Spaces extends View {
         try { const r = await exec("cat", [`${appHome()}/data/ks-tasks.json`]); board = JSON.parse(r.stdout || "{}"); } catch {}
         const cols = board.columns ?? [], doingCol = (cols.find((c) => c.id === "doing") ?? cols[cols.length - 2])?.id;
         const items = {};
+        // Where each agent works and its Claude session (agent_where.py, cached a minute): spaces you haven't opened
+        // lately too, and the space a task is really worked in.
+        const where = new Map();
+        for (const a of agents()) where.set(a.address, await this.agentRoots(a));
+        const live = new Set(spaces().map((x) => x.id));
+        // A task's space: the one its agent works in now (its Claude session, else the terminal `ks-task start` kept),
+        // else the one it was made in, else (that gone) the one working in its worktree. Detached tasks are in none.
+        const taskSpace = (x) => {
+          const w = x.worker ?? {};
+          const bySession = w.session && agents().find((a) => where.get(a.address)?.session === w.session);
+          // The kept terminal only while it runs that session (a background session's terminal can be someone else's).
+          const byTerm = !bySession && w.terminal && agents().find((a) => a.address === w.terminal && (!w.session || !where.get(a.address)?.session));
+          const a = bySession || byTerm;
+          if (a?.space) return a.space;
+          return x.space && live.has(x.space) ? x.space : null;
+        };
         for (const sp of spaces()) {
           const tabs = new Set(sp.tabs.map((x) => x.id));
-          // Where its Claude agents work (agent_where.py, cached a minute): spaces you haven't opened lately too.
           const worked = [];
-          for (const a of agents().filter((x) => x.space === sp.id && !sp.machine)) for (const root of await this.agentRoots(a)) worked.push({ root, on: null });
+          for (const a of agents().filter((x) => x.space === sp.id && !sp.machine)) (where.get(a.address)?.roots ?? []).forEach((root, n) => worked.push({ root, on: null, primary: n === 0 }));
           const roots = [...worked, ...(session[sp.id] ?? []).map((r) => ({ root: r.root, on: r.on ?? null })),
             ...agents().filter((a) => a.space === sp.id).map((a) => ps.find((p) => p.pane === a.pane)).filter((p) => p?.cwd && p.branch && tabs.has(p.tab)).map((p) => ({ root: p.cwd, on: sp.machine ?? null }))];
           const trees = [], seen = new Set();
+          // Primary: where an agent mainly works (its first folder); the name comes from those, the rest only count.
           for (const r of roots) {
-            const info = await tree(r.root, r.on);
-            if (info && !seen.has(`${info.repo}\n${info.branch}`)) { seen.add(`${info.repo}\n${info.branch}`); trees.push(info); }
+            const info = await tree(r.root, r.on), k = info && `${info.repo}\n${info.branch}`;
+            const prime = r.primary !== false;
+            if (!info) continue;
+            if (!seen.has(k)) { seen.add(k); trees.push({ ...info, primary: prime }); } else if (prime) trees.find((x) => `${x.repo}\n${x.branch}` === k).primary = true;
           }
           // Its Linear issues: from its worktrees' branches (most recent work first), then its open tasks'.
-          const issues = new Map(), terms = new Set(ps.filter((p) => tabs.has(p.tab) && p.terminal).map((p) => p.terminal));
-          const addIssue = (id, title, repo) => {
+          const issues = new Map();
+          const lead = new Set(); // issues of where its agents mainly work, or of its tasks: those can name it
+          const addIssue = (id, title, repo, main = true) => {
+            if (main) lead.add(id);
             const it = issues.get(id) ?? { kind: "issue", id, title: titles[id]?.title ?? "", repos: [] };
             if (!it.title && title) it.title = title;
             if (repo && !it.repos.includes(repo)) it.repos.push(repo);
@@ -913,14 +935,15 @@ export default class Spaces extends View {
           };
           for (const tr of trees) for (const id of linearIds(tr.branch, known)) {
             const rest = tr.branch.split("/").pop().replace(new RegExp(`^.*?${id}-?`, "i"), "").replace(/-/g, " ").trim();
-            addIssue(id, rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : "", tr.repo);
+            addIssue(id, rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : "", tr.repo, tr.primary);
           }
           const roots2 = trees.map((tr) => tr.root.toLowerCase());
-          // The tasks being worked on (in Doing), each in one space: the one it was made in; when that has gone, the
-          // one its agent's terminal is in, else the one working in its worktree. A detached task (no space) is in none.
-          const live = new Set(spaces().map((x) => x.id));
-          const owns = (x) => x.space ? (live.has(x.space) ? x.space === sp.id : terms.has(x.worker?.terminal)
-            || Boolean(x.worker?.folder && roots2.some((r) => x.worker.folder.toLowerCase().startsWith(r)))) : false;
+          // The tasks being worked on (in Doing), each in one space (taskSpace above).
+          const owns = (x) => {
+            const at = taskSpace(x);
+            if (at) return at === sp.id;
+            return Boolean(x.space && x.worker?.folder && roots2.some((r) => x.worker.folder.toLowerCase().startsWith(r)));
+          };
           const mine = (board.tasks ?? []).filter((x) => !x.parent && !x.proposed && x.column === doingCol && owns(x));
           const tasks = mine.map((x) => {
             const ids = [...new Set([...(x.links ?? []).filter((l) => l.kind === "linear").map((l) => l.label), ...linearIds(`${x.title} ${x.worker?.branch ?? ""}`, known)])];
@@ -930,7 +953,7 @@ export default class Spaces extends View {
           // Listed: each issue no task covers, then each task (its issues on it).
           const covered = new Set(tasks.flatMap((x) => x.issues));
           items[sp.id] = [...[...issues.values()].filter((it) => !covered.has(it.id)), ...tasks.map((x) => ({ ...x, issues: x.issues.map((id) => issues.get(id)) }))];
-          const first = [...issues.values()][0];
+          const first = [...issues.values()].find((it) => lead.has(it.id));
           const label = first ? issueLabel(first) : labelFor(trees);
           if (label) out[sp.id] = label;
         }
@@ -940,12 +963,13 @@ export default class Spaces extends View {
     });
   }
 
-  // The checkouts a Claude agent worked in lately (ks-changes/agent_where.py), cached a minute per agent.
+  // The checkouts a Claude agent worked in lately and its session id (ks-changes/agent_where.py): { roots, session },
+  // cached a minute per agent.
   async agentRoots(a) {
     this.whereCache ??= {};
     const c = this.whereCache[a.address];
-    if (c && Date.now() - c.at < 60000) return c.roots;
-    let roots = [];
+    if (c && Date.now() - c.at < 60000) return c.info;
+    let roots = [], session = null;
     if (/claude/i.test(a.app ?? "")) {
       try {
         const info = JSON.parse((await hc(["get", a.address])).stdout), pid = info?.foreground?.pid;
@@ -953,12 +977,17 @@ export default class Spaces extends View {
           const args = ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid), info.title ?? ""];
           let w = await exec("python3", args).catch(() => null);
           if (!w || w.code !== 0) w = await exec("/usr/bin/python3", args).catch(() => null);
-          if (w?.code === 0) roots = (JSON.parse(w.stdout).roots ?? []).slice(0, 4);
+          if (w?.code === 0) {
+            const v = JSON.parse(w.stdout);
+            roots = (v.roots ?? []).slice(0, 4);
+            session = String(v.log ?? "").match(/([0-9a-f-]{36})\.jsonl$/)?.[1] ?? null;
+          }
         }
       } catch {}
     }
-    this.whereCache[a.address] = { at: Date.now(), roots };
-    return roots;
+    const info = { roots, session };
+    this.whereCache[a.address] = { at: Date.now(), info };
+    return info;
   }
 
   row({ w, i, g, tree }, t, crew, tint) {
