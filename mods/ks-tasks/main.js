@@ -362,6 +362,8 @@ export default class Tasks extends View {
     const sp = spaces().find((x) => x.active);
     if (!sp) return true;
     if (task.space && task.space === sp.id) return true;
+    // Not tied to a space or folder: anyone's to pick up, so it shows in every space.
+    if (!task.space && !task.folder) return true;
     const roots = [sp.folder, ...(shared("ks.session")?.[sp.id] ?? []).map((r) => r.root)].filter(Boolean).map((r) => r.toLowerCase().replace(/\/+$/, ""));
     const f = String(task.folder ?? "").toLowerCase().replace(/\/+$/, "");
     return Boolean(f) && roots.some((r) => f === r || f.startsWith(r + "/"));
@@ -404,7 +406,8 @@ export default class Tasks extends View {
     if (!title || !where) { this.handle.focus(); cx.notify(); return; }
     const fields = where === "@today" ? { today: true, column: this.data.columns[1]?.id ?? this.data.columns[0]?.id } : where === "@backlog" ? { column: this.data.columns[0]?.id } : { column: where };
     const list = this.listOf(where), i = after ? list.findIndex((x) => x.id === after) : -1;
-    const task = this.newTask({ title, ...fields, order: orderAt(list, i >= 0 ? list[i + 1]?.id ?? null : null) });
+    const loose = this.addLoose ? { space: null, spaceName: "", folder: null } : {};
+    const task = this.newTask({ title, ...fields, ...loose, order: orderAt(list, i >= 0 ? list[i + 1]?.id ?? null : null) });
     this.apply(ops.create(task), cx);
     this.selectId(task.id);
     this.add.set_value(""); this.handle.focus(); cx.notify();
@@ -629,8 +632,16 @@ export default class Tasks extends View {
       return div().id(`add-${where}`).flex_none().h(28).px(8).flex().items_center().rounded(6).text_size(11.5).text_color(t.dim).cursor_pointer()
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => this.startAdd(where, cx)).child("+ Add task");
     }
-    return div().flex_none().h(30).px(8).flex().items_center().rounded(6).border_1().border_color(t.accent).bg(t.chrome)
-      .child(Input.new(this.add).h_full().text_size(12).text_color(t.foreground));
+    // Where the new task belongs: this space (its folder), or anywhere (picked up later by whoever, from any space).
+    const sp = spaces().find((s) => s.active), loose = Boolean(this.addLoose) || !sp;
+    return h_flex().flex_none().h(30).pl(8).pr(4).gap(6).items_center().rounded(6).border_1().border_color(t.accent).bg(t.chrome)
+      .child(div().flex_1().min_w(0).h_full().child(Input.new(this.add).h_full().text_size(12).text_color(t.foreground)))
+      .when(Boolean(sp), (e) => e.child(div().id("add-where").flex_none().max_w(150).truncate().h(20).px(6).flex().items_center().rounded(5)
+        .text_size(10.5).text_color(loose ? t.muted : t.accent).bg(loose ? t.hover : alpha(t.accent, "1f")).cursor_pointer()
+        .tooltip(loose ? "Not tied to a space: shows in every space, for anyone to pick up. Click to tie it to this space" : "Tied to this space (and its folder). Click to leave it unattached")
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { this.addLoose = !loose; this.add.focus(); cx.notify(); })
+        .child(loose ? "◌ Anywhere" : `◉ ${spaceName(sp)}`)));
   }
 
   // A list that takes drops (today, backlog, a column): an accent end line while a card would land at its end.
@@ -945,7 +956,15 @@ export default class Tasks extends View {
             .hover((s) => s.text_color(t.foreground)).tooltip("Open the parent task")
             .on_click((_e, cx) => { this.closeTask(cx); openTaskWindow(x.parent); }).child(`↑ Subtask of ${find(d, x.parent)?.title || "Untitled"}`)))
           .child(h_flex().mt(8).gap(8).text_size(10.5).text_color(t.dim)
-            .when(Boolean(x.spaceName), (e) => e.child(div().px(5).rounded(5).border_1().border_color(t.border).text_color(t.muted).child(x.spaceName)))
+            // Its space, with × to leave it unattached (no space, folder or branch: anyone's to pick up later).
+            .when(Boolean(x.space || x.folder || x.spaceName), (e) => e.child(h_flex().pl(5).pr(2).gap(3).items_center().rounded(5).border_1().border_color(t.border).text_color(t.muted)
+              .child(div().max_w(200).truncate().child(x.spaceName || tilde(x.folder) || "a space"))
+              .child(div().id("t-detach").px(3).rounded(3).cursor_pointer().text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
+                .tooltip("Leave it unattached: no space, folder or branch, so it shows in every space for anyone to pick up")
+                .on_click((_e, cx) => this.apply(ops.patch(x.id, { space: null, spaceName: "", folder: null,
+                  ...(x.source ? { source: { ...x.source, branch: "" } } : {}), ...(agentOf(x) ? {} : { worker: null }) }), cx)).child("×"))))
+            .when(!(x.space || x.folder || x.spaceName), (e) => e.child(div().px(5).rounded(5).bg(t.hover).text_color(t.muted)
+              .tooltip("Not tied to a space: it shows in every space, for anyone to pick up").child("◌ Anywhere")))
             .child(div().child(`${x.by ? `by ${x.by} · ` : ""}created ${ago(x.created)} · updated ${ago(x.updated)}${x.assignee ? ` · @ ${x.assignee}` : ""}${this.dirty ? " · saving…" : ""}`)))
           .when(Boolean(x.proposed), (e) => e.child(h_flex().mt(10).px(10).h(32).gap(8).items_center().rounded(7).bg(alpha(t.accent, "1f")).text_size(11.5).text_color(t.accent)
             .child(div().flex_1().truncate().child("Proposed by an agent: accept it to keep it (an agent may then start on it)"))

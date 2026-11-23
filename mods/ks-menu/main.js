@@ -9,6 +9,7 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, keys, terminals, spaces, panes, exec, shared, setShared } from "herdr";
 import * as closing from "./lib/closing.js";
+import { renameWith, givenSpace, givenTab, resetName } from "./lib/spacenames.js";
 
 const OPEN = "ks-menu.open";
 
@@ -64,12 +65,14 @@ function items(p, git) {
     case "tab":
       return [
         ["Rename", "tab.rename", { id: tg.id }],
+        ...(givenTab(tg.id) ? [["Reset name to automatic", "ks.resetName", { kind: "tab", id: tg.id }]] : []),
         ["New tab", "tab.new", { space: tg.space }],
         ["Close", "tab.close", { id: tg.id }],
       ];
     case "space":
       return [
         ["Rename", "space.rename", { id: tg.id }],
+        ...(givenSpace(tg.id) ? [["Reset name to automatic", "ks.resetName", { kind: "space", id: tg.id }]] : []),
         ...(git ? [["New worktree", "worktree", { space: tg.id, action: "new" }], ["Open worktree", "worktree", { space: tg.id, action: "open" }]] : []),
         ...(git === "linked" ? [["Remove worktree", "worktree", { space: tg.id, action: "remove" }]] : []),
         ["Close", "space.close", { id: tg.id }],
@@ -92,7 +95,7 @@ function items(p, git) {
 }
 
 function menuIcon(command) {
-  const name = command.endsWith(".close") ? "x" : command.endsWith(".rename") ? "square-pen" : command.endsWith(".new") ? "plus" : command === "worktree" ? "git-branch" : command === "app.help" ? "terminal" : command === "app.theme" ? "settings" : command === "pane.split" ? "panel-right" : command === "pane.zoom" ? "square" : "terminal";
+  const name = command.endsWith(".close") ? "x" : command.endsWith(".rename") || command === "ks.resetName" ? "square-pen" : command.endsWith(".new") ? "plus" : command === "worktree" ? "git-branch" : command === "app.help" ? "terminal" : command === "app.theme" ? "settings" : command === "pane.split" ? "panel-right" : command === "pane.zoom" ? "square" : "terminal";
   return `mods/workspace-chrome/${name}.svg`;
 }
 
@@ -136,6 +139,9 @@ export default class Menu extends View {
     // ks: closing a space or tab asks, then waits 30 s with Undo (lib/closing.js).
     else if (it[1] === "space.close") closing.askSpace(it[2].id);
     else if (it[1] === "tab.close") closing.ask({ kind: "tab", id: it[2].id, title: "Close tab?", detail: "Its terminals end." });
+    // ks: a name typed after Rename is yours (lib/spacenames.js); Reset hands it back to the automatic one.
+    else if (it[1] === "ks.resetName") resetName(it[2].kind, it[2].id);
+    else if (/^(space|tab)\.rename$/.test(it[1])) renameWith(it[1], it[2]);
     else run(it[1], it[2]);
   }
 

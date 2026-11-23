@@ -64,8 +64,38 @@ def background_session(pid, title):
     return hits[0] if len(hits) == 1 else None
 
 
+# Which background session each client terminal showed, once found: later renames (of the session, the terminal,
+# its tab or space) can't lose it. Keyed by the client's pid and start time, so a reused pid doesn't match.
+LINKS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "ks-changes", "sessions.json")
+
+
+def linked_session(pid, title):
+    started = sh(["ps", "-o", "lstart=", "-p", str(pid)]).strip()
+    if not started:
+        return None
+    key = f"{pid} {started}"
+    links = load(LINKS) or {}
+    if key in links:
+        sess = next((s for s in (load(f) for f in glob.glob(f"{HOME}/.claude/sessions/*.json"))
+                     if s and s.get("sessionId") == links[key]), None)
+        if sess:
+            return sess
+    sess = background_session(pid, title)
+    if sess:
+        live = {k: v for k, v in links.items() if sh(["ps", "-o", "lstart=", "-p", k.split(" ")[0]]).strip() == k.split(" ", 1)[1]}
+        live[key] = sess["sessionId"]
+        try:
+            os.makedirs(os.path.dirname(LINKS), exist_ok=True)
+            with open(LINKS + ".tmp", "w") as f:
+                json.dump(live, f)
+            os.replace(LINKS + ".tmp", LINKS)
+        except Exception:
+            pass
+    return sess
+
+
 def log_of(pid, title=None):
-    sess = load(f"{HOME}/.claude/sessions/{pid}.json") or background_session(pid, title)
+    sess = load(f"{HOME}/.claude/sessions/{pid}.json") or linked_session(pid, title)
     if not sess:
         return None, None
     if sess.get("kind") == "bg":

@@ -14,6 +14,7 @@ import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { props, run, theme, openOverlay, closeOverlay, nextCommand, shared, setShared, spaces, focused, hc, exec, appHome, settings, notify, layout, panes, agents } from "herdr";
 import * as km from "./keymap.js";
 import { alpha } from "./lib/color.js";
+import { renameWith } from "./lib/spacenames.js";
 
 const OPEN = "ks-keys.open"; // the mode popup's overlay id, so a second entry key replaces it
 // The popup: four columns of keys (CELL wide, GAP apart) inside PAD on each side.
@@ -398,7 +399,8 @@ export default class Keys extends View {
       else if (a.command === "tab.shift") {
         const sp = spaces().find((s) => s.active), i = sp?.tabs.findIndex((t) => t.active) ?? -1;
         if (i >= 0) run("tab.move", { id: sp.tabs[i].id, index: Math.max(1, Math.min(sp.tabs.length, i + 1 + (a.args.by ?? 1))) });
-      } else if (a.command) run(a.command, a.args);
+      } else if (/^(space|tab)\.rename$/.test(a.command)) renameWith(a.command, a.args); // yours once typed (lib/spacenames.js)
+      else if (a.command) run(a.command, a.args);
     }
     if (!exits) {
       this.flash = `${count ? count + "× " : ""}${b.label}`; cx.notify();

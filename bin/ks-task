@@ -5,7 +5,9 @@ Agents use it (see the ks-tasks skill) to propose tasks, follow the ones they wo
 anyone can use it from a terminal. Tasks an agent adds arrive as *proposed*: the Tasks panel shows them at the top
 for you to accept or dismiss. A task you accepted (or made yourself) is what an agent may start on.
 
-  ks-task add "title" [--body TEXT] [--column NAME] [--today] [--by NAME] [--direct] [--parent ID]
+  ks-task add "title" [--body TEXT] [--column NAME] [--today] [--by NAME] [--direct] [--parent ID] [--anywhere]
+                                        --anywhere: not tied to this space or folder (any space shows it, for
+                                        whoever picks it up later)
                                         --parent: a subtask of that task (its own agent, PR and worktree if need be);
                                         it lands directly when the parent is an accepted task
   ks-task list [--all] [--column NAME] [--mine] [--proposed] [--json] [SEARCH...]
@@ -205,7 +207,7 @@ def line(d, t):
 
 
 def cmd_add(argv):
-    pos, f, o = args(argv, {"--today", "--direct"}, {"--body", "--column", "--by", "--parent"})
+    pos, f, o = args(argv, {"--today", "--direct", "--anywhere"}, {"--body", "--column", "--by", "--parent"})
     if not pos:
         die('add needs a title: ks-task add "title"')
     d, w, ts = load(), where(), now()
@@ -231,6 +233,9 @@ def cmd_add(argv):
         t["space"], t["spaceName"], t["folder"] = parent.get("space") or t["space"], parent.get("spaceName") or t["spaceName"], parent.get("folder") or t["folder"]
         t["order"] = max([x.get("order", 0) for x in d["tasks"] if x.get("parent") == parent["id"]] or [0]) + 1
         log(parent, f'Added subtask "{title}"', who)
+    if "--anywhere" in f:  # nobody's yet: no space, folder or branch, any space shows it
+        t["space"], t["spaceName"], t["folder"] = None, "", None
+        t["source"]["branch"] = ""
     log(t, "Proposed" if t["proposed"] else "Created", who)
     d["tasks"].append(t)
     save(d)
@@ -249,7 +254,7 @@ def cmd_list(argv):
         ts = [t for t in ts if t.get("proposed")]
     if "--mine" in f:
         folder = where()["folder"]
-        ts = [t for t in ts if t.get("folder") == folder]
+        ts = [t for t in ts if t.get("folder") == folder or not (t.get("folder") or t.get("space"))]
     for w in [p.lower() for p in pos]:
         ts = [t for t in ts if w in f'{t.get("title", "")} {t.get("body", "")} {t.get("spaceName", "")}'.lower()]
     order = {c["id"]: i for i, c in enumerate(d["columns"])}
@@ -499,6 +504,8 @@ def cmd_start(argv):
     term = os.environ.get("HC_TERMINAL_ID") or os.environ.get("HERDR_PANE_ID")
     t["worker"] = {"terminal": term, "folder": w["folder"], "branch": w["branch"], "at": now(),
                    "session": os.environ.get("CLAUDE_CODE_SESSION_ID"), "subagent": subagent_of_start(pos[0]) if by_agent() else None} if term or by_agent() else None
+    if not (t.get("space") or t.get("folder")):  # an unattached task belongs where it's picked up
+        t["space"], t["spaceName"], t["folder"] = (terminal().get("labels") or {}).get("herdr.space"), w["label"], w["folder"]
     log(t, "Started", who)
     save(d)
     print(f"started: {line(d, t)}")

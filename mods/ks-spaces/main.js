@@ -9,14 +9,15 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, HoverCard } from "gpui-base";
 import { place, alpha, badge, gitWhere, changesTip, rebuilt as isRebuilt } from "./space-text.js";
-import { spaces, machines, panes, terminals, agents, run, openOverlay, exec, hc, theme, settings, shared, setShared, watchFolder, window, layout } from "herdr";
+import { spaces, machines, panes, terminals, agents, run, openOverlay, exec, hc, theme, settings, shared, setShared, watchFolder, window, layout, appHome } from "herdr";
 import * as closing from "./lib/closing.js";
 import { parseStatus, parseRevParse } from "./git-parse.js";
 import { docValue, quicklook, fingerprint } from "./pane-map.js";
 import { dimmed } from "./lib/focus.js";
-import { NAMES, spaceName, spaceTask, labelFor, generic } from "./lib/spacenames.js";
+import { NAMES, ITEMS, spaceName, spaceTask, labelFor, linearIds, issueLabel, noteRename, renameWith, givenSpace, resetName } from "./lib/spacenames.js";
 import { pref } from "./lib/prefs.js";
 import { sectionHead, sectionFrame, headAction, SECTION_HEAD, SB } from "./lib/section.js";
+import { openLinear, copyLinear } from "./lib/linear.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -80,12 +81,22 @@ export function tone(t, status) {
   return t[status] ?? t.unknown;
 }
 
+// A task's window, as ks-tasks opens it: at the last size used, centred.
+function openTaskWindow(id) {
+  const size = shared("ks-tasks.taskSize"), width = size?.width ?? 680, height = size?.height ?? 720;
+  let at;
+  try { const v = window().viewport_size ? window().viewport_size() : null, z = settings().zoom || 1; if (v) at = { x: Math.max(0, Math.round((v.width - width * z) / 2)), y: Math.max(0, Math.round((v.height - height * z) / 2)) }; } catch {}
+  openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width, height, ...(at ? { at } : {}), props: { task: id } });
+}
+
 export default class Spaces extends View {
   init(_props, cx) {
     // ks: space names from their worktrees (lib/spacenames.js), looked up now and every 15 s.
     this.trees = {}; // worktree root -> { repo, branch, at }
     this.nameSpaces(cx);
     cx.timer.every(15000, (cx) => this.nameSpaces(cx));
+    // A rename started from ks: once Herdr's dialog has changed the name, it's yours (lib/spacenames.js).
+    cx.timer.every(1000, () => noteRename());
     this.git = {}; // where() -> { name, branch, ahead, behind, dirty, repo, linked }, null: not a repo
     this.checked = {}; // where() -> when it was last looked at
     this.unsure = new Set(); // where()s git couldn't answer for (a machine away)
@@ -566,7 +577,7 @@ export default class Spaces extends View {
     const crew = {}; // space -> its agents
     for (const a of agents()) (crew[a.space] ??= []).push(a);
     const tint = settings().dark ? "2e" : "24"; // the avatar's tint, read once per draw
-    const one = (r) => (collapsed ? this.compact(r, t) : this.row(r, t, crew[r.w.id] ?? [], tint));
+    const one = (r) => (collapsed ? this.compact(r, t) : this.withItems(r.w, t, this.row(r, t, crew[r.w.id] ?? [], tint)));
     // A repo and its worktrees: one card, a little apart from the rest. Without a
     // space in the main checkout, the repo's name heads the card.
     const draw = (list) => {
@@ -660,6 +671,50 @@ export default class Spaces extends View {
       .when(g?.ahead > 0, (el) => el.child(div().flex_none().text_color(t.muted).child(`\u2191${g.ahead}`)))
       .when(g?.behind > 0, (el) => el.child(div().flex_none().text_color(t.muted).child(`\u2193${g.behind}`)))
       .when(g?.dirty > 0, (el) => el.child(div().id(`dirty-${id}`).flex_none().tooltip(changesTip(g.dirty)).child(`\u00b1${g.dirty}`)));
+  }
+
+  // ks: what the space holds (lib/spacenames.js "ks.spaceItems"): its Linear issues and the tasks in Doing. A
+  // "▸ 3" beside the name unfolds them under the row (kept per space), even for one, to reach it in a click.
+  itemsOf(w) { return shared(ITEMS)?.[w.id] ?? []; }
+  isOpen(id) {
+    if (!this.unfolded) { try { this.unfolded = new Set(JSON.parse(localStorage.getItem("spaces.unfolded") ?? "[]")); } catch { this.unfolded = new Set(); } }
+    return this.unfolded.has(id);
+  }
+  itemsToggle(w, t) {
+    const open = this.isOpen(w.id), n = this.itemsOf(w).length;
+    return h_flex().id(`items-${w.id}`).flex_none().h(18).px(5).gap(3).items_center().rounded(5).text_size(10.5)
+      .text_color(open ? t.foreground : t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground)).cursor_pointer()
+      .tooltip(open ? "Hide its issues and tasks" : n === 1 ? "Its issue or task: click to show it" : `Its ${n} issues and tasks`)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        if (open) this.unfolded.delete(w.id); else this.unfolded.add(w.id);
+        try { localStorage.setItem("spaces.unfolded", JSON.stringify([...this.unfolded])); } catch {}
+        cx.notify();
+      })
+      .child(open ? "▾" : "▸").child(String(n));
+  }
+  withItems(w, t, el) {
+    const list = this.itemsOf(w);
+    if (!list.length || !this.isOpen(w.id)) return el;
+    const chip = (it, key) => div().id(`chip-${w.id}-${key}-${it.id}`).flex_none().px(4).rounded(4).bg(t.hover).text_size(10).text_color(t.accent)
+      .cursor_pointer().tooltip(it.title ? `${it.id} ${it.title} (right-click copies the id)` : `${it.id} (right-click copies the id)`)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); openLinear(it.id, null, cx); })
+      .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); copyLinear(it.id, cx); })
+      .child(it.id);
+    const line = (it, i) => {
+      const task = it.kind === "task";
+      return h_flex().id(`item-${w.id}-${i}`).h(24).flex_none().pl(36).pr(SB.pad).gap(6).items_center().rounded(SB.radius)
+        .text_size(SB.detail).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { if (task) openTaskWindow(it.id); else openLinear(it.id, null, cx); })
+        .when(task, (e) => e.child(div().flex_none().text_color(t.dim).child("◇")))
+        .when(!task, (e) => e.child(chip(it, "i")))
+        .child(div().flex_1().min_w(0).truncate().child(task ? it.title : it.title || (it.repos?.join(" + ") ?? "")))
+        .when(task, (e) => e.children((it.issues ?? []).filter(Boolean).slice(0, 2).map((x) => chip(x, `t${i}`))));
+    };
+    return v_flex().id(`space-wrap-${w.id}`).flex_none().gap(1).child(el).children(list.map(line));
   }
 
   // Under the name: "repo · branch ↑2 ↓1 ±3" (space-text.js's gitWhere says what goes).
@@ -830,23 +885,80 @@ export default class Spaces extends View {
           this.trees[k] = { info, at: Date.now() };
           return info;
         };
+        // Linear: team keys seen in links (only their ids count), titles learned from PRs, and the task board.
+        const titles = shared("ks.linearTitles") ?? {}, known = [...new Set(Object.keys(titles).map((id) => id.split("-")[0]))];
+        let board = { columns: [], tasks: [] };
+        try { const r = await exec("cat", [`${appHome()}/data/ks-tasks.json`]); board = JSON.parse(r.stdout || "{}"); } catch {}
+        const cols = board.columns ?? [], doingCol = (cols.find((c) => c.id === "doing") ?? cols[cols.length - 2])?.id;
+        const items = {};
         for (const sp of spaces()) {
           const tabs = new Set(sp.tabs.map((x) => x.id));
-          const roots = [...(session[sp.id] ?? []).map((r) => ({ root: r.root, on: r.on ?? null })),
+          // Where its Claude agents work (agent_where.py, cached a minute): spaces you haven't opened lately too.
+          const worked = [];
+          for (const a of agents().filter((x) => x.space === sp.id && !sp.machine)) for (const root of await this.agentRoots(a)) worked.push({ root, on: null });
+          const roots = [...worked, ...(session[sp.id] ?? []).map((r) => ({ root: r.root, on: r.on ?? null })),
             ...agents().filter((a) => a.space === sp.id).map((a) => ps.find((p) => p.pane === a.pane)).filter((p) => p?.cwd && p.branch && tabs.has(p.tab)).map((p) => ({ root: p.cwd, on: sp.machine ?? null }))];
           const trees = [], seen = new Set();
           for (const r of roots) {
             const info = await tree(r.root, r.on);
             if (info && !seen.has(`${info.repo}\n${info.branch}`)) { seen.add(`${info.repo}\n${info.branch}`); trees.push(info); }
           }
-          // A name you gave it stays, unless it only repeats the repo or folder (lib/spacenames.js).
-          if (sp.named && !generic(sp, trees)) continue;
-          const label = labelFor(trees);
-          if (label && label !== sp.name) out[sp.id] = label;
+          // Its Linear issues: from its worktrees' branches (most recent work first), then its open tasks'.
+          const issues = new Map(), terms = new Set(ps.filter((p) => tabs.has(p.tab) && p.terminal).map((p) => p.terminal));
+          const addIssue = (id, title, repo) => {
+            const it = issues.get(id) ?? { kind: "issue", id, title: titles[id]?.title ?? "", repos: [] };
+            if (!it.title && title) it.title = title;
+            if (repo && !it.repos.includes(repo)) it.repos.push(repo);
+            issues.set(id, it);
+          };
+          for (const tr of trees) for (const id of linearIds(tr.branch, known)) {
+            const rest = tr.branch.split("/").pop().replace(new RegExp(`^.*?${id}-?`, "i"), "").replace(/-/g, " ").trim();
+            addIssue(id, rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : "", tr.repo);
+          }
+          const roots2 = trees.map((tr) => tr.root.toLowerCase());
+          // The tasks being worked on (in Doing), each in one space: the one it was made in; when that has gone, the
+          // one its agent's terminal is in, else the one working in its worktree. A detached task (no space) is in none.
+          const live = new Set(spaces().map((x) => x.id));
+          const owns = (x) => x.space ? (live.has(x.space) ? x.space === sp.id : terms.has(x.worker?.terminal)
+            || Boolean(x.worker?.folder && roots2.some((r) => x.worker.folder.toLowerCase().startsWith(r)))) : false;
+          const mine = (board.tasks ?? []).filter((x) => !x.parent && !x.proposed && x.column === doingCol && owns(x));
+          const tasks = mine.map((x) => {
+            const ids = [...new Set([...(x.links ?? []).filter((l) => l.kind === "linear").map((l) => l.label), ...linearIds(`${x.title} ${x.worker?.branch ?? ""}`, known)])];
+            for (const id of ids) addIssue(id, "", null);
+            return { kind: "task", id: x.id, title: x.title, issues: ids };
+          });
+          // Listed: each issue no task covers, then each task (its issues on it).
+          const covered = new Set(tasks.flatMap((x) => x.issues));
+          items[sp.id] = [...[...issues.values()].filter((it) => !covered.has(it.id)), ...tasks.map((x) => ({ ...x, issues: x.issues.map((id) => issues.get(id)) }))];
+          const first = [...issues.values()][0];
+          const label = first ? issueLabel(first) : labelFor(trees);
+          if (label) out[sp.id] = label;
         }
         if (JSON.stringify(out) !== JSON.stringify(shared(NAMES) ?? {})) setShared(NAMES, out);
+        if (JSON.stringify(items) !== JSON.stringify(shared(ITEMS) ?? {})) setShared(ITEMS, items);
       } finally { this.naming = false; }
     });
+  }
+
+  // The checkouts a Claude agent worked in lately (ks-changes/agent_where.py), cached a minute per agent.
+  async agentRoots(a) {
+    this.whereCache ??= {};
+    const c = this.whereCache[a.address];
+    if (c && Date.now() - c.at < 60000) return c.roots;
+    let roots = [];
+    if (/claude/i.test(a.app ?? "")) {
+      try {
+        const info = JSON.parse((await hc(["get", a.address])).stdout), pid = info?.foreground?.pid;
+        if (pid) {
+          const args = ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid), info.title ?? ""];
+          let w = await exec("python3", args).catch(() => null);
+          if (!w || w.code !== 0) w = await exec("/usr/bin/python3", args).catch(() => null);
+          if (w?.code === 0) roots = (JSON.parse(w.stdout).roots ?? []).slice(0, 4);
+        }
+      } catch {}
+    }
+    this.whereCache[a.address] = { at: Date.now(), roots };
+    return roots;
   }
 
   row({ w, i, g, tree }, t, crew, tint) {
@@ -887,6 +999,7 @@ export default class Spaces extends View {
           .child(v_flex().flex_1().min_w(0).gap(2)
             .child(div().min_w(0).truncate().font_medium().text_color(t.foreground).child(label))
             .when(Boolean(line), el => el.child(line)))
+          .when(this.itemsOf(w).length > 0, el => el.child(this.itemsToggle(w, t)))
           .when(crew.length > 0, el => el.child(this.crewBadge(w, crew, t))),
       ), w.id, w.machine ?? null, () => run("space.select", { id: w.id }));
   }

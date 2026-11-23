@@ -4,6 +4,7 @@
 // Mods can't import from each other: this file is copied as-is into both, and scripts/sync.sh
 // refuses to install copies that differ.
 import { spaces, panes, agents, terminals, run, openOverlay, closeOverlay, shared, setShared, exec, hc } from "herdr";
+import { tabLabel } from "./lib/spacenames.js";
 import * as closing from "./lib/closing.js";
 
 // One choice for tabs (the tab menu sets it) and one for panes (the terminal menu), each under the
@@ -26,7 +27,8 @@ export function tabProgram(c) {
 }
 
 // A tab nobody named shows its program, as the tab bar draws it.
-export const tabName = (c, program = tabProgram(c)) => /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name;
+// ks: the name you gave it, else its agent's title now, else Herdr's (lib/spacenames.js).
+export const tabName = (c, program = tabProgram(c)) => tabLabel(c, program?.name ?? "Terminal");
 
 // The dialog's title doesn't wrap: a long name is cut to what fits, a wide (CJK) character counting twice.
 function fit(name, room = 26) {

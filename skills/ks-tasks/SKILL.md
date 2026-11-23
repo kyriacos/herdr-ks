@@ -23,6 +23,7 @@ It is not Linear, and doesn't replace it.
 ks-task add "Short imperative title" --body "Why, where (file:line), what done looks like"   # proposed
 ks-task add "Title" --direct [--today] [--column "To do"]                                    # user asked for it
 ks-task add "Step" --parent ID   # a subtask (lands directly under an accepted task); start/link/done it like any task
+ks-task add "Title" --anywhere   # not tied to this space, folder or branch: for whoever picks it up later
 ks-task list                     # open tasks (proposed marked); --all, --mine (this repo), --proposed, --json, search words
 ks-task show ID                  # details, comments, attachment paths
 ks-task start ID                 # move to the in-progress column, as yours (refused while still proposed);

@@ -45,12 +45,17 @@ The interface font is whatever you pick in Herdr's Settings (the layout sets non
 
 ## Spaces, worktrees and new worktrees
 
-- **Space names** come from the worktree its agent works in: `search-filters · backend + web` (the branch first,
-  then the repos on it; `+2` for other worktrees), or `herdr-ks · main` on main. Under the name: what the agent is
-  working on (its tab's name, else its title) and git's ↑ ↓ ±. A name you give a space (right-click → Rename) is
-  kept, unless it only repeats the repo or folder (`backend`, `web`, `~`). The worktrees are the ones the Changes
-  panel has seen the agent use, plus the folders the agents run in; a space nobody has looked at yet keeps
-  Herdr's name until then.
+- **Space names** say what its agents work on: their Linear issue, `ENG-123 · Search filters` (from their
+  worktrees' branches, else their tasks in Doing), else the worktree, `search-filters · backend + web` (the branch
+  first, then the repos on it; `+2` for other worktrees), or `herdr-ks · main` on main. Under the name: what the
+  agent is working on and git's ↑ ↓ ±. When it has issues or tasks in Doing (even one), **▸ N** beside the name unfolds
+  them under the space (click an issue to open it in Linear, a task to open its window); it stays as you left it.
+  The worktrees are where its Claude agents worked lately (as Follow agent finds them) and the Changes panel's.
+- **Names you give** (right-click → Rename on a space or tab, or the key modes' rename keys) are kept as yours and
+  never replaced; **Reset name to automatic** in the same menu hands it back. Names other tools give (Cockpit's
+  renamer, Herdr's folder names) are ignored: ks shows its own. A tab's automatic name is its agent's title as it is
+  now. Cockpit's own renamer is best turned off (`"names": false` in `~/.config/cockpit/config.json`), so Herdr's
+  native lists don't fill with stale names.
 
 - Spaces of the same repo sit together on one card in the sidebar: main checkout first, then each worktree
   with its branch.
@@ -251,7 +256,10 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
 - Drop files onto a card to attach them to that task, or onto a column or list for a new task carrying them.
 - **New tasks:** `n` opens a box right under the selected task, `N` one at the end of its list (or column), and
   **+ Add task** at the end of each list does the same. Type and Enter: the task is saved and selected, so the next
-  Enter opens it for details. Esc cancels. Not while you're typing in a box.
+  Enter opens it for details. Esc cancels. Not while you're typing in a box. The chip on the right of the box says
+  where it belongs: `◉ <space>` (this space and its folder) or, clicked, `◌ Anywhere`: tied to no space, folder or
+  branch, it shows in every space for whoever picks it up later (`ks-task add "title" --anywhere` from a terminal).
+  It belongs to the space it's started in. A task's window has **×** on its space to leave it unattached later.
 - **Undo / redo:** every change on the board or in Today (moves, today on / off, adding, deleting, columns): `u` /
   `U`, `cmd-z` / `cmd-shift-z`, or **↶ ↷** in the header. A card's **×** deletes it, with Undo.
 - Keys: `j`/`k`, `gg`/`G`, `h`/`l` between columns, Enter/`o` open, `n`/`N` new below / at the end, `t` today, `x` delete, `u`/`U` undo / redo,
@@ -591,6 +599,10 @@ time the set of open spaces changes). **Clear everything** starts over.
 - **Light theme looks broken in Claude Code** (heavy red/green diff rows, unreadable gray text): Claude Code
   has its own theme. Run `/theme` in Claude and pick a light one (or set `"theme": "light"` in
   `~/.claude/settings.json`). Its auto theme can't tell Herdr's background, so pick it explicitly.
+- **Cockpit panels (`show`) open in another space**: in a Claude Code background session the MCP server runs in the
+  daemon's worker, which carries the terminal id of whatever terminal it was spawned from. Cockpit opens its pane
+  beside that terminal, and answers given in the pane may go to that terminal too. That's Cockpit's to fix; ks can't
+  move the pane (Herdr can't move a pane across tabs, and a mod pane doesn't say which session opened it).
 - **Follow agent shows nothing**: it needs `python3`. Claude Code and Codex are read from their session logs;
   another agent is followed only by where its process is now, so it must be inside a git checkout.
 - **PR features empty**: `gh auth status` must be logged in.

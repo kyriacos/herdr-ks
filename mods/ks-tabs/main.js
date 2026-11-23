@@ -1,6 +1,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, run, openOverlay, theme, window, shared, setShared, layout, settings, focused, props, nextCommand, agents, panes, terminals, hc, exec, appHome, notify } from "herdr";
+import { renameWith, givenTab, resetName } from "./lib/spacenames.js";
 import { closeTab, closePane, tabName, tabProgram } from "./close.js";
 import * as sessions from "./lib/sessions.js";
 import * as closing from "./lib/closing.js";
@@ -158,7 +159,8 @@ export default class Tabs extends View {
   renderMenu() {
     const { id, space } = props().menu;
     return menuView(this, [
-      { label: "Rename", icon: "square-pen", act: () => run("tab.rename", { id }), keys: shortcut(["tab.rename"]) },
+      { label: "Rename", icon: "square-pen", act: () => renameWith("tab.rename", { id }), keys: shortcut(["tab.rename"]) },
+      ...(givenTab(id) ? [{ label: "Reset name to automatic", icon: "square-pen", act: () => resetName("tab", id) }] : []),
       { label: "New tab", icon: "plus", act: () => run("tab.new", { space }), keys: shortcut(["tab.new"]) },
       { label: "Close", icon: "x", sep: true, act: () => closeTab(id), keys: shortcut(["ks-tabs.close", "tab.close"]) },
     ], "tab");
@@ -229,7 +231,7 @@ export default class Tabs extends View {
         .border(1).border_color(lifted ? alpha(t.accent, "66") : c.active ? t.border : t.chrome).when(lifted, e => e.border_dashed()).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
         .opacity(lifted ? 0.4 : 1).when(Boolean(dragging), e => e.cursor_grabbing())
         .hover(s => s.bg(t.hover))
-        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; this.drag = { i, id: c.id, name, x: e.position.x, moved: false, over: null, after: false }; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
+        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; this.drag = { i, id: c.id, name, x: e.position.x, moved: false, over: null, after: false }; if (e.click_count === 2) renameWith("tab.rename", { id: c.id }); })
         .on_mouse_move((e, cx) => {
           const d = this.drag;
           if (!d?.moved) return;
