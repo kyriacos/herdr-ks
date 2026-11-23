@@ -73,7 +73,7 @@ subject, sha or author. Enter opens the first match, Esc clears, ✕ too.
 | Choice | Shows |
 |---|---|
 | Follow focused terminal (default) | The folder of the terminal you're in |
-| **Follow agent** | Every checkout the tab's agent worked in this session, most recent first, one foldable section each. Claude Code and Codex: read from the session log (files it edited, folders it `cd`/`git -C`'d into). Any other agent: where its process and its commands are right now. Rechecked every 10 s |
+| **Follow agent** | Every checkout the tab's agent worked in this session, most recent first, one foldable section each. Claude Code and Codex: read from the session log (files it edited, folders it `cd`/`git -C`'d into); a Claude Code background session (`claude` attached to the daemon, `claude attach <id>`) is found by the id it attaches to, else by the terminal's title, which is the session's name. Any other agent: where its process and its commands are right now. Rechecked every 10 s |
 | A worktree | Pinned for this space |
 | Matching branch in other repos (on) | Sibling repos (same parent folder) on the same branch show as extra sections, each with its own commit button |
 

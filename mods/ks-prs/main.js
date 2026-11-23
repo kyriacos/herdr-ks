@@ -43,9 +43,9 @@ function agentDirs(a, cx, then) {
     cx.spawn(async (cx) => {
       let dirs = c?.dirs ?? [];
       try {
-        const pid = JSON.parse((await hc(["get", a.address])).stdout)?.foreground?.pid;
+        const info = JSON.parse((await hc(["get", a.address])).stdout), pid = info?.foreground?.pid;
         if (pid) {
-          const args = ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid)];
+          const args = ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid), info.title ?? ""];
           // Herdr's own PATH may not have Homebrew's python3: fall back to macOS's.
           let w = await exec("python3", args).catch(() => null);
           if (!w || w.code !== 0) w = await exec("/usr/bin/python3", args).catch(() => null);

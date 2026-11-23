@@ -70,7 +70,8 @@ async function agentRoots(address) {
   let info; try { info = JSON.parse(r.stdout); } catch { return null; }
   const pid = info.foreground?.pid;
   if (!pid) return null;
-  const args = ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid)];
+  // The title too: a background Claude session is found by it (see agent_where.py).
+  const args = ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid), info.title ?? ""];
   // Herdr's own PATH may not have Homebrew's python3: fall back to macOS's.
   let w = await exec("python3", args).catch(() => null);
   if (!w || w.code !== 0) w = await exec("/usr/bin/python3", args).catch(() => null);

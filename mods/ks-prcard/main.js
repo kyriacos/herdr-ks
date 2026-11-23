@@ -61,9 +61,9 @@ async function agentsIn(root) {
     let hit = inside(pane?.cwd, root);
     if (!hit && (a.app === "claude-code" || /claude/i.test(a.program?.name ?? ""))) {
       const g = await hc(["get", a.address]).catch(() => null);
-      let pid = null; try { pid = JSON.parse(g?.stdout ?? "{}").foreground?.pid; } catch {}
+      let pid = null, title = ""; try { const o = JSON.parse(g?.stdout ?? "{}"); pid = o.foreground?.pid; title = o.title ?? ""; } catch {}
       if (pid) {
-        const w = await exec("python3", ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid)]).catch(() => null);
+        const w = await exec("python3", ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid), title]).catch(() => null);
         try { hit = (JSON.parse(w?.stdout ?? "{}").roots ?? []).some((r) => same(r, root)); } catch {}
       }
     }

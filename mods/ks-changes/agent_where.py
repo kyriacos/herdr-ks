@@ -1,6 +1,6 @@
 """Where an agent is working: the git checkouts it touched last.
 
-Usage: python3 -I agent_where.py <pid>
+Usage: python3 -I agent_where.py <pid> [terminal title]
 Prints JSON: {"roots": [checkout, ...] (most recent first), "touched": [checkout, ...] (every one it edited or
 went into this session, most recent first: the PRs panel looks for their pull requests), "cwd": its recorded
 folder, "log": the log read, "agent": "claude" | "codex" | "other"}
@@ -39,10 +39,38 @@ def load(path):
         return None
 
 
-def log_of(pid):
-    sess = load(f"{HOME}/.claude/sessions/{pid}.json")
+def background_session(pid, title):
+    """Claude Code's background sessions: the terminal runs a client (`claude`, `claude attach <id>`) and the
+    session lives in a daemon worker, whose pid the session file is named after. The client's session: the one
+    `attach` names, else the one named as the terminal's title (Claude sets that title to the session's name),
+    else the only one started in the client's folder."""
+    argv = sh(["ps", "-o", "command=", "-p", str(pid)]).split()
+    if not argv or os.path.basename(argv[0]) != "claude":
+        return None
+    bg = [s for s in (load(f) for f in glob.glob(f"{HOME}/.claude/sessions/*.json"))
+          if s and s.get("kind") == "bg" and s.get("sessionId") and s.get("cwd")]
+    if "attach" in argv:
+        i = argv.index("attach")
+        want = argv[i + 1] if i + 1 < len(argv) else ""
+        hits = [s for s in bg if want and s["sessionId"].startswith(want)]
+        if hits:
+            return hits[0]
+    if title:
+        hits = [s for s in bg if s.get("name") == title]
+        if hits:
+            return max(hits, key=lambda s: s.get("startedAt") or 0)
+    here = cwds([str(pid)])
+    hits = [s for s in bg if here and s["cwd"] == here[0]]
+    return hits[0] if len(hits) == 1 else None
+
+
+def log_of(pid, title=None):
+    sess = load(f"{HOME}/.claude/sessions/{pid}.json") or background_session(pid, title)
     if not sess:
         return None, None
+    if sess.get("kind") == "bg":
+        log = f"{HOME}/.claude/projects/{re.sub(r'[^A-Za-z0-9]', '-', sess['cwd'])}/{sess['sessionId']}.jsonl"
+        return (log if os.path.exists(log) else None), sess["cwd"]
     folder = f"{HOME}/.claude/projects/{re.sub(r'[^A-Za-z0-9]', '-', sess['cwd'])}"
     log = f"{folder}/{sess['sessionId']}.jsonl"
     if os.path.exists(log):
@@ -240,7 +268,7 @@ def codex_signals(lines, launch):
 
 def main():
     pid = sys.argv[1]
-    log, launch = log_of(pid)
+    log, launch = log_of(pid, sys.argv[2] if len(sys.argv) > 2 else None)
     out = {"roots": [], "cwd": launch, "log": log, "agent": "claude"}
     signals, cwd = [], launch
     if log:

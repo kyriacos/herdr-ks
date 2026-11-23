@@ -843,9 +843,9 @@ export default class Files extends View {
         const roots = [];
         for (const a of agents().filter((x) => x.space === space && /claude/i.test(x.app ?? ""))) {
           const g = await hc(["get", a.address]).catch(() => null);
-          let pid = null; try { pid = JSON.parse(g?.stdout ?? "{}").foreground?.pid; } catch {}
+          let pid = null, title = ""; try { const o = JSON.parse(g?.stdout ?? "{}"); pid = o.foreground?.pid; title = o.title ?? ""; } catch {}
           if (!pid) continue;
-          const args = ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid)];
+          const args = ["-I", `${appHome()}/mods/ks-changes/agent_where.py`, String(pid), title];
           let w = await exec("python3", args).catch(() => null);
           if (!w || w.code !== 0) w = await exec("/usr/bin/python3", args).catch(() => null);
           try { roots.push(...(JSON.parse(w?.stdout ?? "{}").roots ?? [])); } catch {}
