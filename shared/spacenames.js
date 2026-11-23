@@ -50,7 +50,7 @@ export function labelFor(trees) {
   if (!trees.length) return null;
   // Named after where its agents mainly work (trees marked primary, when any are).
   const pool = trees.some((t) => t.primary) ? trees.filter((t) => t.primary) : trees;
-  const main = pool.find((t) => !["main", "master"].includes(t.branch)) ?? pool[0], b = short(main.branch);
+  const main = pool.find((t) => !["main", "master", "detached"].includes(t.branch)) ?? pool.find((t) => t.branch !== "detached") ?? pool[0], b = short(main.branch);
   // On main many repos share the branch: only the primary ones are named. Off main every repo on it is.
   const onMain = !b || ["main", "master"].includes(b);
   const same = [...new Set((onMain ? pool : trees).filter((t) => short(t.branch) === b).map((t) => t.repo))];

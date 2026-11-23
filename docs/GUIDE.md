@@ -219,8 +219,8 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   to move it and **Delete** (a column with tasks hands them to the first other column). Drag a card to another
   column or between two cards, or use `H`/`L` (to the column left / right) and `J`/`K` (up / down).
 - **Today:** what you plan to do today, then the backlog (everything else that isn't done). The **☀** on a card
-  (or `t`) moves it between the two; dragging works here too. The board's last column counts as done, and its tasks
-  leave both lists.
+  (or `t`) moves it between the two; dragging works here too. The board's last column counts as done: its tasks
+  leave both lists, lose their ☀ Today, and can't be put back on Today (moving one out of Done is a column move).
 - **A task** (click it, or Enter) opens in a window you can move and resize by its corners; every task opens in
   the middle at the last size. It has its title, description, column, Today, attachments, and its **Activity**: the
   comments and everything that happened to it (created, moved, renamed, added to today, attached, started, done),

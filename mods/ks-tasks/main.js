@@ -103,6 +103,9 @@ const ops = {
     const x = find(d, id); if (!x) return;
     if ("title" in fields && fields.title !== x.title) log(x, "Renamed");
     if ("body" in fields && fields.body !== x.body) log(x, "Edited the description");
+    // A done task is off Today and stays off (and changing it never takes it out of Done).
+    const done = (fields.column ?? x.column) === doneCol(d);
+    if (done && "today" in fields) { fields = { ...fields }; delete fields.today; if (fields.column && x.today) fields.today = false; }
     if ("today" in fields && Boolean(fields.today) !== Boolean(x.today)) log(x, fields.today ? "Added to today" : "Taken off today");
     if ("proposed" in fields && x.proposed && !fields.proposed) log(x, "Accepted");
     Object.assign(x, fields, { updated: Date.now() });
@@ -111,16 +114,16 @@ const ops = {
     const x = find(d, id); if (!x || !d.columns.some((c) => c.id === col)) return;
     x.order = orderAt(inCol(d, col), before, id);
     if (x.column !== col) { log(x, `Moved from ${COLNAME(d, x.column)} to ${COLNAME(d, col)}`); x.column = col; x.doneAt = col === doneCol(d) ? Date.now() : null; }
+    if (col === doneCol(d)) x.today = false; // done: off Today
     x.updated = Date.now();
   },
   // Today / backlog: `today` on or off, placed before `before` in that list.
   plan: (id, today, before, list) => (d) => {
-    const x = find(d, id); if (!x) return;
+    const x = find(d, id); if (!x || x.column === doneCol(d)) return; // a done task has no Today, and stays done
     // A proposed task dragged into Today or Backlog: that's accepting it.
     if (x.proposed) { log(x, "Accepted"); x.proposed = false; }
     if (Boolean(x.today) !== Boolean(today)) log(x, today ? "Added to today" : "Taken off today");
     x.today = today; x.order = orderAt(list.map((y) => find(d, y.id) ?? y), before, id);
-    if (x.column === doneCol(d)) { const to = d.columns[today && d.columns[1] ? 1 : 0].id; log(x, `Moved from ${COLNAME(d, x.column)} to ${COLNAME(d, to)}`); x.column = to; x.doneAt = null; }
     x.updated = Date.now();
   },
   remove: (id) => (d) => { d.tasks = d.tasks.filter((x) => x.id !== id && x.parent !== id); }, // its subtasks go with it
@@ -136,7 +139,7 @@ const ops = {
     const x = find(d, id); if (!x) return;
     const to = on ? doneCol(d) : d.columns[0]?.id;
     if (!to || x.column === to) return;
-    log(x, `Moved from ${COLNAME(d, x.column)} to ${COLNAME(d, to)}`); x.column = to; x.doneAt = on ? Date.now() : null; x.updated = Date.now();
+    log(x, `Moved from ${COLNAME(d, x.column)} to ${COLNAME(d, to)}`); x.column = to; x.doneAt = on ? Date.now() : null; if (on) x.today = false; x.updated = Date.now();
   },
   attach: (id, list) => (d) => {
     const x = find(d, id); if (!x) return;
@@ -434,6 +437,7 @@ export default class Tasks extends View {
     this.say(`Deleted "${task.title || "Untitled"}"`, "undo", cx);
   }
   toggleToday(task, cx) {
+    if (task.column === doneCol(this.data)) return; // done: no Today
     const l = this.lists(), to = !task.today;
     this.apply(ops.plan(task.id, to, null, to ? l.today : l.backlog), cx);
   }
@@ -585,12 +589,12 @@ export default class Tasks extends View {
         .on_drop((e, cx) => { cx.stop_propagation(); this.droppedOn = true; cx.timer.after(100, () => { this.droppedOn = false; }); this.dropOn(task, e.paths, cx); })
         .child(h_flex().gap(6).items_start()
           .child(div().flex_1().min_w(0).text_size(12.5).text_color(done ? t.muted : t.foreground).child(task.title || "Untitled"))
-          .child(div().id(`today-${task.id}`).flex_none().px(5).rounded(5).text_size(10.5).cursor_pointer()
+          .when(!done, (e) => e.child(div().id(`today-${task.id}`).flex_none().px(5).rounded(5).text_size(10.5).cursor_pointer()
             .border_1().border_color(task.today ? t.accent : t.border).text_color(task.today ? t.accent : t.dim)
             .bg(task.today ? alpha(t.accent, "1f") : t.background)
             .tooltip(task.today ? "On today's list (t takes it off)" : "Add to today (t)")
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-            .on_click((_e, cx) => { cx.stop_propagation(); this.toggleToday(task, cx); }).child(task.today ? "☀ Today" : "☀"))
+            .on_click((_e, cx) => { cx.stop_propagation(); this.toggleToday(task, cx); }).child(task.today ? "☀ Today" : "☀")))
           .child(div().id(`del-${task.id}`).flex_none().px(4).rounded(4).text_size(11).text_color(t.dim).cursor_pointer()
             .hover((s) => s.bg(t.hover).text_color(t.ansi1)).tooltip("Delete (x), with undo")
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
@@ -824,7 +828,7 @@ export default class Tasks extends View {
   }
   stops(x) {
     const ag = agentOf(x) ? ["agent", "screen"] : [];
-    return ["title", ...this.data.columns.map((c) => `col:${c.id}`), "today", ...(x.proposed ? ["accept", "dismiss"] : []), ...ag, "body", "subadd", "pick", "paste", "note", "send", "ask", "delete"];
+    return ["title", ...this.data.columns.map((c) => `col:${c.id}`), ...(x.column === doneCol(this.data) ? [] : ["today"]), ...(x.proposed ? ["accept", "dismiss"] : []), ...ag, "body", "subadd", "pick", "paste", "note", "send", "ask", "delete"];
   }
   goStop(name, cx) {
     this.stop = name;
@@ -840,7 +844,7 @@ export default class Tasks extends View {
   pressStop(x, cx) {
     const s = this.stop ?? "";
     if (s.startsWith("col:")) this.apply(ops.move(x.id, s.slice(4), null), cx);
-    else if (s === "today") this.apply(ops.patch(x.id, { today: !x.today }), cx);
+    else if (s === "today" && x.column !== doneCol(this.data)) this.apply(ops.patch(x.id, { today: !x.today }), cx);
     else if (s === "accept") this.apply(ops.patch(x.id, { proposed: false }), cx);
     else if (s === "dismiss") { this.apply(ops.remove(x.id), cx); this.closeTask(cx); }
     else if (s === "agent") { const a = agentOf(x); if (a) { this.closeTask(cx); focusAgent(a); } }
@@ -950,8 +954,7 @@ export default class Tasks extends View {
         .child(v_flex().id("task-body").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).px(16).pt(12).pb(20)
           .child(h_flex().flex_wrap().gap(6).items_center()
             .children(d.columns.map((c) => pill(`tc-${c.id}`, c.name, x.column === c.id, (cx) => this.apply(ops.move(x.id, c.id, null), cx), t.accent, `col:${c.id}`)))
-            .child(div().w(8))
-            .child(pill("tt", x.today ? "☀ Today" : "☀ Add to today", Boolean(x.today), (cx) => this.apply(ops.patch(x.id, { today: !x.today }), cx), t.accent, "today")))
+            .when(x.column !== doneCol(d), (e) => e.child(div().w(8)).child(pill("tt", x.today ? "☀ Today" : "☀ Add to today", Boolean(x.today), (cx) => this.apply(ops.patch(x.id, { today: !x.today }), cx), t.accent, "today"))))
           .when(Boolean(x.parent && find(d, x.parent)), (e) => e.child(div().id("t-parent").mt(8).text_size(11).text_color(t.accent).cursor_pointer()
             .hover((s) => s.text_color(t.foreground)).tooltip("Open the parent task")
             .on_click((_e, cx) => { this.closeTask(cx); openTaskWindow(x.parent); }).child(`↑ Subtask of ${find(d, x.parent)?.title || "Untitled"}`)))

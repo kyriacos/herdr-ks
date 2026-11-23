@@ -349,6 +349,8 @@ def move(d, t, c, who=None):
         top = max([x.get("order", 0) for x in d["tasks"] if x.get("column") == c["id"]] or [0])
         t["column"], t["order"] = c["id"], top + 1
         t["doneAt"] = now() if c["id"] == d["columns"][-1]["id"] else None
+    if c["id"] == d["columns"][-1]["id"]:
+        t["today"] = False  # done: off Today
     t["updated"] = now()
 
 
@@ -551,6 +553,8 @@ def cmd_update(argv):
     if "--body" in o:
         t["body"] = o["--body"]
         log(t, "Edited the description", who)
+    if "--today" in f and t.get("column") == d["columns"][-1]["id"]:
+        die("it's done: a done task can't go on today")
     if "--today" in f and not t.get("today"):
         t["today"] = True
         log(t, "Added to today", who)
