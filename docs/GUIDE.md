@@ -255,7 +255,10 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   then up to three others) shows that agent and pastes the task's reference into its prompt, not sent, so you type
   what you want to discuss and press Enter. The reference reads `Task <id> "<title>" from my board (ks-task show
   <id> for the details)`, and the agent reads the rest with `ks-task`. **Copy reference** puts it on the
-  clipboard instead; **Open** opens the task. A task's window has **Ask agent** too.
+  clipboard instead; **Open** opens the task. A task's window has **Ask agent** too. While you point at an Ask row
+  (or move to it with the arrow keys), the sidebar rings that agent and its space, so you see where it lands.
+- **Drag a card onto an agent or a space in the sidebar** to ask it the same way: the row under the card is ringed,
+  and letting go shows that agent with the reference pasted. A space hands it to its focused agent, else its latest.
 - Drop files onto a card to attach them to that task, or onto a column or list for a new task carrying them.
 - **New tasks:** `n` opens a box right under the selected task, `N` one at the end of its list (or column), and
   **+ Add task** at the end of each list does the same. Type and Enter: the task is saved and selected, so the next

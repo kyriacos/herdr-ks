@@ -18,6 +18,7 @@ import { NAMES, ITEMS, spaceName, spaceTask, labelFor, linearIds, issueLabel, no
 import { pref } from "./lib/prefs.js";
 import { sectionHead, sectionFrame, headAction, SECTION_HEAD, SB } from "./lib/section.js";
 import { openLinear, copyLinear } from "./lib/linear.js";
+import { ringed, hoverDrop, dropOn } from "./lib/taskdrop.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -1010,6 +1011,10 @@ export default class Spaces extends View {
       .rounded(SB.radius)
       .when(on, (el) => el.bg(t.selected))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
+      // A task card dragged here (its agent gets it), or the card menu's row for one of its agents: ringed.
+      .when(ringed("space", w.id), (el) => el.border_1().border_color(t.accent).bg(alpha(t.accent, "1f")))
+      .on_hover((hot) => hoverDrop(hot, null, w.id))
+      .on_mouse_up("left", (_e, cx) => { if (dropOn(null, w.id, cx)) cx.stop_propagation(); })
       .when(this.pressed === w.id && this.over !== w.id && this.cards?.[w.id]?.[0] !== w.id, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === w.id && this.pressed !== w.id, (el) => el.child(
         div().absolute().left(0).right(0).h(2).bg(t.accent)

@@ -38,6 +38,7 @@ import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } 
 import { openLinear as openIssue, copyLinear } from "./lib/linear.js";
 import { agentOf, agentName, STATUS, linearOf, worktreeOf, tilde, prsOf, prTone, prState, screen, subagentsOf, subagentsFor, rev as workRev } from "./work.js";
 import { alpha } from "./lib/color.js";
+import { reference, askAgent as askAddress, setTarget, startDrag, endDrag, dragging } from "./lib/taskdrop.js";
 
 const FILE = () => `${appHome()}/data/ks-tasks.json`;
 const REV = "ks-tasks.rev";
@@ -185,7 +186,7 @@ const putBack = (step, side) => Object.assign((d) => {
 
 // ---------- a card's right-click menu ----------
 // A task's reference, for an agent: its id and title, and how to read the rest (the ks-tasks skill knows ks-task).
-export const reference = (x) => `Task ${x.id} "${x.title || "Untitled"}" from my board (ks-task show ${x.id} for the details) `;
+export { reference };
 const MENU_ROW = 30;
 function openMenu(task) {
   const n = menuRows({ id: task.id, title: task.title, space: task.space }).length;
@@ -196,7 +197,9 @@ function openMenu(task) {
 function menuRows(m) {
   const first = pickAgent(null, m.space), others = agentChoices().filter((a) => a.address !== first?.address).slice(0, 3);
   return [
-    ...[first, ...others].filter(Boolean).map((a, i) => ({ label: `${i ? "Ask" : "Ask about it:"} ${a.title}`, act: (cx) => askAgent(m, a, cx), sep: false, agent: true })),
+    // target: what the sidebar rings while this row is under the pointer (or chosen with the keys).
+    ...[first, ...others].filter(Boolean).map((a, i) => ({ label: `${i ? "Ask" : "Ask about it:"} ${a.title}`, act: (cx) => askAgent(m, a, cx), sep: false, agent: true,
+      target: { agent: a.address, space: agents().find((y) => y.address === a.address)?.space ?? null } })),
     { label: "Copy reference", act: (cx) => { cx.write_to_clipboard(reference(m)); notify({ title: "Task reference copied", body: reference(m).trim(), level: "info", timeout: 2500 }); }, sep: true },
     { label: "Open", act: () => openTaskWindow(m.id) },
   ];
@@ -208,12 +211,7 @@ function focusAgent(a) {
 // A Linear id: opens its link when it has one, else copies the id.
 const openLinear = (l, cx) => openIssue(l.id, l.url, cx);
 
-function askAgent(m, a, cx) {
-  cx.write_to_clipboard(reference(m));
-  run("agent.focus", { terminal: a.address });
-  run("pane.focus", { terminal: a.address });
-  run("terminal.paste");
-}
+const askAgent = (m, a, cx) => askAddress(m, a.address, cx);
 
 export default class Tasks extends View {
   init(_props, cx) {
@@ -466,7 +464,8 @@ export default class Tasks extends View {
     const g = this.drag;
     if (!g) return;
     if (e.local_position) this.ptr = e.local_position;
-    if (!g.moved && Math.abs(e.position.x - g.x) + Math.abs(e.position.y - g.y) > 6) g.moved = true;
+    // Moving: the sidebar's agents and spaces take it too (lib/taskdrop.js).
+    if (!g.moved && Math.abs(e.position.x - g.x) + Math.abs(e.position.y - g.y) > 6) { g.moved = true; const x = find(this.data, g.id); if (x) startDrag(x); }
     if (g.moved) cx.notify();
   }
   // The card being dragged, beside the pointer (not under it, so the cards and columns below still see the pointer).
@@ -477,7 +476,7 @@ export default class Tasks extends View {
     return v_flex().absolute().left(this.ptr.x + 14).top(this.ptr.y + 8).w(240).p(9).gap(4).rounded(8).border_1().border_color(t.accent)
       .bg(t.background).shadow_lg().opacity(0.96)
       .child(div().text_size(12.5).text_color(t.foreground).truncate().child(x.title || "Untitled"))
-      .child(div().text_size(10.5).text_color(to ? t.accent : t.dim).child(to ? `→ ${to}` : "Drop on a column"));
+      .child(div().text_size(10.5).text_color(to ? t.accent : t.dim).child(to ? `→ ${to}` : "Drop on a column, or on an agent or space in the sidebar"));
   }
   // Where the card would land: a slot that opens up between the cards.
   slot(t) { return div().h(34).mx(2).mb(6).rounded(8).border_1().border_dashed().border_color(t.accent).bg(alpha(t.accent, "14")); }
@@ -496,6 +495,7 @@ export default class Tasks extends View {
     const g = this.drag, o = this.over;
     this.drag = null; this.over = null;
     if (!g?.moved) return;
+    endDrag();
     this.justDragged = true; cx.timer.after(80, () => { this.justDragged = false; });
     if (o) {
       if (o.where === "@today" || o.where === "@backlog") this.apply(ops.plan(g.id, o.where === "@today", o.before, this.lists()[o.where.slice(1)]), cx);
@@ -517,7 +517,7 @@ export default class Tasks extends View {
     // cmd-z / cmd-shift-z (and ctrl-r) undo and redo, like everywhere else.
     if ((m.platform && e.key.toLowerCase() === "z") || (m.control && e.key === "r")) { this.step(!(m.shift) && !m.control, cx); cx.stop_propagation(); return; }
     if (m.platform || m.alt || m.control) return;
-    if (this.drag && k === "escape") { this.drag = null; this.over = null; cx.stop_propagation(); cx.notify(); return; }
+    if (this.drag && k === "escape") { this.drag = null; this.over = null; endDrag(); cx.stop_propagation(); cx.notify(); return; }
     const today = this.view === "today", flat = today ? this.flat() : null;
     const col = this.data.columns[this.cur.col], list = col ? this.colTasks(col.id) : [];
     const go = (r) => { if (today) this.row = Math.max(0, Math.min(flat.length - 1, r)); else this.cur.row = Math.max(0, Math.min(list.length - 1, r)); };
@@ -753,6 +753,8 @@ export default class Tasks extends View {
       .on_key_down((e, cx) => this.key(e, cx))
       .on_mouse_move((e, cx) => { if (this.board && e.bounds) this.winRect = e.bounds; this.moveRoot(e, cx); })
       .on_mouse_up("left", (_e, cx) => this.release(cx))
+      // Let go outside (a sidebar row took it, or nothing did): the next press anywhere ends the drag here.
+      .on_mouse_down_out((_e, cx) => { if (this.drag) { this.drag = null; this.over = null; endDrag(); cx.notify(); } })
       .relative().when(Boolean(this.drag?.moved), (e) => e.cursor_grabbing())
       .when(this.board, (e) => e.relative()
         .on_size_change((size) => { if (size?.width && (size.width !== this.size?.width || size.height !== this.size?.height)) { this.size = size; setShared(SIZE, { width: Math.round(size.width), height: Math.round(size.height) }); } })
@@ -1098,27 +1100,33 @@ export default class Tasks extends View {
 
   renderMenu() {
     const t = theme(), rows = menuRows(this.menu);
-    const choose = (i, cx) => { closeOverlay(props().overlay); rows[i]?.act(cx); };
+    const choose = (i, cx) => { setTarget(null); closeOverlay(props().overlay); rows[i]?.act(cx); };
     return v_flex().id("task-menu").track_focus(this.handle).size_full().p(5).bg(t.popover).text_size(12.5).text_color(t.foreground)
+      .on_hover((on) => { if (!on) setTarget(null); })
       .on_key_down((e, cx) => {
-        if (e.key === "escape") { closeOverlay(props().overlay); return; }
+        if (e.key === "escape") { setTarget(null); closeOverlay(props().overlay); return; }
         if (e.key === "down" || e.key === "j") this.at = (this.at + 1) % rows.length;
         else if (e.key === "up" || e.key === "k") this.at = (this.at + rows.length - 1) % rows.length;
         else if (e.key === "enter") return choose(this.at, cx);
         else return;
+        setTarget(rows[this.at]?.target ?? null);
         cx.stop_propagation(); cx.notify();
       })
+      .on_mouse_down_out(() => setTarget(null))
       .child(div().px(8).h(16).text_size(10.5).text_color(t.dim).truncate().child(this.menu.title || "Untitled"))
       .children(rows.map((r, i) => v_flex()
         .when(Boolean(r.sep), (e) => e.child(div().mx(7).my(2).h(1).bg(t.border)))
         .child(h_flex().id(`tm-${i}`).h(MENU_ROW - (r.sep ? 5 : 0)).px(8).items_center().rounded(6).cursor_pointer()
           .when(i === this.at, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
+          .on_hover((on, cx) => { if (on) { this.at = i; setTarget(r.target ?? null); cx.notify(); } })
           .on_click((_e, cx) => choose(i, cx))
           .child(div().flex_1().min_w(0).truncate().text_color(r.agent ? t.foreground : t.muted).child(r.label)))));
   }
 
   render(cx) {
     if (this.menu) return this.renderMenu();
+    // A sidebar row took the card (or the drag went stale): stop dragging it here too.
+    if (this.drag?.moved && !dragging()) { this.drag = null; this.over = null; }
     if (this.taskId) return this.renderTask(cx);
     return this.board ? this.renderList(cx) : dimmed(this, this.renderList(cx));
   }

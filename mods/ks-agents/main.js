@@ -11,6 +11,7 @@ import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
 import { sectionHead, headAction, SB } from "./lib/section.js";
 import { alpha } from "./lib/color.js";
+import { ringed, hoverDrop, dropOn, TARGET, DRAG } from "./lib/taskdrop.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -91,6 +92,9 @@ function icon(p, size, color) {
 export default class Agents extends View {
   init(_props, cx) {
     if (props()?.sortMenu) return;
+    // A task drag or menu ring left over from before a restart.
+    if (shared(DRAG)) setShared(DRAG, null);
+    if (shared(TARGET)) setShared(TARGET, null);
     this.folded = new Set();
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
@@ -396,6 +400,9 @@ export default class Agents extends View {
           .gap(4)
           .hover((s) => s.bg(t.hover))
           .on_click(() => run("pane.focus", { pane: a.pane }))
+          .when(ringed("agent", a.address), (el) => el.bg(alpha(t.accent, "33")))
+          .on_hover((on) => hoverDrop(on, a.address, a.space))
+          .on_mouse_up("left", (_e, cx) => { if (dropOn(a.address, a.space, cx)) cx.stop_propagation(); })
           .child(div().flex_1().min_w(0).whitespace_nowrap().text_right().text_color(t.muted).child(String(i + 1)))
           .child(h_flex().w(14).flex_none().items_center().justify_center().child(this.status(t, a, true)));
       }
@@ -434,7 +441,11 @@ export default class Agents extends View {
         .when(a.focused, (el) => el.bg(t.selected))
         .cursor_pointer()
         .hover((s) => s.bg(t.hover))
+        // A task card dragged here, or the card menu's row for this agent under the pointer: ringed (lib/taskdrop.js).
+        .when(ringed("agent", a.address), (el) => el.border_1().border_color(t.accent).bg(alpha(t.accent, "1f")))
+        .on_mouse_up("left", (_e, cx) => { if (dropOn(a.address, a.space, cx)) cx.stop_propagation(); })
         .on_hover((on, cx) => {
+          hoverDrop(on, a.address, a.space);
           if (on) this.hovered = a.address;
           else if (this.hovered === a.address) this.hovered = null;
           cx.notify();
