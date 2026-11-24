@@ -38,7 +38,7 @@ import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } 
 import { openLinear as openIssue, copyLinear } from "./lib/linear.js";
 import { agentOf, agentName, STATUS, linearOf, worktreeOf, tilde, prsOf, prTone, prState, screen, subagentsOf, subagentsFor, rev as workRev } from "./work.js";
 import { alpha } from "./lib/color.js";
-import { reference, askAgent as askAddress, setTarget, startDrag, endDrag, dragging } from "./lib/taskdrop.js";
+import { reference, askAgent as askAddress, setTarget } from "./lib/taskdrop.js";
 
 const FILE = () => `${appHome()}/data/ks-tasks.json`;
 const REV = "ks-tasks.rev";
@@ -458,14 +458,16 @@ export default class Tasks extends View {
   // ---------- dragging ----------
   // A press on a card arms a drag; it starts once the pointer moved a few pixels (a plain click opens the task).
   // While dragging, the card or column under the pointer says where it would land (this.over = { where, before }).
-  pressCard(task, e) { this.drag = { id: task.id, x: e.position.x, y: e.position.y, moved: false }; }
+  // The press focuses the panel, so Esc reaches it mid-drag.
+  pressCard(task, e) { this.drag = { id: task.id, x: e.position.x, y: e.position.y, moved: false }; this.handle.focus(); }
+  // Esc or leaving the panel: nothing moves (a drag only changes the board when it's let go over a column).
+  cancelDrag(cx) { const was = this.drag?.moved; this.drag = null; this.over = null; if (was) { this.justDragged = true; cx.timer.after(80, () => { this.justDragged = false; }); } cx.notify(); }
   // The pointer, over the whole view: a drag starts after a few pixels, then a copy of the card follows it.
   moveRoot(e, cx) {
     const g = this.drag;
     if (!g) return;
     if (e.local_position) this.ptr = e.local_position;
-    // Moving: the sidebar's agents and spaces take it too (lib/taskdrop.js).
-    if (!g.moved && Math.abs(e.position.x - g.x) + Math.abs(e.position.y - g.y) > 6) { g.moved = true; const x = find(this.data, g.id); if (x) startDrag(x); }
+    if (!g.moved && Math.abs(e.position.x - g.x) + Math.abs(e.position.y - g.y) > 6) g.moved = true;
     if (g.moved) cx.notify();
   }
   // The card being dragged, beside the pointer (not under it, so the cards and columns below still see the pointer).
@@ -476,7 +478,7 @@ export default class Tasks extends View {
     return v_flex().absolute().left(this.ptr.x + 14).top(this.ptr.y + 8).w(240).p(9).gap(4).rounded(8).border_1().border_color(t.accent)
       .bg(t.background).shadow_lg().opacity(0.96)
       .child(div().text_size(12.5).text_color(t.foreground).truncate().child(x.title || "Untitled"))
-      .child(div().text_size(10.5).text_color(to ? t.accent : t.dim).child(to ? `→ ${to}` : "Drop on a column, or on an agent or space in the sidebar"));
+      .child(div().text_size(10.5).text_color(to ? t.accent : t.dim).child(to ? `→ ${to}` : "Drop on a column (Esc or leaving the panel puts it back)"));
   }
   // Where the card would land: a slot that opens up between the cards.
   slot(t) { return div().h(34).mx(2).mb(6).rounded(8).border_1().border_dashed().border_color(t.accent).bg(alpha(t.accent, "14")); }
@@ -495,7 +497,6 @@ export default class Tasks extends View {
     const g = this.drag, o = this.over;
     this.drag = null; this.over = null;
     if (!g?.moved) return;
-    endDrag();
     this.justDragged = true; cx.timer.after(80, () => { this.justDragged = false; });
     if (o) {
       if (o.where === "@today" || o.where === "@backlog") this.apply(ops.plan(g.id, o.where === "@today", o.before, this.lists()[o.where.slice(1)]), cx);
@@ -517,7 +518,7 @@ export default class Tasks extends View {
     // cmd-z / cmd-shift-z (and ctrl-r) undo and redo, like everywhere else.
     if ((m.platform && e.key.toLowerCase() === "z") || (m.control && e.key === "r")) { this.step(!(m.shift) && !m.control, cx); cx.stop_propagation(); return; }
     if (m.platform || m.alt || m.control) return;
-    if (this.drag && k === "escape") { this.drag = null; this.over = null; endDrag(); cx.stop_propagation(); cx.notify(); return; }
+    if (this.drag && k === "escape") { this.cancelDrag(cx); cx.stop_propagation(); return; }
     const today = this.view === "today", flat = today ? this.flat() : null;
     const col = this.data.columns[this.cur.col], list = col ? this.colTasks(col.id) : [];
     const go = (r) => { if (today) this.row = Math.max(0, Math.min(flat.length - 1, r)); else this.cur.row = Math.max(0, Math.min(list.length - 1, r)); };
@@ -753,8 +754,8 @@ export default class Tasks extends View {
       .on_key_down((e, cx) => this.key(e, cx))
       .on_mouse_move((e, cx) => { if (this.board && e.bounds) this.winRect = e.bounds; this.moveRoot(e, cx); })
       .on_mouse_up("left", (_e, cx) => this.release(cx))
-      // Let go outside (a sidebar row took it, or nothing did): the next press anywhere ends the drag here.
-      .on_mouse_down_out((_e, cx) => { if (this.drag) { this.drag = null; this.over = null; endDrag(); cx.notify(); } })
+      // Out of the panel mid-drag: the card goes back where it was (a release out there isn't seen here).
+      .on_hover((on, cx) => { if (!on && this.drag) this.cancelDrag(cx); })
       .relative().when(Boolean(this.drag?.moved), (e) => e.cursor_grabbing())
       .when(this.board, (e) => e.relative()
         .on_size_change((size) => { if (size?.width && (size.width !== this.size?.width || size.height !== this.size?.height)) { this.size = size; setShared(SIZE, { width: Math.round(size.width), height: Math.round(size.height) }); } })
@@ -1125,8 +1126,6 @@ export default class Tasks extends View {
 
   render(cx) {
     if (this.menu) return this.renderMenu();
-    // A sidebar row took the card (or the drag went stale): stop dragging it here too.
-    if (this.drag?.moved && !dragging()) { this.drag = null; this.over = null; }
     if (this.taskId) return this.renderTask(cx);
     return this.board ? this.renderList(cx) : dimmed(this, this.renderList(cx));
   }
