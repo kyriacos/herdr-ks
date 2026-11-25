@@ -788,7 +788,8 @@ export default class Tasks extends View {
         .when(Boolean(toast.offer), (e) => e.child(div().id("tasks-undo").px(6).rounded(4).cursor_pointer().font_semibold().hover((s) => s.bg(alpha(t.accent, "3a")))
           .on_click((_e, cx) => this.step(toast.offer === "undo", cx)).child(toast.offer === "undo" ? "Undo (u)" : "Redo (U)")))))
       .when(Boolean(this.error), (e) => e.child(div().p(12).text_size(12).text_color(t.ansi1).child(this.error)))
-      .child(div().flex_1().min_h(0).relative()
+      // In the board window only the header drags the window: the add boxes, columns and lists take their presses.
+      .child(div().flex_1().min_h(0).relative().when(this.board, (e) => e.on_mouse_down("left", (_e, cx) => cx.stop_propagation()))
         .child(this.view === "today" ? this.renderToday(t, focused) : this.renderBoard(t, focused))
         .when(this.view === "today", (e) => e.child(Scrollbar.vertical("tasks-today").absolute().inset_0())))
       .child(h_flex().flex_none().h(24).px(12).items_center().border_t(1).border_color(t.border).text_size(10.5).text_color(t.dim).truncate()
@@ -956,11 +957,15 @@ export default class Tasks extends View {
         if (e.key === "enter" && m.platform && this.note.value().trim()) { this.sendComment(cx); cx.stop_propagation(); }
       })
       .child(h_flex().flex_none().h(44).px(16).gap(8).items_center().border_b(1).border_color(t.border)
+        // Presses here are the input's (selecting, placing the caret), not a drag of the window: only the bar around
+        // it moves the window.
         .child(div().flex_1().h(30).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).bg(t.chrome)
+          .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
           .child(Input.new(this.title).h_full().text_size(14).font_semibold().text_color(t.foreground)))
         .child(div().id("task-x").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
           .hover((s) => s.bg(t.hover)).on_click((_e, cx) => close(cx)).child("✕")))
-      .child(div().flex_1().min_h(0).relative()
+      // The body never drags the window (its inputs, text and buttons take the press); the title bar does.
+      .child(div().flex_1().min_h(0).relative().on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .child(v_flex().id("task-body").absolute().inset_0().overflow_y_scroll().track_scroll(this.scroll).px(16).pt(12).pb(20)
           .child(h_flex().flex_wrap().gap(6).items_center()
             .children(d.columns.map((c) => pill(`tc-${c.id}`, c.name, x.column === c.id, (cx) => this.apply(ops.move(x.id, c.id, null), cx), t.accent, `col:${c.id}`)))
