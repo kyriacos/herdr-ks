@@ -52,8 +52,9 @@ export function openTaskWindow(id) {
   const size = shared(TASK_SIZE), width = size?.width ?? 680, height = size?.height ?? 720;
   let at;
   try { const v = window.viewport_size(), z = settings().zoom || 1; at = { x: Math.max(0, Math.round((v.width - width * z) / 2)), y: Math.max(0, Math.round((v.height - height * z) / 2)) }; } catch {}
-  openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width, height, ...(at ? { at } : {}), props: { task: id } });
+  openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width, height, ...(at ? { at } : {}), props: { task: id, opened: Date.now() } });
 }
+const SEEN = "ks-tasks.windowsSeen"; // task id → the props.opened its window last opened with
 const COLUMNS = [{ id: "backlog", name: "Backlog" }, { id: "todo", name: "To do" }, { id: "doing", name: "Doing" }, { id: "done", name: "Done" }];
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
@@ -802,6 +803,11 @@ export default class Tasks extends View {
   // A task's dialog
 
   initTask(cx) {
+    // Opened by you (props.opened, once) or built again by Herdr or a resize (the same or no props.opened): only an
+    // open takes the keyboard and puts the caret in a field, so a rebuild never moves the caret you just placed.
+    const p = props() ?? {}, seen = shared(SEEN) ?? {};
+    this.fresh = Boolean(p.opened) && seen[this.taskId] !== p.opened;
+    if (this.fresh) setShared(SEEN, Object.fromEntries([...Object.entries(seen).slice(-30), [this.taskId, p.opened]]));
     this.title = InputState.new({ placeholder: "Task title" });
     this.title.on("change", (_e, cx) => this.typed("title", this.title.value(), cx));
     this.body = TextareaState.new({ placeholder: "Details, links, anything. Saved as you type.", rows: 4 });
@@ -825,7 +831,7 @@ export default class Tasks extends View {
     this.seeded = false; this.working = null;
     // The agent's screen, while it has one and it's shown: read again every 1,5 s.
     // A window doesn't always get the keyboard when it opens: until a field has it, give it again (the description).
-    for (const ms of [120, 300, 600, 1000]) cx.timer.after(ms, () => { if (this.stop === null && !this.handle.is_focused()) { if (this.seeded) this.body.focus(); else this.handle.focus(); } });
+    if (this.fresh) for (const ms of [120, 300, 600, 1000]) cx.timer.after(ms, () => { if (this.stop === null && !this.handle.is_focused()) { if (this.seeded) this.body.focus(); else this.handle.focus(); } });
     this.showScreen = true; this.screen = null;
     cx.timer.every(1500, (cx) => {
       const x = this.task(), live = agentOf(x);
@@ -878,6 +884,7 @@ export default class Tasks extends View {
     const x = this.task();
     if (!x || this.seeded) return;
     this.seeded = true; this.title.set_value(x.title ?? ""); this.body.set_value(x.body ?? "");
+    if (!this.fresh) return;
     if (!x.title) this.title.focus(); else this.body.focus(); // the description first (Tab moves on)
   }
   // Saved a moment after the last key; every field typed meanwhile goes in that one save.

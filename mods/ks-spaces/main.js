@@ -87,7 +87,7 @@ function openTaskWindow(id) {
   const size = shared("ks-tasks.taskSize"), width = size?.width ?? 680, height = size?.height ?? 720;
   let at;
   try { const v = window().viewport_size ? window().viewport_size() : null, z = settings().zoom || 1; if (v) at = { x: Math.max(0, Math.round((v.width - width * z) / 2)), y: Math.max(0, Math.round((v.height - height * z) / 2)) }; } catch {}
-  openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width, height, ...(at ? { at } : {}), props: { task: id } });
+  openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width, height, ...(at ? { at } : {}), props: { task: id, opened: Date.now() } });
 }
 
 export default class Spaces extends View {

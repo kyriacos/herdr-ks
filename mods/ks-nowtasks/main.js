@@ -79,7 +79,7 @@ export default class NowTasks extends View {
     const s = shared("ks-tasks.taskSize"), width = s?.width ?? 680, height = s?.height ?? 720;
     let at;
     try { const v = window.viewport_size(), z = settings().zoom || 1; at = { x: Math.max(0, Math.round((v.width - width * z) / 2)), y: Math.max(0, Math.round((v.height - height * z) / 2)) }; } catch {}
-    openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width, height, ...(at ? { at } : {}), props: { task: id } });
+    openOverlay({ mod: "ks-tasks", kind: "window", key: `ks-task-${id}`, width, height, ...(at ? { at } : {}), props: { task: id, opened: Date.now() } });
   }
 
   render(cx) { return dimmed(this, this.renderInner(cx)); }
