@@ -430,6 +430,9 @@ work anywhere, not only from service mode:
 - `ctrl-\` enters vim's normal mode directly (as neovim's `ctrl-\ ctrl-n`); there `ctrl-w …` works too.
 - It takes `ctrl-w` from the shell and Claude (delete a word): press `ctrl-w` twice to send it, or use
   `alt-backspace`. Both keys can be changed in the editor.
+- Inside Vim, Neovim or another terminal editor (Helix, Kakoune, Emacs, nano, micro) these keys are the editor's:
+  `ctrl-w`, `ctrl-\` and any other ctrl+letter mode key go to it, so its own window commands work. `ctrl-;` (service
+  mode) still opens there. Settings → Keys & modes → **Editors keep their keys** turns this off.
 
 **The strip waits.** The keys work as soon as you enter a mode, but the strip only appears after a 1 s pause, and
 each key starts the wait again, so a combo you know never shows it. Change it in Settings → Keys & modes

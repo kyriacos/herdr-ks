@@ -8,6 +8,7 @@ export const DEFAULTS = {
   resumeCard: true,    // after a reboot, show the last Claude session's card in its terminal
   hideIdleMain: true,  // panels leave out a main checkout on main/master with nothing changed
   prToasts: true,      // My PRs: a toast when CI turns, a review lands, a PR merges
+  editorKeys: true,    // in Vim / Neovim (and other terminal editors) a mode key it uses (ctrl-w...) goes to the editor
   // Layout (applied by lib/arrange.js)
   panelSide: "right",  // the side panel: "right" or "left" of the terminals
   sidebarOrder: ["dashboard", "now-tasks", "my-prs", "spaces", "agents"], // the sidebar's sections, top to bottom

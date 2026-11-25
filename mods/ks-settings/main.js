@@ -244,6 +244,8 @@ export default class Settings extends View {
         return v_flex().child(heading("Keys & modes"))
           .child(row("Vim keys", "Vim's ctrl-w window commands anywhere: h j k l go, H J K L swap, s v split, o zoom, c close, + - < > = resize what you're in, z zen. ctrl-\\ enters vim's normal mode (i or esc leaves). Takes ctrl-w from the shell: press it twice to delete a word, or use alt-backspace.",
             btn("vim-on", "On", () => run("ks-keys.vim:on"), vimOn), btn("vim-off", "Off", () => run("ks-keys.vim:off"), !vimOn)))
+          .child(row("Editors keep their keys", "In Vim, Neovim and other terminal editors, a mode key the editor uses itself (ctrl-w, ctrl-b, ctrl-\\) goes to the editor instead of opening the mode. ctrl-; still opens the service mode there.",
+            ...choice("editorkeys", [[true, "On"], [false, "Off"]], p.editorKeys !== false, (v) => setPref("editorKeys", v))))
           .child(row(`Key strip shows after a ${((cfg?.delay ?? 1000) / 1000).toLocaleString("de-DE")} s pause`, "The keys work as soon as you enter a mode; the strip only appears once you stop typing for this long (each key starts the wait again).",
             ...[0, 500, 1000, 1500, 2500].map((v) => btn(`delay-${v}`, v ? `${(v / 1000).toLocaleString("de-DE")} s` : "At once", () => run(`ks-keys.delay:${v}`), (cfg?.delay ?? 1000) === v))))
           .child(row("Key modes", "Press a mode's key and a strip shows its keys. Switch modes on or off, change their keys and every binding in the editor.",

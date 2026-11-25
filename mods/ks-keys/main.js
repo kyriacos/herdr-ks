@@ -15,6 +15,7 @@ import { props, run, theme, openOverlay, closeOverlay, nextCommand, shared, setS
 import * as km from "./keymap.js";
 import { alpha } from "./lib/color.js";
 import { renameWith } from "./lib/spacenames.js";
+import { pref } from "./lib/prefs.js";
 
 const OPEN = "ks-keys.open"; // the mode popup's overlay id, so a second entry key replaces it
 // The popup: four columns of keys (CELL wide, GAP apart) inside PAD on each side.
@@ -170,11 +171,24 @@ function stripHeight(c, room) {
 }
 
 // `keep` reopens the strip on top again (in zen, the zen window can come over it): the same pane and message.
+// Terminal editors that use ctrl+letter keys themselves (ctrl-w is Vim's window prefix).
+const EDITORS = /^(n?vim?|neovim|vi|helix|hx|kak|kakoune|emacs|nano|micro)$/i;
+function editorIn(f) {
+  if (!f?.terminal || !pref("editorKeys")) return false;
+  const p = panes().find((x) => x.terminal === f.terminal)?.program;
+  return Boolean(p && (EDITORS.test(p.key ?? "") || EDITORS.test(p.name ?? "")));
+}
+// "ctrl-w" (keys.json spelling) → "ctrl+w" (hc keys), for a ctrl+letter or ctrl+\ [ ] key; else null.
+const passKey = (entry) => { const m = String(entry ?? "").match(/^ctrl-([a-z\\\[\]])$/); return m ? `ctrl+${m[1]}` : null; };
+
 async function openMode(id, keep = null) {
   const c = km.config(), m = c.modes[id];
   if (!m || m.off) return;
   // The pane you're in, before the strip takes the keyboard.
   const f = keep ?? focused();
+  // In Vim or Neovim (setting "Editors keep their keys") a ctrl+letter entry key is the editor's: it gets the key.
+  const pass = !keep && editorIn(f) ? passKey(m.entry) : null;
+  if (pass) { hc(["keys", f.terminal, pass]).catch(() => null); return; }
   // A floating window that had the keyboard (review, PR): the resize keys go to it (shared "ks.activeWindow").
   const floating = keep ? keep.window ?? null : shared("ks.activeWindow") ?? null;
   // Reopening (keep) replaces the strip by its key: closing it first would hand the keyboard away.
