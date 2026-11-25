@@ -311,6 +311,7 @@ export default class Tasks extends View {
 
   initList(cx) {
     // "today" | "board"; the window remembers its own (it opens on the board).
+    this.fitKey = this.board ? "boardFit" : "panelFit";
     this.viewKey = this.board ? "boardView" : "view"; this.view = load(this.viewKey, this.board ? "board" : "today");
     // This space's tasks, or all: the panel starts on this space, the window on all (each remembers its own).
     this.scopeKey = this.board ? "boardScope" : "scope"; this.all = load(this.scopeKey, this.board || Boolean(pref("tasksAll")));
@@ -460,6 +461,7 @@ export default class Tasks extends View {
   // While dragging, the card or column under the pointer says where it would land (this.over = { where, before }).
   // The press focuses the panel, so Esc reaches it mid-drag.
   pressCard(task, e) { this.drag = { id: task.id, x: e.position.x, y: e.position.y, moved: false }; this.handle.focus(); }
+  toggleFit(cx) { save(this.fitKey, !load(this.fitKey, false)); cx.notify(); }
   // Esc or leaving the panel: nothing moves (a drag only changes the board when it's let go over a column).
   cancelDrag(cx) { const was = this.drag?.moved; this.drag = null; this.over = null; if (was) { this.justDragged = true; cx.timer.after(80, () => { this.justDragged = false; }); } cx.notify(); }
   // The pointer, over the whole view: a drag starts after a few pixels, then a copy of the card follows it.
@@ -537,6 +539,7 @@ export default class Tasks extends View {
     else if (k === "s") this.setAll(!this.all, cx);
     else if (k === "u") this.step(true, cx);
     else if (k === "U") this.step(false, cx);
+    else if (k === "f" && !today) this.toggleFit(cx);
     else if (k === "b" || k === "tab") this.setView(today ? "board" : "today", cx);
     else if (k === "z") { if (this.board) this.closeBoard(); else this.openBoard(); }
     else if (!today && (k === "l" || k === "right") && this.cur.col < this.data.columns.length - 1) goCol(this.cur.col + 1);
@@ -611,23 +614,24 @@ export default class Tasks extends View {
         .when(pics.length > 0, (e) => e.child(attachRow(pics, t, `cp-${task.id}`)))
         .when(Boolean(ag) || prs.length > 0 || lin.length > 0, (e) => e.child(this.workChips(task, ag, prs, lin, wt, t, subs.filter((s) => s.running))))
         .when(meta.length > 0 || Boolean(task.spaceName), (e) => e.child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
-          .when(Boolean(task.spaceName), (e) => e.child(div().flex_none().px(5).rounded(5).border_1().border_color(t.border).max_w(140).truncate().text_color(t.muted).child(task.spaceName)))
+          .when(Boolean(task.spaceName), (e) => e.child(div().flex_shrink_1().min_w(0).px(5).rounded(5).border_1().border_color(t.border).max_w(140).truncate().text_color(t.muted).child(task.spaceName)))
           .child(div().flex_1().min_w(0).truncate().child(meta.join(" · "))))));
   }
 
   // The card's work row: the agent on it (click focuses it), its PRs (open), Linear ids, the branch.
   workChips(task, ag, prs, lin, wt, t, running = []) {
     const stop = (e) => e.on_mouse_down("left", (_e, cx) => cx.stop_propagation());
-    const chip = (id, label, tone, tip, act) => stop(div().id(id).flex_none().px(5).rounded(5).border_1().border_color(alpha(t[tone], "66")).text_color(t[tone])
+    // Chips wrap onto the next line; a long one (`long`: a Linear title, a subagent) is cut to the card's width.
+    const chip = (id, label, tone, tip, act, long = false) => stop(div().id(id).flex_none().when(long, (e) => e.max_w_full().truncate()).px(5).rounded(5).border_1().border_color(alpha(t[tone], "66")).text_color(t[tone])
       .cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(tip).on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label));
     const [words, tone] = ag ? STATUS[ag.status] ?? [ag.status, "muted"] : [];
     return h_flex().gap(5).items_center().flex_wrap().text_size(10.5)
       .when(Boolean(ag), (e) => e.child(chip(`wa-${task.id}`, `● ${ag.status === "working" ? "agent working" : `agent ${words}`}`, tone, `${agentName(ag)} · click to go to it`, () => focusAgent(ag))))
       .children(running.slice(0, 2).map((s) => chip(`ws-${task.id}-${s.id}`, `◆ ${s.description.length > 24 ? s.description.slice(0, 23) + "…" : s.description}`, "accent",
-        `A subagent of ${agentName(ag)} is on it (${s.why}); click to see what it's doing`, () => this.openTask(task.id))))
+        `A subagent of ${agentName(ag)} is on it (${s.why}); click to see what it's doing`, () => this.openTask(task.id), true)))
       .children(prs.slice(0, 2).map((p) => chip(`wp-${task.id}-${p.number}`, `#${p.number} ${prState(p)}`, prTone(p), `${p.repo}#${p.number} ${p.title}`.trim(), () => exec("open", [p.url]).catch(() => null))))
       .children(lin.slice(0, 2).map((l) => chip(`wl-${task.id}-${l.id}`, `◇ ${l.id}${l.title ? ` ${l.title.length > 30 ? l.title.slice(0, 29) + "…" : l.title}` : ""}`, "muted",
-        `${l.title ? `${l.id} ${l.title} · ` : ""}${l.url ? "Open in Linear (right-click copies the id)" : "Copy (set your Linear workspace in Settings to open it)"}`, (cx) => openLinear(l, cx))
+        `${l.title ? `${l.id} ${l.title} · ` : ""}${l.url ? "Open in Linear (right-click copies the id)" : "Copy (set your Linear workspace in Settings to open it)"}`, (cx) => openLinear(l, cx), true)
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); copyLinear(l.id, cx); })))
       .when(Boolean(ag) && Boolean(wt.branch), (e) => e.child(div().min_w(0).truncate().text_color(t.dim).child(`⎇ ${wt.branch}`)));
   }
@@ -690,7 +694,7 @@ export default class Tasks extends View {
     // The column a dragged card would land in lights up.
     const target = this.drag?.moved && this.over?.where === c.id;
     // The whole column takes a dragged card (an empty one has no cards to point at), at its end unless over a card.
-    return v_flex().id(`col-${c.id}`).flex_none().w(W).h_full().min_h(0).rounded(9).bg(target ? alpha(t.accent, "12") : t.chrome).border_1().border_color(target ? t.accent : on ? alpha(t.accent, "88") : t.border)
+    return v_flex().id(`col-${c.id}`).when(W != null, (e) => e.flex_none().w(W)).when(W == null, (e) => e.flex_1().min_w(150)).h_full().min_h(0).rounded(9).bg(target ? alpha(t.accent, "12") : t.chrome).border_1().border_color(target ? t.accent : on ? alpha(t.accent, "88") : t.border)
       .on_mouse_move((e, cx) => this.overList(c.id, e, cx))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_drop((e, cx) => { cx.stop_propagation(); if (!this.droppedOn) this.dropNew(c.id, e.paths, cx); })
@@ -713,13 +717,14 @@ export default class Tasks extends View {
           .child(this.dropList(c.id, list, t, on ? this.cur.row : -1))));
   }
 
+  // Fit (the ⇔ button, f): the columns share the width, no sideways scrolling; else each has its own width.
   renderBoard(t, focused) {
-    const W = this.board ? 290 : 236;
-    return h_flex().id("tasks-board").absolute().inset_0().overflow_x_scroll().track_scroll(this.boardScroll).p(10).gap(10).items_start()
-      .children(this.data.columns.map((c, i) => this.column(c, i, t, focused, W)))
-      .child(div().id("col-add").flex_none().w(W * 0.6).h(36).flex().items_center().justify_center().rounded(9).border_1().border_color(t.border)
+    const W = this.board ? 290 : 236, fit = this.fitKey && load(this.fitKey, false);
+    return h_flex().id("tasks-board").absolute().inset_0().when(!fit, (e) => e.overflow_x_scroll()).track_scroll(this.boardScroll).p(10).gap(fit ? 8 : 10).items_start()
+      .children(this.data.columns.map((c, i) => this.column(c, i, t, focused, fit ? null : W)))
+      .child(div().id("col-add").flex_none().when(fit, (e) => e.w(34)).when(!fit, (e) => e.w(W * 0.6)).h(36).flex().items_center().justify_center().rounded(9).border_1().border_color(t.border)
         .text_size(12).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-        .on_click((_e, cx) => this.addColumn(cx)).child("+ Column"));
+        .on_click((_e, cx) => this.addColumn(cx)).child(fit ? "+" : "+ Column"));
   }
 
   // Corner grips (the board window): ks-resize draws the outline while you drag and reopens the window at that size.
@@ -769,6 +774,8 @@ export default class Tasks extends View {
           .child(seg("s-here", this.board ? "This space" : "Here", !this.all, (cx) => this.setAll(false, cx)))
           .child(seg("s-all", `All · ${this.data.tasks.filter((x) => x.column !== doneCol(this.data)).length}`, this.all, (cx) => this.setAll(true, cx))))
         .child(div().flex_1())
+        .when(this.view === "board", (e) => e.child(btn("tasks-fit", load(this.fitKey, false) ? "⇔ Fit" : "⇔", (cx) => this.toggleFit(cx),
+          load(this.fitKey, false) ? "Columns fit the width; click for fixed widths (f)" : "Fit the columns to the width (f)")))
         .child(btn("tasks-undo-btn", "↶", (cx) => this.step(true, cx), this.history.length ? `Undo ${this.history[this.history.length - 1].label} (u, cmd-z)` : "Nothing to undo", !this.history.length))
         .child(btn("tasks-redo-btn", "↷", (cx) => this.step(false, cx), this.future.length ? `Redo ${this.future[this.future.length - 1].label} (U, cmd-shift-z)` : "Nothing to redo", !this.future.length))
         .when(!this.board, (e) => e.child(btn("tasks-big", "⤢", () => this.openBoard(), "Open the board in a window (z)")))
@@ -786,7 +793,7 @@ export default class Tasks extends View {
         .when(this.view === "today", (e) => e.child(Scrollbar.vertical("tasks-today").absolute().inset_0())))
       .child(h_flex().flex_none().h(24).px(12).items_center().border_t(1).border_color(t.border).text_size(10.5).text_color(t.dim).truncate()
         .child(this.view === "today" ? "j/k move · Enter open · t today · n new below · N new at end · x delete · s here / all · b board · z window · drop files"
-          : "h/l j/k move · n new below · N at end · H/L to column · J/K reorder · r rename column · z window · drag cards · drop files"))
+          : "h/l j/k move · n new below · N at end · H/L to column · J/K reorder · r rename column · f fit · z window · drag cards · drop files"))
       .children([this.ghost(t)].filter(Boolean));
   }
 

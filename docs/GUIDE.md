@@ -257,6 +257,9 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   <id> for the details)`, and the agent reads the rest with `ks-task`. **Copy reference** puts it on the
   clipboard instead; **Open** opens the task. A task's window has **Ask agent** too. While you point at an Ask row
   (or move to it with the arrow keys), the sidebar rings that agent and its space, so you see where it lands.
+- **Fit** (the board's **⇔** button, or `f`): the columns share the panel's or window's width instead of scrolling
+  sideways; click again for fixed widths. Each of the panel and the board window remembers its own. Long chips on a
+  card (a Linear title, a subagent) are cut to the card's width, and the chips wrap onto more lines.
 - **Dragging a card:** **Esc**, or taking it out of the panel, puts it back where it was; it only moves when you let
   go over a list or column.
 - Drop files onto a card to attach them to that task, or onto a column or list for a new task carrying them.
