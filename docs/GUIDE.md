@@ -226,7 +226,8 @@ window of its own; drag its corners to resize it (or use the key modes' resize k
   comments and everything that happened to it (created, moved, renamed, added to today, attached, started, done),
   with who did it, oldest first. `ks-task show ID` prints the same. Drop files onto
   it, or **Add files…** / **Paste image**; write a comment and **Comment** (or `cmd-enter`). Esc closes it.
-  It opens with the description ready to type in (the title, for a task with none). **Tab** / **shift-Tab** move
+  It opens with the description ready to type in (the title, for a task with none). In its text boxes (and Notes')
+  a double-click selects a word and a triple-click a line; drag the window by its title bar. **Tab** / **shift-Tab** move
   through everything: title, the column pills, Today, description, Add files, Paste image, the comment box,
   Comment, Delete. On a button or pill (ringed in the accent colour), Enter or Space presses it. Enter in the title
   goes to the description.

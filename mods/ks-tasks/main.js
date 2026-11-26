@@ -30,6 +30,7 @@ import { exec, appHome, spaces, agents, theme, settings, props, openOverlay, clo
 import { pickAgent, agentChoices } from "./lib/comments.js";
 import { trackActive, takeRequest, raiseStrip, claim, backToPanel } from "./lib/windows.js";
 import { resizable } from "./lib/panelwin.js";
+import { selectOnClicks } from "./lib/textselect.js";
 import { pref } from "./lib/prefs.js";
 import { dimmed } from "./lib/focus.js";
 import { spaceName } from "./lib/spacenames.js";
@@ -967,7 +968,7 @@ export default class Tasks extends View {
         // Presses here are the input's (selecting, placing the caret), not a drag of the window: only the bar around
         // it moves the window.
         .child(div().flex_1().h(30).px(8).flex().items_center().rounded(6).border_1().border_color(t.border).bg(t.chrome)
-          .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+          .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); selectOnClicks(this.title, e, cx); })
           .child(Input.new(this.title).h_full().text_size(14).font_semibold().text_color(t.foreground)))
         .child(div().id("task-x").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.muted)
           .hover((s) => s.bg(t.hover)).on_click((_e, cx) => close(cx)).child("✕")))
@@ -998,6 +999,7 @@ export default class Tasks extends View {
           .child(this.renderWork(x, t, section, btn, mono))
           .child(section("Description"))
           .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)
+            .on_mouse_down("left", (e, cx) => selectOnClicks(this.body, e, cx))
             .child(Textarea.new(this.body).w_full().text_size(12.5).text_color(t.foreground).font_family(mono)))
           .child(this.renderSubtasks(x, t, section))
           .child(section(`Attachments${(x.attachments ?? []).length ? ` · ${(x.attachments ?? []).length}` : ""}`,
@@ -1022,6 +1024,7 @@ export default class Tasks extends View {
                 .child(div().id(`cmx-${a.c.id}`).px(5).rounded(4).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.apply(ops.uncomment(x.id, a.c.id), cx)).child("Delete")))
               .child(div().text_size(12.5).text_color(t.foreground).child(a.c.text))))
           .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)
+            .on_mouse_down("left", (e, cx) => selectOnClicks(this.note, e, cx))
             .child(Textarea.new(this.note).w_full().text_size(12.5).text_color(t.foreground)))
           .child(h_flex().mt(6).gap(8).items_center()
             .child(div().flex_1())

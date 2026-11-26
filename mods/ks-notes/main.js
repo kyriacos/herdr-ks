@@ -25,6 +25,7 @@ import { takeFocus, listKey, watchFocus, focusedNow, toStrip } from "./lib/panel
 import { pref } from "./lib/prefs.js";
 import { addPaths, pickAndAdd, pasteImage, attachRow, dropFiles, onPasteImage } from "./lib/attach.js";
 import { alpha } from "./lib/color.js";
+import { selectOnClicks } from "./lib/textselect.js";
 
 const FILE = () => `${appHome()}/data/ks-notes.json`;
 // The notes in a window of their own (⤢ or e in the panel): resizable like the Tasks board, its size kept here.
@@ -246,6 +247,7 @@ export default class Notes extends View {
         .child(link(`del-${n.id}`, "Delete", (cx) => this.remove(n, cx), t.dim)))
       .when(editing, (e) => e
         .child(div().rounded(6).border_1().border_color(t.border).bg(t.chrome).px(8).py(6)
+          .on_mouse_down("left", (e, cx) => selectOnClicks(this.editor, e, cx))
           .child(Textarea.new(this.editor).w_full().text_size(12.5).text_color(t.foreground).font_family(settings().font_family ?? "JetBrains Mono")))
         .when((n.attachments ?? []).length > 0, (e) => e.child(attachRow(n.attachments, t, `na-${n.id}`, { onRemove: (a, cx) => this.unattach(n, a, cx) })))
         .child(h_flex().gap(6).items_center().text_size(10.5).text_color(t.dim)
